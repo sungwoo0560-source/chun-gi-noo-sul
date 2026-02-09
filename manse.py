@@ -5,9 +5,36 @@ import requests
 import random
 import time
 import os
+import urllib.request
 
 # ==============================================================================
-# [0] 시스템 설정
+# [0] 폰트 자동 다운로드
+# ==============================================================================
+def get_font():
+    """NanumMyeongjo 폰트 자동 다운로드"""
+    font_path = "NanumMyeongjo.ttf"
+    
+    # 이미 파일이 있으면 경로 반환
+    if os.path.exists(font_path):
+        return font_path
+    
+    # GitHub에서 폰트 다운로드
+    try:
+        font_url = "https://github.com/naver/nanumfont/raw/master/fonts/NanumMyeongjo.ttf"
+        print(f"📥 NanumMyeongjo 폰트 다운로드 중... ({font_url})")
+        urllib.request.urlretrieve(font_url, font_path)
+        print(f"✅ 폰트 다운로드 완료: {font_path}")
+        return font_path
+    except Exception as e:
+        print(f"⚠️ 폰트 다운로드 실패: {e}")
+        print("💡 구글 폰트 CDN을 통해 웹 폰트가 로드됩니다.")
+        return None
+
+# 앱 시작 시 폰트 확인
+FONT_PATH = get_font()
+
+# ==============================================================================
+# [1] 시스템 설정
 # ==============================================================================
 st.set_page_config(layout="wide", page_title="운명서 · 運命書", page_icon="📖")
 
