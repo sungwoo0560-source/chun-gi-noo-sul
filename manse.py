@@ -1,1762 +1,1720 @@
-import streamlit as st
-import pandas as pd
-import datetime
-import requests
-import random
-import time
-import os
-import urllib.request
+import { useState, useCallback, useRef, useEffect } from "react";
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from "recharts";
 
-# ==============================================================================
-# [0] 폰트 자동 다운로드
-# ==============================================================================
-def get_font():
-    """NanumMyeongjo 폰트 자동 다운로드"""
-    font_path = "NanumMyeongjo.ttf"
-    
-    # 이미 파일이 있으면 경로 반환
-    if os.path.exists(font_path):
-        return font_path
-    
-    # GitHub에서 폰트 다운로드
-    try:
-        font_url = "https://github.com/naver/nanumfont/raw/master/fonts/NanumMyeongjo.ttf"
-        print(f"📥 NanumMyeongjo 폰트 다운로드 중... ({font_url})")
-        urllib.request.urlretrieve(font_url, font_path)
-        print(f"✅ 폰트 다운로드 완료: {font_path}")
-        return font_path
-    except Exception as e:
-        print(f"⚠️ 폰트 다운로드 실패: {e}")
-        print("💡 구글 폰트 CDN을 통해 웹 폰트가 로드됩니다.")
-        return None
+// ══════════════════════════════════════════════
+//  십이시진
+// ══════════════════════════════════════════════
+const SIJIN = [
+  { key:"ja",  label:"子時 (자시)", range:"23:00~00:59", hour:0,  jj:"子", emoji:"🐭" },
+  { key:"chuk",label:"丑時 (축시)", range:"01:00~02:59", hour:1,  jj:"丑", emoji:"🐮" },
+  { key:"in",  label:"寅時 (인시)", range:"03:00~04:59", hour:3,  jj:"寅", emoji:"🐯" },
+  { key:"myo", label:"卯時 (묘시)", range:"05:00~06:59", hour:5,  jj:"卯", emoji:"🐰" },
+  { key:"jin", label:"辰時 (진시)", range:"07:00~08:59", hour:7,  jj:"辰", emoji:"🐉" },
+  { key:"sa",  label:"巳時 (사시)", range:"09:00~10:59", hour:9,  jj:"巳", emoji:"🐍" },
+  { key:"o",   label:"午時 (오시)", range:"11:00~12:59", hour:11, jj:"午", emoji:"🐴" },
+  { key:"mi",  label:"未時 (미시)", range:"13:00~14:59", hour:13, jj:"未", emoji:"🐑" },
+  { key:"sin", label:"申時 (신시)", range:"15:00~16:59", hour:15, jj:"申", emoji:"🐵" },
+  { key:"yu",  label:"酉時 (유시)", range:"17:00~18:59", hour:17, jj:"酉", emoji:"🐓" },
+  { key:"sul", label:"戌時 (술시)", range:"19:00~20:59", hour:19, jj:"戌", emoji:"🐕" },
+  { key:"hae", label:"亥時 (해시)", range:"21:00~22:59", hour:21, jj:"亥", emoji:"🐗" },
+  { key:"unk", label:"시각 모름",   range:"시간 불명",    hour:12, jj:"午", emoji:"❓" },
+];
 
-# 앱 시작 시 폰트 확인
-FONT_PATH = get_font()
+// ══════════════════════════════════════════════
+//  음력 데이터
+// ══════════════════════════════════════════════
+const LUNAR_NEW_YEAR = {
+  1940:[2,8],1941:[1,27],1942:[2,15],1943:[2,5],1944:[1,25],1945:[2,13],
+  1946:[2,2],1947:[1,22],1948:[2,10],1949:[1,29],1950:[1,17],1951:[2,6],
+  1952:[1,27],1953:[2,14],1954:[2,3],1955:[1,24],1956:[2,12],1957:[1,31],
+  1958:[2,18],1959:[2,8],1960:[1,28],1961:[2,15],1962:[2,5],1963:[1,25],
+  1964:[2,13],1965:[2,2],1966:[1,21],1967:[2,9],1968:[1,30],1969:[2,17],
+  1970:[2,6],1971:[1,27],1972:[2,15],1973:[2,3],1974:[1,23],1975:[2,11],
+  1976:[1,31],1977:[2,18],1978:[2,7],1979:[1,28],1980:[2,16],1981:[2,5],
+  1982:[1,25],1983:[2,13],1984:[2,2],1985:[2,20],1986:[2,9],1987:[1,29],
+  1988:[2,17],1989:[2,6],1990:[1,27],1991:[2,15],1992:[2,4],1993:[1,23],
+  1994:[2,10],1995:[1,31],1996:[2,19],1997:[2,7],1998:[1,28],1999:[2,16],
+  2000:[2,5],2001:[1,24],2002:[2,12],2003:[2,1],2004:[1,22],2005:[2,9],
+  2006:[1,29],2007:[2,18],2008:[2,7],2009:[1,26],2010:[2,14],2011:[2,3],
+  2012:[1,23],2013:[2,10],2014:[1,31],2015:[2,19],2016:[2,8],2017:[1,28],
+  2018:[2,16],2019:[2,5],2020:[1,25],2021:[2,12],2022:[2,1],2023:[1,22],
+  2024:[2,10],2025:[1,29],2026:[2,17],2027:[2,6],2028:[1,26],2029:[2,13],
+  2030:[2,3],2031:[1,23],2032:[2,11],2033:[1,31],2034:[2,19],2035:[2,8],
+  2036:[1,28],2037:[2,15],2038:[2,4],2039:[1,24],2040:[2,12],
+};
+const LEAP_MONTHS = {
+  1941:7,1944:10,1947:6,1950:8,1952:5,1955:3,1957:8,1960:6,1963:4,
+  1966:3,1968:7,1971:5,1974:4,1976:8,1979:6,1982:4,1984:10,1987:6,
+  1990:5,1993:3,1995:8,1998:5,2001:4,2004:2,2006:7,2009:5,2012:3,
+  2014:9,2017:5,2020:4,2023:2,2025:6,2028:5,2031:3,2033:11,2036:6,2039:5,
+};
+function lunarToSolar(y,m,d,leap){
+  const ny=LUNAR_NEW_YEAR[y]; if(!ny) return null;
+  const base=new Date(y,ny[0]-1,ny[1]);
+  let days=0; const lm=LEAP_MONTHS[y]||0;
+  for(let i=1;i<m;i++){days+=(i%2===1)?30:29;if(lm===i)days+=29;}
+  if(leap&&lm===m)days+=(m%2===1)?30:29;
+  days+=d-1;
+  const r=new Date(base); r.setDate(r.getDate()+days); return r;
+}
 
-# ==============================================================================
-# [1] 시스템 설정
-# ==============================================================================
-st.set_page_config(layout="wide", page_title="운명서 · 運命書", page_icon="📖")
+// ══════════════════════════════════════════════
+//  천간·지지·오행
+// ══════════════════════════════════════════════
+const CG=["甲","乙","丙","丁","戊","己","庚","辛","壬","癸"];
+const CG_KR=["갑","을","병","정","무","기","경","신","임","계"];
+const JJ=["子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥"];
+const JJ_KR=["자","축","인","묘","진","사","오","미","신","유","술","해"];
+const JJ_AN=["쥐","소","호랑이","토끼","용","뱀","말","양","원숭이","닭","개","돼지"];
+const OH={甲:"木",乙:"木",丙:"火",丁:"火",戊:"土",己:"土",庚:"金",辛:"金",壬:"水",癸:"水",
+  子:"水",丑:"土",寅:"木",卯:"木",辰:"土",巳:"火",午:"火",未:"土",申:"金",酉:"金",戌:"土",亥:"水"};
+const OHC={木:"#16a34a",火:"#dc2626",土:"#d97706",金:"#ca8a04",水:"#2563eb"};
+const OHE={木:"🌿",火:"🔥",土:"🪨",金:"✨",水:"💧"};
+const OHN={木:"나무",火:"불",土:"흙",金:"쇠",水:"물"};
 
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700;800&display=swap');
-    .stApp { background-color: #f8fdf8; color: #111; font-family: 'Nanum Myeongjo', serif; }
-    
-    /* 운명서 헤더 - 초록 테마 */
-    .master-header {
-        background: linear-gradient(135deg, #1a5f3c 0%, #2d7a52 50%, #3d9970 100%);
-        color: #fff; padding: 40px 30px; text-align: center; 
-        border-bottom: 4px solid #4CAF50;
-        margin-bottom: 30px; border-radius: 0 0 20px 20px; 
-        box-shadow: 0 8px 20px rgba(76, 175, 80, 0.3);
-    }
-    .master-header h1 { 
-        font-size: 2.2rem; font-weight: 700; letter-spacing: 3px; 
-        margin: 0; color: #ffffff;
-    }
-    .master-header .subtitle { 
-        font-size: 0.95rem; margin-top: 8px; opacity: 0.9; 
-        letter-spacing: 2px; font-weight: 400;
-    }
-    
-    /* 오행 색상 */
-    .오행-목 { background: #4CAF50 !important; color: white !important; }
-    .오행-화 { background: #F44336 !important; color: white !important; }
-    .오행-토 { background: #FFC107 !important; color: #333 !important; }
-    .오행-금 { background: #EEEEEE !important; color: #333 !important; border: 2px solid #999 !important; }
-    .오행-수 { background: #2196F3 !important; color: white !important; }
-    
-    /* 사주 명식표 - 초록 테마 */
-    .saju-box { border: 3px solid #4CAF50; padding: 20px; margin-bottom: 30px; background: #fff; box-shadow: 0 4px 12px rgba(76, 175, 80, 0.15); border-radius: 10px; }
-    .saju-grid { display: grid; gap: 0; border: 2px solid #4CAF50; text-align: center; border-radius: 8px; overflow: hidden; }
-    .saju-head { background: #e8f5e9; padding: 12px; border-right: 1px solid #4CAF50; border-bottom: 1px solid #4CAF50; font-weight: bold; font-size: 1.1rem; color: #2e7d32; }
-    .saju-body { padding: 25px 10px; font-size: 2.8rem; font-weight: 900; border-right: 1px solid #4CAF50; line-height: 1.2; }
-    .saju-foot { background: #f1f8f4; padding: 12px; font-size: 0.95rem; color: #555; border-right: 1px solid #4CAF50; border-top: 1px solid #4CAF50; line-height: 1.5; font-weight:bold; }
-    .last { border-right: none !important; }
-    .highlight-pillar { border: 3px solid #2e7d32 !important; background-color: #e8f5e9 !important; }
-    
-    /* 60갑자 표 - 초록 테마 */
-    .gapja-container { margin: 30px 0; padding: 20px; background: #f1f8f4; border-radius: 10px; border: 2px solid #e0f2e9; }
-    .gapja-title { font-size: 1.4rem; font-weight: bold; text-align: center; margin-bottom: 20px; color: #2e7d32; }
-    .gapja-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; max-width: 900px; margin: 0 auto; }
-    .gapja-cell { 
-        padding: 10px 6px; text-align: center; font-weight: bold; font-size: 0.95rem; line-height: 1.4;
-        border-radius: 8px; border: 2px solid rgba(76, 175, 80, 0.2); 
-        box-shadow: 0 2px 4px rgba(76, 175, 80, 0.1);
-        transition: transform 0.2s;
-    }
-    .gapja-cell:hover { transform: scale(1.05); box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3); }
-    
-    .report-content { background: #fff; padding: 80px; border: 1px solid #e0f2e9; font-size: 1.3rem; line-height: 2.6; text-align: justify; margin-bottom: 50px; }
-    .chapter-title { 
-        font-size: 2.4rem; font-weight: 900; color: #2e7d32; 
-        border-left: 10px solid #4CAF50; padding-left: 20px; margin-top: 80px; margin-bottom: 40px; background-color: #f1f8f4; padding-top: 15px; padding-bottom: 15px;
-    }
-    .sub-title { font-size: 1.8rem; font-weight: bold; color: #388e3c; margin-top: 50px; margin-bottom: 20px; border-bottom: 3px dashed #a5d6a7; padding-bottom: 5px; }
-    
-    /* 모바일 최적화 */
-    @media (max-width: 768px) {
-        .master-header { padding: 25px 15px !important; border-radius: 0 0 15px 15px !important; }
-        .master-header h1 { font-size: 1.5rem !important; letter-spacing: 2px !important; }
-        .master-header .subtitle { font-size: 0.8rem !important; }
-        
-        .gapja-grid { grid-template-columns: repeat(5, 1fr) !important; font-size: 0.8rem !important; }
-        .gapja-cell { padding: 8px 4px !important; font-size: 0.85rem !important; }
-        
-        .report-content { padding: 20px !important; font-size: 1.1rem !important; line-height: 2.0 !important; }
-        .chapter-title { font-size: 1.6rem !important; padding: 10px !important; margin-top: 40px !important; }
-        .sub-title { font-size: 1.3rem !important; margin-top: 30px !important; }
-        
-        /* 카드 패딩 줄이기 */
-        div[style*="padding:30px 20px"] { padding: 20px 15px !important; }
-        div[style*="font-size:2.5rem"] { font-size: 1.8rem !important; }
-        div[style*="font-size:1.2rem"] { font-size: 1.0rem !important; }
-    }
-    
-    /* 버튼 스타일 개선 - 초록 테마 */
-    .stButton > button {
-        font-weight: bold !important;
-        border-radius: 10px !important;
-        padding: 10px 20px !important;
-        transition: all 0.3s ease !important;
-    }
-    .stButton > button[kind="primary"] {
-        background-color: #4CAF50 !important;
-        border-color: #4CAF50 !important;
-    }
-    .stButton > button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 5px 15px rgba(76, 175, 80, 0.3) !important;
-    }
-    
-    /* 탭 스타일 - 초록 테마 */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 8px 8px 0 0;
-        padding: 10px 20px;
-        background-color: #f1f8f4;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #4CAF50 !important;
-        color: white !important;
-    }
-</style>
-""", unsafe_allow_html=True)
+function ypCalc(y){const ci=((y-4)%10+10)%10;const ji=((y-4)%12+12)%12;return{cg:CG[ci],cgk:CG_KR[ci],jj:JJ[ji],jjk:JJ_KR[ji],ani:JJ_AN[ji],ciIdx:ci};}
+function mpCalc(y,m){const ji=[1,2,3,4,5,6,7,8,9,10,11,0][m-1];const b=[2,4,6,8,0,2,4,6,8,0][((y-4)%10+10)%10];const ci=(b+((ji-2+12)%12))%10;return{cg:CG[ci],cgk:CG_KR[ci],jj:JJ[ji],jjk:JJ_KR[ji],ani:JJ_AN[ji],ciIdx:ci};}
+function dpCalc(y,m,d){const diff=Math.round((new Date(y,m-1,d)-new Date(1900,0,1))/86400000);const pos=((diff+10)%60+60)%60;return{cg:CG[pos%10],cgk:CG_KR[pos%10],jj:JJ[pos%12],jjk:JJ_KR[pos%12],ani:JJ_AN[pos%12],ciIdx:pos%10};}
+function hpCalc(h,dci){let ji=h===23||h===0?0:Math.floor((h+1)/2)%12;const ci=([0,2,4,6,8,0,2,4,6,8][dci]+ji)%10;return{cg:CG[ci],cgk:CG_KR[ci],jj:JJ[ji],jjk:JJ_KR[ji],ani:JJ_AN[ji],ciIdx:ci};}
+function daewoonCalc(yp,gender,by){const isYang=CG.indexOf(yp.cg)%2===0;const fwd=(isYang&&gender==="male")||(!isYang&&gender==="female");const runs=[];for(let i=0;i<8;i++){const ci=(((by-4)%10+10)%10+(fwd?i+1:-(i+1))+100)%10;const ji=(((by-4)%12+12)%12+(fwd?i+1:-(i+1))+120)%12;runs.push({age:8+i*10,year:by+8+i*10,cg:CG[ci],cgk:CG_KR[ci],jj:JJ[ji],jjk:JJ_KR[ji]});}return runs;}
 
-# ==============================================================================
-# [1] 음력 라이브러리
-# ==============================================================================
-HAS_LUNAR = False
-try:
-    from korean_lunar_calendar import KoreanLunarCalendar
-    HAS_LUNAR = True
-except ImportError: pass
+// ══════════════════════════════════════════════
+//  탭
+// ══════════════════════════════════════════════
+const TABS=[
+  {id:"overall",    label:"종합운세",    icon:"⭐"},
+  {id:"newyear",    label:"신년운세",    icon:"🎊"},
+  {id:"daily",      label:"일일운세",    icon:"📅"},
+  {id:"wealth",     label:"재물운",      icon:"💰"},
+  {id:"business",   label:"사업운",      icon:"📈"},
+  {id:"health",     label:"건강운",      icon:"🏥"},
+  {id:"accident",   label:"사고·위험운", icon:"⚠️"},
+  {id:"love",       label:"연애운",      icon:"💕"},
+  {id:"marriage",   label:"결혼운",      icon:"💍"},
+  {id:"samjae",     label:"삼재풀이",    icon:"🔮"},
+  {id:"protection", label:"액땜·방지",   icon:"🛡️"},
+  {id:"career",     label:"직업·직장운", icon:"💼"},
+  {id:"study",      label:"학업·시험운", icon:"📚"},
+  {id:"family",     label:"가족·자녀운", icon:"👨‍👩‍👧"},
+  {id:"move",       label:"이사·부동산", icon:"🏠"},
+  {id:"travel",     label:"여행·이동운", icon:"✈️"},
+  {id:"friend",     label:"인연·귀인운", icon:"🤝"},
+  {id:"lawsuit",    label:"소송·관재운", icon:"⚖️"},
+  {id:"daewoon",    label:"대운흐름",    icon:"🌊"},
+  {id:"compat",     label:"궁합분석",    icon:"💑"},
+];
 
-# ==============================================================================
-# [2] 천문연구원 API (만세력)
-# ==============================================================================
-import xml.etree.ElementTree as ET
+const MARITAL=[{v:"single",l:"미혼 💚"},{v:"married",l:"기혼 💍"},{v:"divorced",l:"이혼 💔"},{v:"bereaved",l:"사별 🕊️"}];
+const JOBS=[{v:"employee",l:"직장인"},{v:"business",l:"자영업"},{v:"freelance",l:"프리랜서"},{v:"student",l:"학생"},{v:"none",l:"무직"},{v:"publicJob",l:"공무원"},{v:"medical",l:"의료직"},{v:"artist",l:"예술·창작"},{v:"it",l:"IT·개발"},{v:"finance",l:"금융·투자"},{v:"other",l:"기타"}];
+const MKR={single:"미혼",married:"기혼",divorced:"이혼",bereaved:"사별"};
+const JKR={employee:"직장인",business:"자영업자",freelance:"프리랜서",student:"학생",none:"무직",publicJob:"공무원",medical:"의료직",artist:"예술·창작직",it:"IT개발자",finance:"금융·투자업",other:"기타직종"};
 
-class KasiLoader:
-    """천문연구원 24절기 API"""
-    API_KEY = "cb2437de2fef73ffe9bc6ebd8c23a7420358888768075846c063d39b4955add6"
-    URL = "http://apis.data.go.kr/B090041/uli/get24DivisionsInfo"
-    
-    @staticmethod
-    def get_solar_term(year, month):
-        try:
-            params = {
-                'serviceKey': KasiLoader.API_KEY,
-                'solYear': str(year),
-                'solMonth': f"{month:02d}",
-                'numOfRows': 10,
-                'type': 'xml'
-            }
-            res = requests.get(KasiLoader.URL, params=params, timeout=3)
-            if res.status_code == 200:
-                root = ET.fromstring(res.content)
-                terms = {}
-                for item in root.findall('.//item'):
-                    name = item.find('dateKind').text
-                    date = int(item.find('locdate').text)
-                    terms[name] = date
-                return terms
-        except:
-            return None
-        return None
+// ══════════════════════════════════════════════
+//  색상 (밝은 테마)
+// ══════════════════════════════════════════════
+const C={
+  bg:"#fdf8f0",bgCard:"#ffffff",bgSub:"#faf4e8",bgAccent:"#fff8e6",
+  border:"#e8d5a0",borderDim:"#f0e4bb",
+  gold:"#a0720a",goldLight:"#c9960f",goldBg:"rgba(160,114,10,0.08)",
+  text:"#2c1f0e",textSub:"#7a5c2a",textDim:"#b08a50",textMuted:"#c9b080",
+  red:"#be123c",green:"#16a34a",
+  shadow:"0 2px 12px rgba(160,114,10,0.10)",shadowMd:"0 4px 20px rgba(160,114,10,0.15)",
+};
 
-# ==============================================================================
-# [3] 사주력 엔진
-# ==============================================================================
-class SajuEngine:
-    """만세력 + 사주력 통합 엔진"""
-    
-    GAN = ['갑(甲)', '을(乙)', '병(丙)', '정(丁)', '무(戊)', '기(己)', '경(庚)', '신(辛)', '임(壬)', '계(癸)']
-    JI = ['자(子)', '축(丑)', '인(寅)', '묘(卯)', '진(辰)', '사(巳)', '오(午)', '미(未)', '신(申)', '유(酉)', '술(戌)', '해(亥)']
-    
-    OH_MAP = {
-        '甲':'목','乙':'목','丙':'화','丁':'화','戊':'토','己':'토','庚':'금','辛':'금','壬':'수','癸':'수',
-        '子':'수','丑':'토','寅':'목','卯':'목','辰':'토','巳':'화','午':'화','未':'토','申':'금','酉':'금','戌':'토','亥':'수',
-        '갑':'목','을':'목','병':'화','정':'화','무':'토','기':'토','경':'금','신':'금','임':'수','계':'수',
-        '자':'수','축':'토','인':'목','묘':'목','진':'토','사':'화','오':'화','미':'토','신':'금','유':'금','술':'토','해':'수'
-    }
-    
-    SIPSIN = {
-        '목': {'목':'비견', '화':'식상', '토':'재성', '금':'관성', '수':'인성'},
-        '화': {'목':'인성', '화':'비겁', '토':'식상', '금':'재성', '수':'관성'},
-        '토': {'목':'관성', '화':'인성', '토':'비겁', '금':'식상', '수':'재성'},
-        '금': {'목':'재성', '화':'관성', '토':'인성', '금':'비겁', '수':'식상'},
-        '수': {'목':'식상', '화':'재성', '토':'관성', '금':'인성', '수':'비겁'}
-    }
-    
-    UNSEONG = {
-        '목': ['목욕','관대','건록','제왕','쇠','병','사','묘','절','태','양','장생'],
-        '화': ['태','양','장생','목욕','관대','건록','제왕','쇠','병','사','묘','절'],
-        '토': ['태','양','장생','목욕','관대','건록','제왕','쇠','병','사','묘','절'],
-        '금': ['사','묘','절','태','양','장생','목욕','관대','건록','제왕','쇠','병'],
-        '수': ['제왕','쇠','병','사','묘','절','태','양','장생','목욕','관대','건록']
-    }
+// ══════════════════════════════════════════════
+//  종합운세 로딩 단계 정의
+// ══════════════════════════════════════════════
+const OVERALL_STEPS = [
+  { label:"사주팔자 기반 분석 준비",      icon:"📜", pct:5  },
+  { label:"제1편 — 타고난 천성·기질 분석",icon:"🌟", pct:15 },
+  { label:"오행 균형과 용신 도출 중",      icon:"🌿", pct:28 },
+  { label:"천간·지지 합충 관계 해석",      icon:"⚡", pct:38 },
+  { label:"제1편 완성",                   icon:"✅", pct:45 },
+  { label:"제2편 — 대운·세운 흐름 분석",  icon:"🌊", pct:52 },
+  { label:"재물·사업·직업운 분석 중",      icon:"💰", pct:63 },
+  { label:"인생 중반 흐름 서술 중",        icon:"📈", pct:72 },
+  { label:"제2편 완성",                   icon:"✅", pct:78 },
+  { label:"제3편 — 애정·건강·사고수 분석",icon:"💕", pct:83 },
+  { label:"삼재·액운·방지법 도출 중",      icon:"🛡️", pct:90 },
+  { label:"인생 종합 결론 집필 중",        icon:"✍️", pct:95 },
+  { label:"대하소설 완성 마무리 중",        icon:"🎊", pct:99 },
+];
 
-    @classmethod
-    def convert_date(cls, y, m, d, cal_type):
-        """음력 → 양력 변환"""
-        if cal_type == '양력':
-            return y, m, d
-        if HAS_LUNAR:
-            try:
-                cal = KoreanLunarCalendar()
-                cal.setLunarDate(y, m, d, cal_type=='윤달')
-                return cal.solarYear, cal.solarMonth, cal.solarDay
-            except:
-                pass
-        # 폴백: 대략 30일 더하기
-        dt = datetime.date(y, m, d) + datetime.timedelta(days=30 if cal_type=='음력' else 60)
-        return dt.year, dt.month, dt.day
+// ══════════════════════════════════════════════
+//  로딩 컴포넌트
+// ══════════════════════════════════════════════
+function LoadingScreen({ isOverall, stepIdx, progress, tabLabel, tabIcon, aiMode }) {
+  const [dots, setDots] = useState("");
+  const [orbs, setOrbs] = useState([0,1,2,3,4]);
 
-    @classmethod
-    def calculate(cls, y, m, d, h_idx, gender, time_unknown, cal_type):
-        """사주 계산 (년주, 월주, 일주, 시주 + 십신, 십이운성)"""
-        sol_y, sol_m, sol_d = cls.convert_date(y, m, d, cal_type)
-        
-        # 연주
-        y_offset = sol_y - 1900
-        y_idx = (y_offset + 36) % 60 if sol_m > 2 else (y_offset + 35) % 60
-        if sol_m == 2 and sol_d >= 4:
-            y_idx = (y_offset + 36) % 60
-        
-        # 월주
-        wol_m = sol_m if sol_d >= 6 else sol_m - 1
-        if wol_m <= 0:
-            wol_m = 12
-        m_base = (y_idx % 10 % 5) * 2 + 2
-        m_idx = (m_base + (wol_m - 2 if wol_m >= 2 else 10)) % 10
-        
-        # 일주
-        base = datetime.date(1900, 1, 1)
-        curr = datetime.date(sol_y, sol_m, sol_d)
-        d_idx = ((curr - base).days + 10) % 60
-        
-        # 시주 계산
-        if time_unknown:
-            h_str = "미상"
-        else:
-            h_gan_idx = ((d_idx % 10 % 5) * 2 + h_idx) % 10
-            h_str = cls.GAN[h_gan_idx] + cls.JI[h_idx]
-        
-        # 사주 기둥 생성
-        pillars = {
-            '년': {'t': cls.GAN[y_idx%10] + cls.JI[y_idx%12]},
-            '월': {'t': cls.GAN[m_idx] + cls.JI[(wol_m+1)%12]},
-            '일': {'t': cls.GAN[d_idx%10] + cls.JI[d_idx%12]},
-            '시': {'t': h_str}
-        }
-        
-        # 오행 개수 및 일간 추출
-        counts = {'목':0, '화':0, '토':0, '금':0, '수':0}
-        day_gan = pillars['일']['t'][0]
-        day_oh = cls.OH_MAP[day_gan]
-        
-        # 십신, 십이운성 계산
-        for k, v in pillars.items():
-            if v['t'] == "미상":
-                v.update({'s_sip':'-', 'b_sip':'-', 'unseong':'-', 'han':'(미상)'})
-                continue
-            
-            # 천간, 지지 추출
-            g = v['t'][0]  # 첫 글자 (예: '갑')
-            j = v['t'][4]  # 다섯번째 글자 (예: '자', '갑(甲)자(子)' 구조)
-            
-            # 오행 개수
-            counts[cls.OH_MAP[g]] += 1
-            counts[cls.OH_MAP[j]] += 1
-            
-            # 한자 표기
-            v['han'] = f"{g}({cls.OH_MAP[g]})"
-            
-            # 십신
-            v['s_sip'] = cls.SIPSIN[day_oh][cls.OH_MAP[g]]
-            v['b_sip'] = cls.SIPSIN[day_oh][cls.OH_MAP[j]]
-            
-            # 십이운성
-            ji_idx = -1
-            for idx, char in enumerate(cls.JI):
-                if char in v['t']:
-                    ji_idx = idx
-                    break
-            v['unseong'] = cls.UNSEONG[day_oh][ji_idx % 12] if ji_idx != -1 else "-"
-        
-        # 대운 계산 (57세부터 100세까지)
-        daewun = []
-        is_yang = (y_idx % 10) % 2 == 0
-        is_man = (gender == "남")
-        is_forward = (is_man and is_yang) or (not is_man and not is_yang)
-        
-        curr = m_idx
-        start = 57  # 대운 시작 나이
-        
-        # 57, 67, 77, 87, 97세 - 5개 대운만 (100세까지)
-        for i in range(5):
-            if is_forward:
-                curr = (curr + 1) % 60
-            else:
-                curr = (curr - 1) % 60
-            
-            d_gan = cls.GAN[curr%10]
-            d_ji = cls.JI[curr%12]
-            
-            # 대운의 십신
-            d_gan_oh = cls.OH_MAP[d_gan.split('(')[1][0]]
-            d_ji_oh = cls.OH_MAP[d_ji.split('(')[1][0]]
-            
-            daewun.append({
-                'age': start + i*10,
-                'ganji': d_gan + d_ji,
-                's_sip': cls.SIPSIN[day_oh][d_gan_oh],
-                'b_sip': cls.SIPSIN[day_oh][d_ji_oh]
-            })
-        
-        return pillars, counts, daewun, day_oh, day_gan, sol_y
+  useEffect(()=>{
+    const t=setInterval(()=>setDots(d=>d.length>=3?"":d+"."),500);
+    return()=>clearInterval(t);
+  },[]);
 
-# ==============================================================================
-# [4] 60갑자 차트 생성
-# ==============================================================================
-def create_gapja_chart():
-    """60갑자 원반 차트 (오행 색상 + 한자)"""
-    gan_list = ['갑', '을', '병', '정', '무', '기', '경', '신', '임', '계']
-    gan_hanja = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸']
-    ji_list = ['자', '축', '인', '묘', '진', '사', '오', '미', '신', '유', '술', '해']
-    ji_hanja = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']
-    
-    oh_colors = {
-        '목': '오행-목',
-        '화': '오행-화',
-        '토': '오행-토',
-        '금': '오행-금',
-        '수': '오행-수'
-    }
-    
-    gan_oh = ['목','목','화','화','토','토','금','금','수','수']
-    
-    html = '<div class="gapja-container">'
-    html += '<div class="gapja-title">📊 천간지지 60갑자 원반</div>'
-    html += '<div class="gapja-grid">'
-    
-    for i in range(60):
-        gan_idx = i % 10
-        ji_idx = i % 12
-        gan = gan_list[gan_idx]
-        gan_h = gan_hanja[gan_idx]
-        ji = ji_list[ji_idx]
-        ji_h = ji_hanja[ji_idx]
-        oh = gan_oh[gan_idx]
-        color_class = oh_colors[oh]
-        
-        # 한글(한자) 형식으로 표시
-        html += f'<div class="gapja-cell {color_class}">{gan}({gan_h})<br>{ji}({ji_h})</div>'
-    
-    html += '</div></div>'
-    return html
-
-# ==============================================================================
-# [5] 대형 서사 생성기 (30,000자+)
-# ==============================================================================
-class EpicGenerator:
-    """순수 한글로만 30,000자 생성 - 사고수/횡재수/건강 포함"""
-    
-    @staticmethod
-    def generate(user_info, pillars, counts, daewun, topic, day_oh, day_gan):
-        """30,000자 대형 서사 - 완전 한글 + 상세 운세"""
-        
-        name = user_info['name']
-        age = user_info['age']
-        married = user_info['married']
-        has_children = user_info['has_children']
-        job = user_info['job']
-        
-        strong = max(counts, key=counts.get)
-        weak = min(counts, key=counts.get)
-        p = pillars
-        
-        # 제목
-        text = "="*100 + "\n"
-        text += f"【 {name} 님의 운명 대서사시 】\n"
-        text += "="*100 + "\n\n"
-        text += f"{age}세 | {'기혼' if married else '미혼'}"
-        if married:
-            text += f" | 자녀 {'있음' if has_children else '없음'}"
-        text += f" | {job}\n\n"
-        text += "="*100 + "\n\n"
-        
-        # 제1부: 명식표 (3000자)
-        text += "<div class='chapter-title'>제1부. 천간지지 정밀 해부서</div>\n\n"
-        text += "<div class='sub-title'>1. 명식표</div>\n\n"
-        
-        text += f"귀하께서 태어난 그 순간, 하늘과 땅의 기운이 합쳐져 귀하만의 독특한 운명을 만들어냈습니다.\n\n"
-        
-        text += f"**년주(초년)**: {p['년']['t']}\n"
-        text += f"**월주(사회)**: {p['월']['t']}\n"
-        text += f"**일주(본인)**: {p['일']['t']} ← 귀하 자신\n"
-        text += f"**시주(말년)**: {p['시']['t']}\n\n"
-        
-        text += "<div class='sub-title'>2. 천간 분석 - 하늘의 뜻</div>\n\n"
-        
-        ilgan = p['일']['t'][0]
-        
-        if ilgan in ['병', '丙']:
-            text += f"귀하의 일간은 **병화(丙火)**입니다. 귀하는 한낮의 태양입니다. 숨기는 것이 없고 공평무사하며, 열정이 넘칩니다. 뒤끝이 없으나, 순간적인 폭발력은 주변을 압도합니다.\n\n"
-            text += "좋으면 미친 듯이 좋고, 싫으면 쳐다보기도 싫은 극단적인 호불호가 귀하의 심장을 지배합니다. 귀하의 말 한마디는 주변 사람들에게 따뜻한 햇살이 되기도 하지만, 때로는 모든 것을 태워버리는 레이저 광선처럼 꽂히기도 합니다.\n\n"
-            text += "거짓말을 하지 못하고, 가슴에 담아둔 말은 반드시 뱉어야 직성이 풀리는 이 대쪽 같은 성격은 귀하를 세상에서 가장 투명하고 정직한 사람으로 만들었으나, 동시에 수많은 적을 만들기도 했을 것입니다.\n\n"
-        
-        elif ilgan in ['정', '丁']:
-            text += f"귀하의 일간은 **정화(丁火)**입니다. 귀하는 은은하게 타오르는 촛불이자 밤하늘의 별빛입니다. 내면에는 용광로 같은 열정을 품고 있으며, 집중력이 대단합니다.\n\n"
-            text += "겉으로는 조용해 보이지만, 속으로는 끓어오르는 마그마 같은 열정을 품고 있습니다. 한번 마음먹은 일은 끝까지 해내는 끈기가 있으며, 세밀하고 섬세한 작업을 잘합니다.\n\n"
-        
-        elif ilgan in ['갑', '甲']:
-            text += f"귀하의 일간은 **갑목(甲木)**입니다. 귀하는 숲의 제왕인 거목입니다. 하늘을 향해 곧게 뻗어 올라가는 기상은 타의 추종을 불허합니다.\n\n"
-            text += "원칙과 정의를 중시하며, 굽히지 않는 강직한 성품을 가졌습니다. 리더십이 강하고 추진력이 있어 조직을 이끄는 능력이 뛰어납니다. 하지만 때로는 융통성이 부족하여 꺾이는 아픔을 겪기도 합니다.\n\n"
-        
-        elif ilgan in ['을', '乙']:
-            text += f"귀하의 일간은 **을목(乙木)**입니다. 귀하는 끈질긴 생명력의 화초이자 덩굴입니다. 태풍에도 꺾이지 않는 유연함과 적응력을 가졌습니다.\n\n"
-            text += "부드러우면서도 강한 면모를 지녔으며, 어떤 환경에서도 살아남는 생존력이 뛰어납니다. 사람들과 잘 어울리고, 눈치가 빠르며, 상황 판단 능력이 탁월합니다.\n\n"
-        
-        elif ilgan in ['무', '戊']:
-            text += f"귀하의 일간은 **무토(戊土)**입니다. 귀하는 만물을 포용하는 거대한 산입니다. 묵직하고 믿음직스러워 주변 사람들이 의지하려 합니다.\n\n"
-            text += "책임감이 강하고 신뢰할 수 있는 사람입니다. 한번 맡은 일은 끝까지 해내며, 주변 사람들을 잘 챙깁니다. 하지만 때로는 너무 많은 것을 떠안아 힘들어하기도 합니다.\n\n"
-        
-        elif ilgan in ['기', '己']:
-            text += f"귀하의 일간은 **기토(己土)**입니다. 귀하는 어머니 품 같은 비옥한 대지입니다. 무엇이든 심으면 자라나게 하는 포용력과 생산성을 가졌습니다.\n\n"
-            text += "다정다감하고 베푸는 것을 좋아합니다. 사람들의 마음을 잘 헤아리고, 화목한 분위기를 만드는 데 능합니다. 하지만 때로는 우유부단하거나 걱정이 많은 모습을 보이기도 합니다.\n\n"
-        
-        elif ilgan in ['경', '庚']:
-            text += f"귀하의 일간은 **경금(庚金)**입니다. 귀하는 다듬어지지 않은 원석이자 바위입니다. 의리에 살고 의리에 죽는 대장부 스타일입니다.\n\n"
-            text += "시원시원하고 깔끔한 성격입니다. 옳고 그름이 분명하며, 불의를 보면 참지 못합니다. 결단력이 있고 추진력이 강하지만, 때로는 지나치게 냉정하다는 소리를 듣기도 합니다.\n\n"
-        
-        elif ilgan in ['신', '辛']:
-            text += f"귀하의 일간은 **신금(辛金)**입니다. 귀하는 정교하게 세공된 보석입니다. 예리하고 섬세하며, 깔끔한 완벽주의자입니다.\n\n"
-            text += "섬세하고 우아한 취향을 가졌습니다. 미적 감각이 뛰어나고, 세련된 것을 좋아합니다. 예리한 관찰력과 분석력을 가졌지만, 때로는 예민하고 까다롭다는 소리를 듣기도 합니다.\n\n"
-        
-        elif ilgan in ['임', '壬']:
-            text += f"귀하의 일간은 **임수(壬水)**입니다. 귀하는 끝없이 펼쳐진 바다입니다. 지혜가 깊고 총명하며, 스케일이 큽니다.\n\n"
-            text += "지혜롭고 포용력이 있습니다. 넓은 시야로 세상을 바라보며, 큰 그림을 그리는 능력이 있습니다. 하지만 때로는 변덕스럽거나 일관성이 없어 보일 수 있습니다.\n\n"
-        
-        else:  # 계
-            text += f"귀하의 일간은 **계수(癸水)**입니다. 귀하는 대지를 적시는 봄비입니다. 조용히 스며들어 만물을 소생시키는 부드러운 카리스마가 있습니다.\n\n"
-            text += "조용하지만 깊은 내면을 가졌습니다. 지혜롭고 사려 깊으며, 사람들의 마음을 잘 헤아립니다. 겉으로 드러내지 않지만 강한 의지를 품고 있습니다.\n\n"
-        
-        # 프롤로그 (3000자)
-        text += f"<div class='chapter-title'>프롤로그: 하늘이 정한 운명의 시작</div>\n\n"
-        text += f"{name} 님, 귀하께서 이 세상에 태어난 그 순간부터 하늘과 땅의 기운이 합쳐져 귀하만의 독특한 운명을 만들어냈습니다.\n\n"
-        text += f"귀하의 사주를 보면, 년주는 {p['년']['t']}, 월주는 {p['월']['t']}, 일주는 {p['일']['t']}, 시주는 {p['시']['t']}로 구성되어 있습니다.\n\n"
-        
-        text += f"옛 성현들은 말씀하셨습니다. 사람의 운명은 타고난 것이 삼분, 살아가는 것이 칠분이라고 말입니다. 귀하께서 타고난 이 사주팔자는 귀하가 걸어갈 인생의 지도와도 같은 것입니다. 이 지도를 어떻게 읽고, 어떻게 활용하느냐에 따라 귀하의 인생은 완전히 달라질 수 있습니다.\n\n"
-        
-        text += f"귀하의 일간은 {day_gan}입니다. 이는 {day_oh}의 기운을 타고난 것인데, "
-        
-        if day_oh == '목':
-            text += "나무처럼 곧고 강직한 성품을 가지셨습니다. 봄의 생명력처럼 무엇이든 자라나게 하는 힘이 있으며, 끊임없이 위로 뻗어나가려는 의지가 강합니다. 하지만 때로는 융통성이 부족하여 꺾이는 아픔을 겪기도 합니다."
-        elif day_oh == '화':
-            text += "불꽃처럼 뜨겁고 열정적인 성품을 가지셨습니다. 여름 햇살처럼 밝고 명랑하며, 주변 사람들에게 따뜻함을 주는 존재입니다. 하지만 때로는 그 뜨거움이 지나쳐 주변을 태워버리거나, 자신마저 소진되는 경우가 있습니다."
-        elif day_oh == '토':
-            text += "대지처럼 묵직하고 안정적인 성품을 가지셨습니다. 사계절을 품는 땅처럼 모든 것을 포용하고 받아들이는 너그러움이 있으며, 믿음직스러운 존재입니다. 하지만 때로는 변화를 두려워하거나, 너무 많은 것을 떠안아 무거워지기도 합니다."
-        elif day_oh == '금':
-            text += "쇠붙이처럼 단단하고 예리한 성품을 가지셨습니다. 가을 서리처럼 냉철하고 이성적이며, 의리와 원칙을 중시합니다. 하지만 때로는 지나치게 냉정하여 정이 없어 보이거나, 고집이 세서 주변과 마찰을 빚기도 합니다."
-        else:  # 수
-            text += "물처럼 유연하고 지혜로운 성품을 가지셨습니다. 겨울 호수처럼 깊고 고요하며, 어디든 스며들어 적응하는 능력이 뛰어납니다. 하지만 때로는 우유부단하여 결정을 내리지 못하거나, 지나치게 소극적인 모습을 보이기도 합니다."
-        
-        text += "\n\n"
-        
-        text += f"귀하의 오행을 살펴보면, 목{counts['목']}개, 화{counts['화']}개, 토{counts['토']}개, 금{counts['금']}개, 수{counts['수']}개로 구성되어 있습니다. "
-        text += f"이 중에서 {strong}의 기운이 {counts[strong]}개로 가장 강하고, {weak}의 기운이 {counts[weak]}개로 가장 약합니다.\n\n"
-        
-        text += f"강한 {strong}의 기운은 귀하에게 큰 힘이 되기도 하지만, 때로는 지나쳐서 독이 되기도 합니다. 마치 햇빛이 적당하면 만물을 자라게 하지만, 너무 강하면 모든 것을 말려 죽이는 것과 같은 이치입니다. 반대로 약한 {weak}의 기운은 귀하가 평생 보충하고 키워나가야 할 부분입니다. 이것이 바로 귀하의 용신이 되는 것입니다.\n\n"
-        
-        text += "이제부터 제가 귀하의 인생을 마치 한 편의 소설처럼 펼쳐 보이겠습니다. 지나온 과거, 현재의 모습, 그리고 다가올 미래까지, 모든 것을 낱낱이 밝혀드리겠습니다.\n\n"
-        
-        # 제1장: 어린 시절 (4000자)
-        text += f"<div class='chapter-title'>제1장. 어린 시절 - 씨앗이 땅에 떨어지다</div>\n\n"
-        text += f"<div class='sub-title'>태어나서 열 살까지의 이야기</div>\n\n"
-        
-        text += f"{name} 님이 이 세상에 태어난 것은 한 알의 씨앗이 땅에 떨어진 것과 같았습니다. 년주는 인생의 뿌리를 의미하는데, 귀하의 년주 {p['년']['t']}는 "
-        
-        year_sip = p['년']['s_sip']
-        if '인성' in year_sip:
-            text += "부모님의 사랑과 보살핌 속에서 자랐음을 의미합니다. 어머니께서는 귀하를 매우 소중히 여기셨고, 교육에도 많은 신경을 쓰셨을 것입니다. 어릴 적 귀하는 책을 좋아하는 아이였을 것이며, 어른들의 말씀을 잘 따르는 착한 아이로 자랐을 것입니다."
-        elif '비겁' in year_sip:
-            text += "형제자매들과의 경쟁 속에서 자랐음을 의미합니다. 부모님의 사랑을 차지하기 위해, 또는 장난감 하나를 차지하기 위해 끊임없이 경쟁했던 기억이 있을 것입니다. 이런 경쟁은 귀하를 강하게 만들었지만, 때로는 외로움을 느끼게도 했을 것입니다."
-        elif '재성' in year_sip:
-            text += "어린 시절부터 돈에 대한 감각이 남달랐음을 의미합니다. 부모님께서는 물질적으로 여유롭지 않으셨을 수도 있으나, 귀하는 어려서부터 용돈을 아껴 쓰거나, 작은 장사를 해보는 등 경제관념이 뚜렷했을 것입니다."
-        elif '관성' in year_sip:
-            text += "규칙과 질서 속에서 자랐음을 의미합니다. 부모님이나 선생님의 말씀을 거역하는 것이 두려웠고, 항상 모범적인 아이가 되려고 노력했을 것입니다. 하지만 때로는 그런 압박감이 버거워 몰래 숨어서 울었던 기억도 있을 것입니다."
-        else:  # 식상
-            text += "자유롭고 창의적인 환경에서 자랐음을 의미합니다. 부모님께서는 귀하의 재능을 인정하고 키워주셨으며, 귀하는 노래하고 춤추고 그림 그리는 것을 좋아하는 아이였을 것입니다."
-        
-        text += "\n\n"
-        
-        text += f"유치원이나 초등학교에 다니던 시절, {name} 님은 "
-        
-        if strong == '목':
-            text += "나무처럼 쑥쑥 자라나는 아이었습니다. 키도 반에서 큰 편이었고, 성격도 곧았습니다. 친구들과 놀다가도 부당한 일이 있으면 참지 못하고 나섰으며, 선생님께도 자기 생각을 솔직하게 말하는 아이었습니다. 하지만 때로는 그런 성격 때문에 친구들과 다투기도 했습니다."
-        elif strong == '화':
-            text += "햇살처럼 밝고 활발한 아이었습니다. 반에서 가장 인기가 많았고, 항상 웃음소리가 끊이지 않았습니다. 장난도 많이 쳤지만, 그 천진난만함에 선생님들도 귀하를 좋아하셨습니다. 하지만 가끔은 너무 산만해서 혼나기도 했습니다."
-        elif strong == '토':
-            text += "산처럼 묵직하고 느긋한 아이었습니다. 서두르는 법이 없었고, 친구들이 싸우면 중재하는 역할을 했습니다. 선생님 말씀을 잘 듣는 모범생이었지만, 가끔은 너무 느려서 답답하다는 소리를 듣기도 했습니다."
-        elif strong == '금':
-            text += "쇠붙이처럼 단단하고 강한 아이었습니다. 한번 정한 것은 끝까지 밀고 나갔으며, 규칙을 어기는 것을 용납하지 못했습니다. 시험 성적도 좋았고, 특히 수학을 잘했습니다. 하지만 융통성이 없어서 친구들이 '고지식하다'고 놀리기도 했습니다."
-        else:  # 수
-            text += "물처럼 조용하고 차분한 아이었습니다. 책 읽기를 좋아했고, 혼자 있는 시간을 즐겼습니다. 친구들과도 잘 어울렸지만, 리더가 되기보다는 따라가는 편이었습니다. 상상력이 풍부해서 이야기를 잘 꾸며냈습니다."
-        
-        text += "\n\n"
-        
-        text += f"열 살 무렵, {name} 님에게는 잊을 수 없는 일이 있었을 것입니다. "
-        
-        if married and not has_children:
-            text += "어린 시절 인형을 돌보며 엄마 놀이를 했던 기억이 있을 것입니다. 그때는 '나도 크면 예쁜 아기를 낳아서 잘 키울 거야'라고 생각했을 텐데, 세월이 흘러 지금은 아직 그 꿈을 이루지 못한 상태입니다. 하지만 늦었다고 생각할 때가 가장 빠른 법입니다."
-        elif not married:
-            text += "반에서 짝사랑하는 친구가 있었을 것입니다. 멀리서 바라만 봐도 가슴이 두근거렸고, 그 친구가 자기를 쳐다보기만 해도 얼굴이 빨개졌습니다. 그때의 그 설렘은 지금도 가슴 한구석에 남아 있을 것입니다."
-        
-        text += "\n\n"
-        
-        # 제2장: 청소년기 (4000자)
-        text += f"<div class='chapter-title'>제2장. 청소년기 - 폭풍 속을 걷다</div>\n\n"
-        text += f"<div class='sub-title'>열한 살부터 스무 살까지의 이야기</div>\n\n"
-        
-        text += f"중학교에 입학한 {name} 님은 이제 어린아이가 아니었습니다. 신체도 변화하고 마음도 복잡해지는 사춘기를 맞이했습니다.\n\n"
-        
-        text += f"월주 {p['월']['t']}는 귀하의 청소년기와 청년기를 대표합니다. "
-        
-        month_sip = p['월']['s_sip']
-        if '인성' in month_sip:
-            text += "이 시기 귀하는 공부에 몰두했습니다. 부모님의 기대도 컸고, 귀하 스스로도 좋은 성적을 내고 싶었습니다. 밤늦게까지 책상 앞에 앉아 공부하던 모습이 눈에 선합니다. 선생님들은 귀하를 칭찬했고, 귀하는 그 칭찬에 힘입어 더욱 열심히 공부했습니다. 하지만 때로는 그 압박감에 힘들어하기도 했습니다."
-        elif '비겁' in month_sip:
-            text += "이 시기 귀하는 친구들과의 경쟁에 몰두했습니다. 시험 성적으로, 운동으로, 외모로, 모든 면에서 친구들보다 앞서고 싶었습니다. 때로는 친구가 좋은 성적을 받으면 축하해주면서도 속으로는 배가 아팠습니다. 이런 경쟁심은 귀하를 발전시키기도 했지만, 동시에 외롭게 만들기도 했습니다."
-        elif '재성' in month_sip:
-            text += "이 시기 귀하는 돈을 벌고 싶었습니다. 친구들이 용돈을 쓰는 것을 보며 부러워했고, 귀하도 나만의 돈을 갖고 싶었습니다. 어쩌면 아르바이트를 시작했을 수도 있습니다. 돈을 벌어본 경험은 귀하를 빨리 어른으로 만들었습니다."
-        elif '관성' in month_sip:
-            text += "이 시기 귀하는 규칙과 질서를 중시했습니다. 학교 규칙을 어기는 친구들을 이해할 수 없었고, 때로는 그들을 야단치기도 했습니다. 선생님들은 귀하를 학급 반장이나 부반장으로 뽑았고, 귀하는 그 책임감에 밤잠을 설치기도 했습니다."
-        else:  # 식상
-            text += "이 시기 귀하는 자유를 갈망했습니다. 학교 규칙이 답답했고, 부모님의 간섭이 싫었습니다. 때로는 학교를 빠지고 친구들과 놀러 다니기도 했습니다. 음악을 듣고, 춤을 추고, 그림을 그리는 것이 공부보다 훨씬 재미있었습니다."
-        
-        text += "\n\n"
-        
-        text += f"고등학교 시절, {name} 님은 인생의 첫 번째 큰 고비를 맞이했습니다. 대학 입시라는 거대한 벽 앞에서 귀하는 "
-        
-        if counts[strong] >= 3:
-            text += f"강한 {strong}의 기운으로 밀어붙였습니다. 잠을 줄여가며 공부했고, 결국 원하는 결과를 얻어냈을 것입니다. 하지만 그 과정에서 건강을 해치거나, 친구관계가 소원해지는 아픔도 겪었을 것입니다."
-        else:
-            text += f"약한 {weak}의 기운 때문에 어려움을 겪었습니다. 공부해도 실력이 늘지 않는 것 같았고, 자신감도 떨어졌습니다. 하지만 포기하지 않고 끝까지 노력한 그 경험이 귀하를 성장시켰습니다."
-        
-        text += "\n\n"
-        
-        text += f"스무 살 무렵, {name} 님은 드디어 어른이 되었습니다. "
-        
-        if not married:
-            text += "이 시기에 처음으로 진지한 연애를 해봤을 수도 있습니다. 가슴이 뛰고, 밤잠을 설치고, 그 사람 생각에 하루 종일 멍하니 있던 그 시절이 있었을 것입니다. 어쩌면 그 사랑은 이루어지지 못했을 수도 있습니다. 하지만 그 아픔이 귀하를 더 깊은 사람으로 만들었습니다."
-        
-        text += "\n\n"
-        
-        # 제3장: 청년기 (5000자)
-        text += f"<div class='chapter-title'>제3장. 청년기 - 세상과 맞서다</div>\n\n"
-        text += f"<div class='sub-title'>스물한 살부터 서른 살까지의 이야기</div>\n\n"
-        
-        text += f"이제 {name} 님은 본격적으로 사회생활을 시작했습니다. 대학을 졸업하거나, 혹은 직장에 다니기 시작했습니다.\n\n"
-        
-        text += f"일주 {p['일']['t']}는 귀하 자신을 의미합니다. 귀하의 정체성, 가치관, 인생관이 모두 여기에 담겨 있습니다. "
-        
-        text += f"{day_gan}일간으로 태어난 사람은 "
-        
-        if day_oh == '목':
-            text += "나무처럼 곧고 정직합니다. 직장에서도 원칙을 중시하고, 부정한 일은 하지 못합니다. 상사가 부당한 지시를 내리면 정면으로 맞서기도 하는데, 이것이 때로는 승진에 걸림돌이 되기도 합니다. 하지만 그런 귀하의 모습에 동료들은 존경심을 느낍니다."
-        elif day_oh == '화':
-            text += "불처럼 뜨겁고 열정적입니다. 일에 몰두하면 밤을 새워도 아깝지 않고, 프로젝트에 열정을 쏟습니다. 동료들은 귀하의 에너지에 감탄하지만, 때로는 '조금만 쉬었으면' 하고 걱정하기도 합니다. 하지만 귀하는 쉬는 것을 낭비라고 생각합니다."
-        elif day_oh == '토':
-            text += "땅처럼 묵직하고 신뢰할 수 있습니다. 시키는 일은 묵묵히 해내고, 맡은 바 책임을 다합니다. 상사들은 귀하를 믿고 중요한 일을 맡기며, 동료들은 귀하와 함께 일하기를 좋아합니다. 하지만 때로는 너무 많은 일을 떠안아 힘들어하기도 합니다."
-        elif day_oh == '금':
-            text += "쇠붙이처럼 단단하고 예리합니다. 일을 할 때는 완벽을 추구하며, 조금의 실수도 용납하지 않습니다. 분석적이고 논리적이어서 문제 해결 능력이 뛰어나지만, 때로는 너무 냉정하다는 소리를 듣기도 합니다."
-        else:  # 수
-            text += "물처럼 유연하고 지혜롭습니다. 어떤 상황에서도 적응력이 뛰어나고, 사람들과의 관계도 원만하게 유지합니다. 하지만 때로는 우유부단하여 중요한 결정을 내리지 못해 기회를 놓치기도 합니다."
-        
-        text += "\n\n"
-        
-        text += f"이십대 중반, {name} 님은 인생의 중요한 선택의 기로에 섰습니다. "
-        
-        if job and '프리랜서' in job:
-            text += "직장 생활이 답답했습니다. 매일 정해진 시간에 출근하고, 상사의 눈치를 보며 일하는 것이 견딜 수 없었습니다. 결국 귀하는 용기를 내어 독립을 선택했습니다. 프리랜서로서의 삶은 자유로웠지만, 동시에 불안정했습니다. 수입이 일정하지 않아 걱정되는 날도 많았지만, 그래도 귀하는 이 선택을 후회하지 않습니다."
-        elif job and ('공무원' in job or '직장' in job):
-            text += "안정을 선택했습니다. 주변에서는 도전하라고 했지만, 귀하는 확실한 것을 원했습니다. 직장에 들어가서 월급을 받으며 사는 것이 현명한 선택이라고 생각했습니다. 때로는 '내가 더 큰 꿈을 꾸었어야 했나' 하는 생각이 들기도 하지만, 안정적인 생활에 만족합니다."
-        else:
-            text += "여러 가지를 고민했습니다. 더 공부를 할까, 취업을 할까, 창업을 할까. 수많은 밤을 고민하며 보냈습니다. 주변 사람들은 이것저것 조언했지만, 결국 결정은 귀하 자신이 내려야 했습니다."
-        
-        text += "\n\n"
-        
-        if married:
-            text += f"이십대 후반, {name} 님은 운명적인 만남을 가졌습니다. 그 사람과의 만남은 "
-            
-            if weak == '수':
-                text += "물을 만난 사막과 같았습니다. 귀하에게 부족했던 부드러움과 지혜를 채워주는 존재였습니다. 처음에는 '이 사람이다' 싶었습니다. 결혼을 결심했고, 새로운 가정을 꾸렸습니다. "
-                
-                if has_children:
-                    text += "그리고 얼마 후 귀한 자녀를 얻었습니다. 아이를 처음 안았을 때의 그 벅찬 감정을 귀하는 평생 잊지 못할 것입니다. 밤마다 아이가 울어대도, 잠을 설쳐도, 그 모든 것이 행복했습니다."
-                else:
-                    text += "하지만 아직 자녀는 없습니다. 어쩌면 둘이서만의 시간을 더 갖고 싶었을 수도 있고, 혹은 건강상의 이유로 늦어졌을 수도 있습니다. 하지만 조급해하지 마십시오. 하늘이 정한 때가 있는 법입니다."
-            else:
-                text += "운명 같았습니다. 하지만 귀하의 강한 기운과 상대방의 기운이 충돌하는 경우도 많았습니다. 결혼 생활이 항상 평탄하지만은 않았을 것입니다. 때로는 크게 싸우고, 이혼을 생각해본 적도 있을 것입니다. 하지만 그때마다 서로를 이해하려 노력하며 위기를 넘겼습니다."
-            
-            text += "\n\n"
-        else:
-            text += f"이십대 후반이 되어도 {name} 님은 아직 결혼하지 않았습니다. "
-            
-            if counts[strong] >= 4:
-                text += f"너무 강한 {strong}의 기운 때문에 상대방이 귀하를 감당하기 어려워했을 것입니다. 연애는 해봤지만, 결혼까지 이어지지 못했습니다. '나는 평생 혼자 살게 되는 건 아닐까' 하는 걱정도 들었을 것입니다."
-            else:
-                text += f"약한 {weak}의 기운 때문에 자신감이 부족했을 것입니다. 마음에 드는 사람이 있어도 먼저 다가가지 못했고, 고백할 용기도 나지 않았습니다. 기회를 놓친 적도 여러 번 있었을 것입니다."
-            
-            text += "\n\n"
-        
-        text += f"서른 살 무렵, {name} 님은 돌아보았습니다. 지난 십 년이 마치 꿈같았습니다. "
-        text += "이십대는 정말 빨리 지나갔습니다. 때로는 후회되는 선택도 있었고, 때로는 잘했다고 생각되는 결정도 있었습니다. 하지만 그 모든 것이 귀하를 지금의 귀하로 만들었습니다.\n\n"
-        
-        # 제4장: 중년기 (6000자)
-        text += f"<div class='chapter-title'>제4장. 중년기 - 인생의 한가운데서</div>\n\n"
-        text += f"<div class='sub-title'>서른한 살부터 현재 {age}세까지의 이야기</div>\n\n"
-        
-        text += f"서른을 넘긴 {name} 님은 이제 인생의 중반을 걷고 있습니다. 더 이상 젊다고 할 수 없는 나이가 되었지만, 그렇다고 늙었다고 할 수도 없는 애매한 시기입니다.\n\n"
-        
-        text += f"삼십대 초반, 귀하는 "
-        
-        if job and job != '무직':
-            text += f"{job}로서 자리를 잡아가고 있었습니다. 처음에는 모든 것이 낯설고 어려웠지만, 시간이 지나면서 점점 익숙해졌습니다. 동료들도 생겼고, 나름대로의 노하우도 쌓였습니다. "
-            
-            if '프리랜서' in job or '자영업' in job:
-                text += "자유롭게 일하는 것은 좋았지만, 수입이 불안정한 것이 늘 걱정거리였습니다. 돈이 잘 벌리는 달도 있었지만, 한 푼도 못 버는 달도 있었습니다. 그럴 때마다 '직장에 다니는 게 나았을까' 하는 생각이 들기도 했습니다."
-            else:
-                text += "안정적인 수입이 있다는 것은 큰 축복이었습니다. 매달 정해진 날짜에 월급이 들어오는 것만으로도 감사했습니다. 하지만 때로는 단조로운 일상이 지겹게 느껴지기도 했습니다."
-        else:
-            text += "일자리를 찾지 못하고 있었습니다. 이력서를 넣어도 번번이 떨어졌고, 면접을 봐도 좋은 결과가 없었습니다. 자존심도 상했고, 자신감도 떨어졌습니다. '나는 왜 이렇게 안 되는 걸까' 하는 생각에 우울해지기도 했습니다. "
-            
-            if counts[weak] == 0:
-                text += f"이는 귀하의 오행에 {weak}이 전혀 없기 때문입니다. {weak}의 기운은 유연함과 적응력을 의미하는데, 이것이 부족하니 사회생활이 어려운 것입니다. 하지만 걱정하지 마십시오. {weak}의 기운을 보충하는 방법이 있습니다."
-        
-        text += "\n\n"
-        
-        text += f"삼십대 중반, {name} 님에게는 큰 시련이 찾아왔을 것입니다. "
-        
-        if married:
-            text += "부부 사이에 위기가 왔거나, "
-            if has_children:
-                text += "자녀 교육 문제로 고민이 많았을 것입니다. 아이가 사춘기에 접어들면서 말을 듣지 않고, 반항하기 시작했습니다. '내가 뭘 잘못 키웠나' 하는 자책감도 들었을 것입니다. "
-        
-        text += "건강에도 적신호가 켜지기 시작했습니다. "
-        
-        if counts['화'] >= 3:
-            text += "화의 기운이 너무 강해서 혈압이 올라가거나, 심장이 두근거리는 증상이 나타났을 것입니다. 스트레스를 받으면 얼굴이 빨개지고, 뒷목이 뻣뻣해지는 것을 느꼈을 것입니다. 화병이 올라와서 가슴이 답답한 적도 많았을 것입니다."
-        elif counts['금'] >= 3:
-            text += "금의 기운이 너무 강해서 폐나 대장에 문제가 생겼을 것입니다. 기침이 오래가거나, 감기가 쉽게 낫지 않았습니다. 피부도 건조해지고, 변비에 시달리기도 했습니다."
-        elif counts['수'] >= 3:
-            text += "수의 기운이 너무 강해서 신장이나 방광이 약해졌을 것입니다. 소변을 자주 보거나, 허리가 아픈 증상이 나타났습니다. 추위를 많이 타고, 손발이 차가운 것도 수 기운이 과한 탓입니다."
-        elif counts['목'] >= 3:
-            text += "목의 기운이 너무 강해서 간이나 담낭에 무리가 갔을 것입니다. 쉽게 화를 내고, 스트레스를 잘 받았습니다. 눈도 침침해지고, 근육이 자주 뭉쳤습니다."
-        else:  # 토
-            text += "토의 기운이 너무 강해서 비장이나 위장이 약해졌을 것입니다. 소화가 잘 안 되고, 속이 더부룩한 느낌이 자주 들었습니다. 살도 찌기 쉬워서 다이어트가 평생 과제가 되었습니다."
-        
-        text += "\n\n"
-        
-        text += f"사십대에 접어들면서, {name} 님은 인생에 대해 깊이 생각하기 시작했습니다. '나는 지금까지 무엇을 하며 살아왔나' '앞으로 남은 인생을 어떻게 살아야 하나' 이런 질문들이 머릿속을 떠나지 않았습니다.\n\n"
-        
-        if age >= 45:
-            text += f"사십대 중반, {name} 님은 "
-            
-            if married and has_children:
-                text += "자녀가 성장해서 독립하는 것을 지켜봤습니다. 기쁘기도 했지만, 한편으로는 허전하기도 했습니다. 그동안 자녀에게 쏟았던 정성과 시간을 이제 어디에 써야 할지 막막했습니다. "
-            
-            text += "노후를 준비해야 한다는 생각이 간절해졌습니다. 건강도 챙겨야 하고, 돈도 모아야 했습니다. 하지만 현실은 그리 녹록지 않았습니다.\n\n"
-        
-        if age >= 50:
-            text += f"오십대에 접어든 {name} 님은 인생의 오후를 맞이했습니다. "
-            
-            text += "더 이상 젊다고 할 수 없는 나이가 되었습니다. 거울을 볼 때마다 늘어난 주름과 새치가 눈에 들어왔습니다. 체력도 예전 같지 않았습니다. 조금만 무리해도 며칠씩 피곤이 가시지 않았습니다.\n\n"
-            
-            text += "하지만 오십대는 또 다른 의미의 황금기이기도 합니다. 인생의 경험이 쌓였고, 세상을 바라보는 안목도 깊어졌습니다. 젊었을 때는 몰랐던 것들을 이제는 알게 되었습니다.\n\n"
-        
-        text += f"그리고 지금, {age}세의 {name} 님은 "
-        
-        if married:
-            text += f"배우자와 함께 "
-            if has_children:
-                text += "자녀들을 생각하며 "
-        else:
-            text += "홀로 "
-        
-        text += f"인생의 이 지점에 서 있습니다. 지나온 길을 돌아보면 아쉬움도 많고, 후회도 있습니다. 하지만 그 모든 것이 귀하를 지금의 귀하로 만들었습니다.\n\n"
-        
-        # 제5장: 대운 풀이 (대폭 확장 - 10,000자 이상)
-        text += f"<div class='chapter-title'>제5장. 대운 - 십 년마다 펼쳐지는 운명의 장</div>\n\n"
-        text += f"<div class='sub-title'>57세부터 시작되는 인생의 대전환</div>\n\n"
-        
-        text += f"{name} 님, 사주에서 대운은 인생의 큰 물결과 같습니다. 십 년마다 바뀌는 이 대운은 귀하의 인생에 봄, 여름, 가을, 겨울을 가져옵니다. 어떤 대운에서는 만사형통하여 하는 일마다 술술 풀리고, 어떤 대운에서는 모든 것이 막혀 답답하기만 합니다.\n\n"
-        
-        text += "귀하의 대운은 57세부터 시작됩니다. 이는 인생의 후반부, 노년기에 접어드는 시점입니다. 어떤 이들은 이 나이에 은퇴를 준비하지만, 어떤 이들은 바로 이 나이에 인생의 제2막을 열기도 합니다. 귀하는 어떤 길을 택하시겠습니까?\n\n"
-        
-        text += "자, 이제 귀하의 대운을 하나하나 펼쳐보겠습니다. 각 대운마다 조심해야 할 해, 기회가 올 해, 그리고 삼재수와 사고수를 모두 알려드리겠습니다.\n\n"
-        
-        current_year = 2026
-        birth_year = current_year - age
-        
-        for i, dae in enumerate(daewun, 1):
-            age_start = dae['age']
-            age_end = age_start + 9
-            year_start = birth_year + age_start
-            year_end = birth_year + age_end
-            
-            text += f"<div class='sub-title'>{i}. {age_start}세~{age_end}세 대운: {dae['ganji']} ({year_start}년~{year_end}년)</div>\n\n"
-            
-            # 대운 간지 상세 설명
-            gan_char = dae['ganji'][0:3]  # '갑(甲)'
-            ji_char = dae['ganji'][4:7]   # '자(子)'
-            
-            text += f"이 대운은 천간 {gan_char}과 지지 {ji_char}가 지배합니다. 천간은 하늘의 기운으로 겉으로 드러나는 운세를, 지지는 땅의 기운으로 속으로 작용하는 운명을 관장합니다.\n\n"
-            
-            gan_oh = SajuEngine.OH_MAP[gan_char[0]]
-            ji_oh = SajuEngine.OH_MAP[ji_char[0]]
-            
-            # 길흉 판단
-            if gan_oh == weak or ji_oh == weak:
-                is_good = True
-                text += f"**【 길운대운(吉運大運) 】**\n\n"
-                text += f"이 대운은 귀하께 큰 축복을 가져다줄 것입니다. 귀하께서 부족했던 {weak}의 기운이 천간 {gan_oh}과 지지 {ji_oh}를 통해 보충되기 때문입니다. 마치 메마른 대지에 단비가 내리듯, 귀하의 인생에 활력이 돌아올 것입니다.\n\n"
-            elif gan_oh == strong or ji_oh == strong:
-                is_good = False
-                text += f"**【 흉운대운(凶運大運) 】**\n\n"
-                text += f"이 대운은 귀하께 시련을 가져올 것입니다. 이미 넘치는 {strong}의 기운이 더욱 강해져 균형이 무너지기 때문입니다. 마치 한여름에 불을 더 지피는 것처럼, 모든 것이 과열되어 탈이 날 수 있습니다.\n\n"
-            else:
-                is_good = None
-                text += f"**【 평운대운(平運大運) 】**\n\n"
-                text += f"이 대운은 특별히 좋지도, 나쁘지도 않은 평범한 십 년이 될 것입니다. 큰 사고도, 큰 횡재도 없는 무난한 시기입니다. 하지만 평범함이야말로 가장 큰 축복입니다.\n\n"
-            
-            # 시기별 운세 (10년을 세분화)
-            text += f"**{age_start}세 ({year_start}년) - 대운의 시작**\n\n"
-            text += f"이 해는 새로운 대운이 시작되는 해입니다. 마치 계절이 바뀌듯, 귀하의 인생에도 큰 변화가 찾아옵니다. "
-            if is_good:
-                text += f"좋은 대운의 시작이니 이 해부터 기회를 잡으십시오. {year_start}년은 귀하 인생의 새로운 장이 열리는 해입니다."
-            elif is_good is False:
-                text += f"힘든 대운의 시작이니 마음을 단단히 먹고 대비하십시오. {year_start}년은 시련이 시작되는 해입니다."
-            else:
-                text += f"평범한 대운의 시작이니 차분히 일상을 지켜나가십시오."
-            text += "\n\n"
-            
-            text += f"**{age_start+2}세 ({year_start+2}년) - 조심해야 할 해**\n\n"
-            text += f"이 해는 특히 조심해야 합니다. 사고수가 있는 해입니다. "
-            if ji_oh in ['금', '목']:
-                text += f"교통사고나 낙상사고를 조심하십시오. 특히 금속으로 된 도구나 기계를 다룰 때 극도로 주의해야 합니다. 차를 운전할 때도 방어운전을 하고, 술을 마신 후에는 절대로 운전하지 마십시오. 높은 곳에서 작업할 때도 안전장비를 반드시 착용하십시오."
-            elif ji_oh in ['수', '화']:
-                text += f"물과 불 관련 사고를 조심하십시오. 수영하거나 등산할 때 특히 주의하고, 불을 다룰 때도 각별히 조심하십시오. 전기 화재나 가스 폭발 같은 사고에도 대비해야 합니다."
-            else:
-                text += f"소화기 질환이나 근골격계 질환을 조심하십시오. 과식하지 말고, 무리한 운동은 피하십시오."
-            text += f" {year_start+2}년은 한 해 내내 조심하며 보내야 합니다.\n\n"
-            
-            text += f"**{age_start+3}세~{age_start+4}세 ({year_start+3}년~{year_start+4}년) - 삼재수(三災數)**\n\n"
-            text += f"이 2년은 삼재가 드는 시기입니다. 삼재란 하늘과 땅과 사람에게서 오는 세 가지 재앙을 뜻합니다. 이 기간에는 뜻하지 않은 사고, 질병, 재물 손실이 생길 수 있습니다.\n\n"
-            text += f"하지만 두려워할 필요는 없습니다. 삼재를 피하는 방법이 있습니다. 첫째, 삼재를 맞는 해 초에 사찰이나 교회에 가서 기도하고 마음을 정화하십시오. 둘째, 위험한 일을 피하고 조용히 지내십시오. 투자나 사업 확장 같은 큰 결정은 미루십시오. 셋째, 건강검진을 받고 건강을 미리 챙기십시오.\n\n"
-            text += f"특히 {year_start+3}년에는 돌다리도 두드려 가며 조심해야 합니다. {year_start+4}년에는 조금 나아지지만 여전히 방심하지 마십시오.\n\n"
-            
-            text += f"**{age_start+5}세 ({year_start+5}년) - 중반기**\n\n"
-            text += f"대운의 중간 지점입니다. "
-            if is_good:
-                text += f"좋은 대운의 절정기입니다. 지금까지 쌓아온 노력의 결실을 맺는 해입니다. {year_start+5}년은 귀하의 인생에서 가장 빛나는 해 중 하나가 될 것입니다. 이 기회를 놓치지 마십시오."
-            elif is_good is False:
-                text += f"힘든 대운의 한가운데입니다. 지치고 힘들겠지만, 이제 반은 지났습니다. 조금만 더 견디십시오. {year_start+5}년이 지나면 서서히 좋아질 것입니다."
-            else:
-                text += f"평범한 일상이 이어집니다. 특별한 일은 없지만, 그것이 바로 행복입니다."
-            text += "\n\n"
-            
-            if '재성' in dae['s_sip'] or '재성' in dae['b_sip']:
-                text += f"**{age_start+6}세 ({year_start+6}년) - 횡재수(橫財數)**\n\n"
-                text += f"이 해는 귀하께 큰 재물운이 있습니다. 재성 대운의 특성상 돈이 들어올 가능성이 높습니다. 뜻하지 않은 보너스를 받거나, 투자 수익이 생기거나, 사업이 크게 성공할 수 있습니다.\n\n"
-                text += f"만약 부동산을 매입할 계획이 있다면 {year_start+6}년이 적기입니다. 주식이나 펀드에 투자해도 좋은 결과가 있을 것입니다. 하지만 욕심을 부리지는 마십시오. 적당한 선에서 만족하는 지혜가 필요합니다.\n\n"
-                text += f"복권이나 경품 당첨의 가능성도 있습니다. 이 해에는 작은 행운들이 계속 따를 것입니다.\n\n"
-            
-            text += f"**{age_start+8}세~{age_start+9}세 ({year_start+8}년~{year_start+9}년) - 대운의 마무리**\n\n"
-            text += f"대운이 저물어갑니다. 다음 대운을 준비해야 할 시기입니다. "
-            if is_good and (i < len(daewun)):
-                next_dae = daewun[i] if i < len(daewun) else None
-                if next_dae:
-                    next_gan_oh = SajuEngine.OH_MAP[next_dae['ganji'][0]]
-                    next_ji_oh = SajuEngine.OH_MAP[next_dae['ganji'][4]]
-                    if next_gan_oh == strong or next_ji_oh == strong:
-                        text += f"아쉽게도 다음 대운은 힘든 대운입니다. 지금 좋은 대운일 때 재물과 건강을 미리 챙겨두십시오. 지금 벌어둔 돈이 다음 대운을 견디는 밑천이 됩니다."
-                    else:
-                        text += f"다행히 다음 대운도 나쁘지 않습니다. 계속 좋은 흐름이 이어질 것입니다."
-            elif is_good is False and (i < len(daewun)):
-                next_dae = daewun[i] if i < len(daewun) else None
-                if next_dae:
-                    next_gan_oh = SajuEngine.OH_MAP[next_dae['ganji'][0]]
-                    next_ji_oh = SajuEngine.OH_MAP[next_dae['ganji'][4]]
-                    if next_gan_oh == weak or next_ji_oh == weak:
-                        text += f"다행히 다음 대운은 좋은 대운입니다. 조금만 더 견디면 좋은 날이 올 것입니다. 희망을 잃지 마십시오."
-                    else:
-                        text += f"다음 대운도 힘들 수 있습니다. 하지만 시련은 귀하를 더 강하게 만듭니다."
-            text += "\n\n"
-            
-            # 십신으로 본 세부 운세
-            text += f"**【 십신으로 본 운세 】**\n\n"
-            text += f"이 대운의 십신은 천간 {dae['s_sip']}, 지지 {dae['b_sip']}입니다.\n\n"
-            
-            if '재성' in dae['s_sip'] or '재성' in dae['b_sip']:
-                text += f"**재성(財星)**은 돈과 재물의 별입니다. 이 대운 십 년 동안 귀하께는 재물을 모을 기회가 많이 생깁니다. 직장인이라면 연봉이 오르고, 사업가라면 매출이 늘어나며, 프리랜서라면 의뢰가 많아집니다.\n\n"
-                text += f"하지만 재성이 강하다는 것은 지출도 많다는 뜻입니다. 돈이 들어오는 만큼 나가는 돈도 많습니다. 자녀 교육비, 집 수리비, 경조사비 등으로 목돈이 나갈 수 있습니다. 계획적으로 저축하고, 불필요한 지출을 줄여야 합니다.\n\n"
-                text += f"또한 재성은 아내(혹은 남편)의 별이기도 합니다. 배우자와의 관계에 변화가 생길 수 있습니다. 좋은 방향이든 나쁜 방향이든 간에 말입니다.\n\n"
-            
-            elif '관성' in dae['s_sip'] or '관성' in dae['b_sip']:
-                text += f"**관성(官星)**은 명예와 권력의 별입니다. 이 대운 십 년 동안 귀하께는 사회적 지위가 상승할 기회가 생깁니다. 승진하거나, 좋은 자리로 이동하거나, 상을 받거나, 인정받게 됩니다.\n\n"
-                text += f"하지만 관성이 강하다는 것은 책임과 압박도 커진다는 뜻입니다. 높은 자리에 올라갈수록 감당해야 할 일이 많아지고, 스트레스도 커집니다. 건강을 해칠 수 있으니 무리하지 마십시오.\n\n"
-                text += f"또한 관성은 자녀(특히 아들)의 별이기도 합니다. 자녀와 관련된 일이 생길 수 있습니다.\n\n"
-            
-            elif '인성' in dae['s_sip'] or '인성' in dae['b_sip']:
-                text += f"**인성(印星)**은 학문과 지혜의 별입니다. 이 대운 십 년 동안 귀하께는 배우고 공부하고 싶은 마음이 강해집니다. 자격증을 따거나, 대학원에 진학하거나, 취미로 공부를 시작할 수 있습니다.\n\n"
-                text += f"정신적으로 성장하는 시기입니다. 책을 많이 읽고, 좋은 사람들과 교류하며, 인생의 지혜를 얻게 됩니다. 종교나 철학에 관심을 갖게 될 수도 있습니다.\n\n"
-                text += f"하지만 인성이 강하면 너무 머리로만 생각하고 실천이 부족해질 수 있습니다. 아는 것만큼 실천하는 것이 중요합니다.\n\n"
-            
-            elif '식상' in dae['s_sip'] or '식상' in dae['b_sip']:
-                text += f"**식상(食傷)**은 표현과 창조의 별입니다. 이 대운 십 년 동안 귀하께는 자신을 표현하고 싶은 욕구가 강해집니다. 글을 쓰거나, 말을 하거나, 무언가를 만들거나, 예술 활동을 하게 됩니다.\n\n"
-                text += f"창의적인 아이디어가 샘솟고, 새로운 것을 시도하고 싶어집니다. 사업을 시작하거나, 부업을 하거나, 새로운 분야에 도전할 수 있습니다.\n\n"
-                text += f"하지만 식상이 강하면 말이 많아져 실수하기 쉽습니다. 함부로 말하지 말고, 신중하게 행동하십시오. 또한 자녀(특히 딸)와 관련된 일이 생길 수 있습니다.\n\n"
-            
-            else:  # 비겁
-                text += f"**비겁(比劫)**은 경쟁과 독립의 별입니다. 이 대운 십 년 동안 귀하께는 경쟁 상황이 많이 생깁니다. 직장에서 동료와 경쟁하거나, 사업에서 경쟁사와 겨루거나, 형제자매와 갈등이 생길 수 있습니다.\n\n"
-                text += f"또한 독립하고 싶은 마음도 강해집니다. 직장을 그만두고 창업하거나, 부모님 곁을 떠나 독립하거나, 이혼하여 혼자 살고 싶어질 수 있습니다.\n\n"
-                text += f"비겁이 강하면 재물을 나눠야 하는 일이 생깁니다. 돈을 빌려주거나, 재산을 분할하거나, 손재수가 있을 수 있습니다. 돈 관리를 철저히 하십시오.\n\n"
-            
-            text += f"{'='*80}\n\n"
-        
-        # 애운방지법 추가
-        text += f"<div class='sub-title'>애운방지법(厄運防止法)</div>\n\n"
-        text += f"대운이 좋지 않을 때, 또는 사고수와 삼재수가 있을 때, 액운을 막는 방법이 있습니다.\n\n"
-        text += f"**1. 사찰 기도**: 매년 초하루나 보름에 사찰을 방문하여 부처님께 기도하십시오. 마음을 정화하고 액운을 물리칠 수 있습니다.\n\n"
-        text += f"**2. 시주와 보시**: 어려운 사람들을 돕고 베푸십시오. 자선단체에 기부하거나, 길에서 만난 노숙자에게 밥을 사주십시오. 덕을 쌓으면 액운이 물러갑니다.\n\n"
-        text += f"**3. 건강관리**: 평소에 건강을 잘 챙기십시오. 정기적으로 건강검진을 받고, 운동하고, 잘 먹고, 충분히 자십시오. 건강한 몸에는 액운이 침범하지 못합니다.\n\n"
-        text += f"**4. 말조심**: 함부로 말하지 마십시오. 말 한마디가 화근이 됩니다. 특히 술 마신 자리에서 말을 조심하십시오.\n\n"
-        text += f"**5. 조용히 지내기**: 액운이 있는 해에는 큰일을 벌이지 마십시오. 투자, 사업 확장, 이직, 이사 등 큰 변화는 미루고 조용히 일상을 지키십시오.\n\n"
-        
-        text += "\n"
-        
-        # 제6장: 건강 (4000자)
-        text += f"<div class='chapter-title'>제6장. 건강 - 몸이 보내는 신호</div>\n\n"
-        text += f"<div class='sub-title'>오행으로 보는 건강 운세</div>\n\n"
-        
-        text += f"{name} 님, 귀하의 건강은 오행의 균형과 직결되어 있습니다. 오행이 조화롭지 못하면 몸에 병이 생기고, 오행이 조화로우면 건강하게 오래 살 수 있습니다.\n\n"
-        
-        text += "귀하의 오행 구성을 다시 살펴보겠습니다.\n\n"
-        
-        for oh_name in ['목', '화', '토', '금', '수']:
-            cnt = counts[oh_name]
-            text += f"**{oh_name} 오행: {cnt}개**\n\n"
-            
-            if oh_name == '목':
-                organs = "간, 담낭, 눈, 손톱, 근육"
-                if cnt == 0:
-                    text += f"목의 기운이 전혀 없습니다. {organs}이 약합니다. 눈이 쉽게 피로해지고, 근육이 자주 뭉칩니다. 화를 잘 내고, 스트레스를 잘 받습니다. 봄철에 특히 건강이 안 좋아집니다. 신 음식을 많이 먹고, 녹색 채소를 자주 먹어야 합니다. 아침 일찍 일어나서 산책하는 것도 좋습니다."
-                elif cnt >= 3:
-                    text += f"목의 기운이 너무 강합니다. {organs}에 과부하가 걸립니다. 간에 열이 많아 얼굴이 붉고, 눈이 충혈됩니다. 화를 잘 내고, 참을성이 부족합니다. 술을 절대로 많이 마시지 마십시오. 새벽에 자고, 아침을 거르는 습관도 간을 망칩니다. 규칙적인 생활과 충분한 수면이 필요합니다."
-                else:
-                    text += f"목의 기운이 적당합니다. {organs}이 대체로 건강합니다. 하지만 방심하지 말고, 평소에 신경 써서 관리해야 합니다."
-            
-            elif oh_name == '화':
-                organs = "심장, 소장, 혀, 혈관"
-                if cnt == 0:
-                    text += f"화의 기운이 전혀 없습니다. {organs}이 약합니다. 손발이 차갑고, 혈액순환이 잘 안 됩니다. 얼굴색이 창백하고, 기운이 없어 보입니다. 여름철에 특히 기력이 떨어집니다. 쓴 음식을 먹고, 빨간색 음식을 자주 먹어야 합니다. 따뜻한 차를 자주 마시고, 가벼운 운동으로 몸을 데우는 것이 좋습니다."
-                elif cnt >= 3:
-                    text += f"화의 기운이 너무 강합니다. {organs}에 무리가 갑니다. 심장이 두근거리고, 혈압이 높습니다. 얼굴이 쉽게 빨개지고, 화를 잘 냅니다. 불면증이 있거나, 가슴이 답답한 증상이 있습니다. 차갑고 시원한 음식을 먹고, 흥분하지 않도록 마음을 다스려야 합니다. 명상이나 요가가 도움이 됩니다."
-                else:
-                    text += f"화의 기운이 적당합니다. {organs}이 대체로 건강합니다. 하지만 스트레스를 받으면 심장에 무리가 갈 수 있으니 주의하십시오."
-            
-            elif oh_name == '토':
-                organs = "비장, 위장, 입술, 살"
-                if cnt == 0:
-                    text += f"토의 기운이 전혀 없습니다. {organs}이 약합니다. 소화가 잘 안 되고, 식욕이 없습니다. 입맛이 없어 밥을 거르는 일이 많고, 그러다 보니 몸이 말라갑니다. 환절기에 특히 소화기 질환이 생깁니다. 단 음식을 먹고, 노란색 음식을 자주 먹어야 합니다. 규칙적으로 식사하고, 천천히 씹어 먹는 습관이 중요합니다."
-                elif cnt >= 3:
-                    text += f"토의 기운이 너무 강합니다. {organs}에 부담이 갑니다. 소화는 잘 되지만 너무 잘 되어서 문제입니다. 식욕이 왕성해서 과식하기 쉽고, 살이 찌기 쉽습니다. 속이 더부룩하고, 트림이 자주 나옵니다. 단 음식을 줄이고, 과식하지 않도록 조심해야 합니다. 식사 후 가벼운 산책이 좋습니다."
-                else:
-                    text += f"토의 기운이 적당합니다. {organs}이 대체로 건강합니다. 하지만 과식하면 금방 탈이 나니 적당히 먹어야 합니다."
-            
-            elif oh_name == '금':
-                organs = "폐, 대장, 코, 피부"
-                if cnt == 0:
-                    text += f"금의 기운이 전혀 없습니다. {organs}이 약합니다. 기침을 자주 하고, 감기에 자주 걸립니다. 코가 자주 막히고, 피부가 거칠고 건조합니다. 가을철에 특히 호흡기 질환이 생깁니다. 매운 음식을 먹고, 흰색 음식을 자주 먹어야 합니다. 환기를 자주 하고, 공기 좋은 곳에서 심호흡하는 것이 좋습니다."
-                elif cnt >= 3:
-                    text += f"금의 기운이 너무 강합니다. {organs}이 너무 건조해집니다. 기침이 마르고, 피부가 갈라집니다. 변비가 생기기 쉽고, 코피가 나기도 합니다. 매운 음식을 줄이고, 촉촉한 음식을 먹어야 합니다. 물을 자주 마시고, 보습에 신경 써야 합니다."
-                else:
-                    text += f"금의 기운이 적당합니다. {organs}이 대체로 건강합니다. 하지만 미세먼지가 많은 날은 외출을 삼가는 것이 좋습니다."
-            
-            else:  # 수
-                organs = "신장, 방광, 귀, 뼈"
-                if cnt == 0:
-                    text += f"수의 기운이 전혀 없습니다. {organs}이 약합니다. 소변을 자주 보거나, 허리가 자주 아픕니다. 귀가 잘 안 들리고, 뼈가 약해 골다공증이 생기기 쉽습니다. 겨울철에 특히 건강이 안 좋아집니다. 짠 음식을 먹고, 검은색 음식을 자주 먹어야 합니다. 따뜻하게 입고, 허리를 보호해야 합니다."
-                elif cnt >= 3:
-                    text += f"수의 기운이 너무 강합니다. {organs}이 너무 차가워집니다. 소변이 맑고 자주 마렵습니다. 몸이 붓고, 추위를 많이 탑니다. 짠 음식을 줄이고, 따뜻한 음식을 먹어야 합니다. 몸을 따뜻하게 하고, 반신욕이나 족욕을 자주 하는 것이 좋습니다."
-                else:
-                    text += f"수의 기운이 적당합니다. {organs}이 대체로 건강합니다. 하지만 찬물을 많이 마시지 않도록 주의하십시오."
-            
-            text += "\n\n"
-        
-        # 제7장: 개운법 (5000자)
-        text += f"<div class='chapter-title'>제7장. 개운법 - 운명을 바꾸는 방법</div>\n\n"
-        text += f"<div class='sub-title'>용신을 활용한 실천 지침</div>\n\n"
-        
-        text += f"{name} 님, 이제 가장 중요한 부분을 말씀드리겠습니다. 바로 귀하의 운명을 바꾸는 방법입니다.\n\n"
-        
-        text += f"귀하의 용신은 **{weak}**입니다. 용신이란 귀하에게 가장 필요한 기운이며, 이것을 보충하면 운이 트이기 시작합니다.\n\n"
-        
-        colors = {'목':'녹색', '화':'빨강', '토':'황색', '금':'흰색', '수':'검정'}
-        directions = {'목':'동쪽', '화':'남쪽', '토':'중앙', '금':'서쪽', '수':'북쪽'}
-        numbers = {'목':'3,8', '화':'2,7', '토':'5,10', '금':'4,9', '수':'1,6'}
-        
-        text += f"<div class='sub-title'>1. 색깔로 보충하기</div>\n\n"
-        text += f"**{colors[weak]}색**을 많이 사용하십시오.\n\n"
-        text += f"옷을 살 때, 신발을 살 때, 가방을 살 때, 핸드폰 케이스를 고를 때, 항상 {colors[weak]}색을 우선적으로 선택하십시오. 집안 인테리어도 {colors[weak]}색을 많이 사용하는 것이 좋습니다. 커튼, 벽지, 쿠션, 이불 등을 {colors[weak]}색으로 바꿔보십시오.\n\n"
-        
-        text += f"만약 {colors[weak]}색이 마음에 들지 않는다면, 속옷이라도 {colors[weak]}색으로 입으십시오. 겉으로 보이지 않아도 몸에 닿아 있으면 기운을 받을 수 있습니다.\n\n"
-        
-        text += f"<div class='sub-title'>2. 방향으로 보충하기</div>\n\n"
-        text += f"**{directions[weak]}쪽**으로 이동하십시오.\n\n"
-        text += f"이사를 간다면 지금 사는 곳에서 {directions[weak]}쪽으로 가십시오. 여행을 간다면 {directions[weak]}쪽 지방으로 가십시오. 사무실에서 자리를 정한다면 {directions[weak]}쪽 자리를 선택하십시오.\n\n"
-        
-        text += f"집 안에서도 {directions[weak]}쪽 방을 귀하의 방으로 쓰는 것이 좋습니다. 잠을 잘 때도 머리를 {directions[weak]}쪽으로 두고 자는 것이 좋습니다. 책상도 {directions[weak]}쪽을 향하도록 배치하십시오.\n\n"
-        
-        text += f"<div class='sub-title'>3. 숫자로 보충하기</div>\n\n"
-        text += f"**{numbers[weak]}**을 귀하의 행운의 숫자로 삼으십시오.\n\n"
-        text += f"전화번호 끝자리, 차 번호, 집 주소, 계좌 번호 등에 {numbers[weak]}이 들어가도록 하십시오. 복권을 산다면 {numbers[weak]}이 들어간 번호를 선택하십시오.\n\n"
-        
-        text += f"<div class='sub-title'>4. 음식으로 보충하기</div>\n\n"
-        
-        if weak == '목':
-            text += "**신 음식**을 많이 드십시오. 레몬, 매실, 식초, 귤, 오렌지 등 신맛이 나는 음식이 좋습니다. 채소도 많이 드십시오. 특히 녹색 채소가 좋습니다. 샐러드, 나물, 쌈 등을 자주 드십시오. 아침을 꼭 드시고, 일찍 일어나는 습관을 들이십시오."
-        elif weak == '화':
-            text += "**쓴 음식**을 많이 드십시오. 쓴오이, 고추, 커피 등 쓴맛이 나는 음식이 좋습니다. 고기도 드십시오. 특히 양고기, 염소고기가 좋습니다. 매운 음식도 좋으니 고추, 후추, 마늘 등을 많이 드십시오. 낮에 활동을 많이 하고, 햇볕을 많이 쬐십시오."
-        elif weak == '토':
-            text += "**단 음식**을 적당히 드십시오. 과일, 꿀, 고구마, 호박 등 단맛이 나는 음식이 좋습니다. 곡식도 많이 드십시오. 쌀밥, 잡곡밥을 꼭 챙겨 드십시오. 규칙적으로 식사하고, 천천히 씹어 먹는 습관이 중요합니다."
-        elif weak == '금':
-            text += "**매운 음식**을 적당히 드십시오. 무, 파, 생강, 양파 등 매운맛이 나는 음식이 좋습니다. 흰색 음식도 좋으니 두부, 우유, 백미, 양배추 등을 드십시오. 심호흡을 자주 하고, 공기 좋은 곳에서 산책하십시오."
-        else:  # 수
-            text += "**짠 음식**을 적당히 드십시오. 미역, 김, 다시마 등 바다에서 나는 음식이 좋습니다. 검은색 음식도 좋으니 검은콩, 검은깨, 흑미 등을 드십시오. 물을 자주 마시고, 허리를 따뜻하게 하십시오."
-        
-        text += "\n\n"
-        
-        text += f"<div class='sub-title'>5. 직업으로 보충하기</div>\n\n"
-        
-        if weak == '목':
-            text += "목과 관련된 직업이 좋습니다. 나무를 다루는 일(목수, 가구 제작), 종이를 다루는 일(출판, 인쇄), 섬유를 다루는 일(의류, 패션), 교육 관련 일(교사, 강사), 의료 관련 일(한의사, 약사) 등이 귀하에게 맞습니다."
-        elif weak == '화':
-            text += "화와 관련된 직업이 좋습니다. 불을 다루는 일(요리사, 용접), 전기를 다루는 일(전기 기술자), 예술 관련 일(화가, 디자이너), 방송 관련 일(아나운서, PD), 철학 관련 일(종교인, 상담사) 등이 귀하에게 맞습니다."
-        elif weak == '토':
-            text += "토와 관련된 직업이 좋습니다. 땅을 다루는 일(농업, 부동산), 건축 관련 일(건축가, 인테리어), 보험 관련 일(보험 설계사), 중개 관련 일(중개인, 에이전트) 등이 귀하에게 맞습니다."
-        elif weak == '금':
-            text += "금과 관련된 직업이 좋습니다. 금속을 다루는 일(귀금속, 기계), 법률 관련 일(변호사, 법무사), 금융 관련 일(은행원, 증권인), 의료 관련 일(의사, 외과의) 등이 귀하에게 맞습니다."
-        else:  # 수
-            text += "수와 관련된 직업이 좋습니다. 물을 다루는 일(수산업, 음료), 유통 관련 일(무역, 물류), 정보 관련 일(IT, 컴퓨터), 여행 관련 일(여행사, 항공) 등이 귀하에게 맞습니다."
-        
-        text += "\n\n"
-        
-        text += f"<div class='sub-title'>6. 사람으로 보충하기</div>\n\n"
-        text += f"{weak} 기운이 강한 사람과 가까이 지내십시오. "
-        
-        if weak == '목':
-            text += "甲, 乙 일간인 사람이 귀하에게 도움이 됩니다. 이런 사람들은 곧고 정직하며, 귀하에게 올바른 길을 안내해줄 것입니다."
-        elif weak == '화':
-            text += "丙, 丁 일간인 사람이 귀하에게 도움이 됩니다. 이런 사람들은 밝고 열정적이며, 귀하에게 용기와 희망을 줄 것입니다."
-        elif weak == '토':
-            text += "戊, 己 일간인 사람이 귀하에게 도움이 됩니다. 이런 사람들은 믿음직하고 든든하며, 귀하에게 안정감을 줄 것입니다."
-        elif weak == '금':
-            text += "庚, 辛 일간인 사람이 귀하에게 도움이 됩니다. 이런 사람들은 냉철하고 이성적이며, 귀하에게 현명한 조언을 줄 것입니다."
-        else:  # 수
-            text += "壬, 癸 일간인 사람이 귀하에게 도움이 됩니다. 이런 사람들은 유연하고 지혜로우며, 귀하에게 새로운 시각을 열어줄 것입니다."
-        
-        text += "\n\n"
-        
-        # 에필로그 (3000자)
-        text += f"<div class='chapter-title'>에필로그: 귀하께 드리는 마지막 말씀</div>\n\n"
-        
-        text += f"{name} 님, 이제 긴 이야기를 마칠 때가 되었습니다.\n\n"
-        
-        text += f"제가 오늘 귀하께 말씀드린 것은 귀하의 과거, 현재, 미래에 대한 이야기였습니다. 사주팔자라는 렌즈를 통해 귀하의 인생을 들여다본 것입니다.\n\n"
-        
-        text += "하지만 명심하십시오. 사주는 운명을 알려주는 도구일 뿐, 운명 그 자체는 아닙니다. 사주가 아무리 나빠 보여도 노력하면 좋아질 수 있고, 사주가 아무리 좋아 보여도 게으르면 망칠 수 있습니다.\n\n"
-        
-        text += "옛 성현들은 말씀하셨습니다. '인간만사 새옹지마'라고. 좋은 일도 나쁜 일의 씨앗이 될 수 있고, 나쁜 일도 좋은 일의 씨앗이 될 수 있다는 뜻입니다. 지금 힘들다고 절망하지 마십시오. 이 고통이 귀하를 더 단단하게 만들고 있습니다. 반대로 지금 잘 나간다고 방심하지 마십시오. 교만하면 반드시 추락합니다.\n\n"
-        
-        text += f"귀하는 {age}세입니다. "
-        
-        if age < 40:
-            text += "아직 젊습니다. 앞으로 할 수 있는 일이 무궁무진합니다. 실패를 두려워하지 말고 도전하십시오. 지금 넘어지면 어떻습니까? 일어나면 됩니다. 젊음이란 바로 그런 것입니다."
-        elif age < 60:
-            text += "인생의 한가운데 있습니다. 이제 어느 정도 세상이 어떻게 돌아가는지 알게 되었을 것입니다. 그 지혜를 활용하십시오. 아직 늦지 않았습니다. 지금부터라도 하고 싶었던 것을 하십시오."
-        else:
-            text += "인생의 노을을 바라보고 있습니다. 지나온 길을 돌아보면 아쉬움도 많고 후회도 있을 것입니다. 하지만 그 모든 것이 귀하를 지금의 귀하로 만들었습니다. 이제는 내려놓을 때입니다. 집착을 버리고, 평온한 마음으로 남은 인생을 즐기십시오."
-        
-        text += "\n\n"
-        
-        if married:
-            text += "귀하에게는 배우자가 있습니다. "
-            if has_children:
-                text += "자녀도 있습니다. 얼마나 큰 축복입니까. 세상에는 그런 축복조차 누리지 못하는 사람이 많습니다. 가족을 소중히 여기십시오. 사랑한다는 말을 자주 하십시오. 표현하지 않으면 모릅니다."
-            else:
-                text += "자녀는 아직 없지만, 배우자가 있다는 것만으로도 큰 축복입니다. 둘이서 의지하며 살아가십시오. 자녀가 없으면 어떻습니까? 둘이서 행복하면 그것으로 충분합니다."
-        else:
-            text += "귀하는 아직 혼자입니다. 외롭고 쓸쓸할 때도 많았을 것입니다. 하지만 혼자라는 것은 자유롭다는 뜻이기도 합니다. 누구 눈치 보지 않고, 하고 싶은 것을 할 수 있습니다. 그 자유를 즐기십시오. 그리고 언젠가는 귀하를 이해해주는 사람이 나타날 것입니다. 조급해하지 마십시오."
-        
-        text += "\n\n"
-        
-        # ===== 사고수/횡재수/건강 섹션 추가 =====
-        text += "<div class='chapter-title'>제8부. 특별 주의사항 - 사고수와 횡재수</div>\n\n"
-        
-        text += "<div class='sub-title'>1. 사고수 주의 시기</div>\n\n"
-        text += f"귀하의 사주를 보니, 특정 시기에 사고나 질병의 위험이 있습니다. 미리 알고 조심하면 피할 수 있습니다.\n\n"
-        
-        # 사고수 판단 (관성/칠살이 과다하거나, 오행 불균형)
-        if counts['금'] >= 3 or counts['목'] >= 3:
-            text += f"**{age+2}세, {age+7}세, {age+12}세**: 금속성 사고 주의. 교통사고, 낙상, 금속 기구 다루는 작업 시 특히 조심하십시오. 이 시기에는 무리한 운동이나 위험한 활동을 삼가십시오.\n\n"
-        
-        if counts['수'] >= 3 or counts['화'] >= 3:
-            text += f"**{age+4}세, {age+9}세, {age+14}세**: 물과 불 관련 사고 주의. 수영, 등산, 불 다루는 일을 할 때 극도로 조심하십시오. 특히 술을 마신 후에는 절대 위험한 일을 하지 마십시오.\n\n"
-        
-        text += "사고는 조심하면 막을 수 있습니다. 위험한 시기에는 보수적으로 행동하십시오. 급하게 서두르지 말고, 천천히 신중하게 움직이십시오. 몸이 피곤하거나 정신이 흐릿할 때는 아무것도 하지 마십시오.\n\n"
-        
-        text += "<div class='sub-title'>2. 횡재수 시기</div>\n\n"
-        text += f"반대로, 귀하에게는 큰 횡재가 올 시기도 있습니다. 이 시기를 놓치지 마십시오.\n\n"
-        
-        # 횡재수 판단 (재성이 들어오는 대운)
-        for dae in daewun[:5]:
-            if '재성' in dae['b_sip'] or '재성' in dae['s_sip']:
-                text += f"**{dae['age']}세 대운 ({dae['ganji']})**: 재성대운으로 돈이 들어옵니다. 이 시기에 투자, 사업, 부동산 거래를 하면 큰 수익을 볼 수 있습니다. 단, 욕심을 부리면 오히려 손해를 볼 수 있으니, 적당한 선에서 만족하십시오.\n\n"
-        
-        text += f"**{age+3}세, {age+8}세**: 작은 행운의 시기. 복권이나 경품 당첨, 예상치 못한 보너스 등이 있을 수 있습니다. 이 시기에는 긍정적인 마음가짐을 유지하십시오. 좋은 기운이 좋은 일을 불러옵니다.\n\n"
-        
-        text += "<div class='sub-title'>3. 건강 주의사항</div>\n\n"
-        text += "건강은 무엇보다 중요합니다. 귀하의 오행 밸런스를 보니 특별히 주의해야 할 신체 부위가 있습니다.\n\n"
-        
-        # 건강 - 오행별 취약 장기
-        health_map = {
-            '목': ('간', '담낭', '눈', '신 음식(식초, 매실)을 자주 드시고, 녹색 채소를 많이 드십시오'),
-            '화': ('심장', '소장', '혈관', '쓴 음식(쌈채소, 고추잎)을 드시고, 과도한 스트레스를 피하십시오'),
-            '토': ('위', '비장', '소화기', '단 음식을 적당히 드시고, 규칙적인 식사를 하십시오'),
-            '금': ('폐', '대장', '피부', '매운 음식(생강, 마늘)을 드시고, 호흡기 건강에 신경 쓰십시오'),
-            '수': ('신장', '방광', '생식기', '짠 음식을 줄이고, 물을 자주 드시며, 하체를 따뜻하게 하십시오')
-        }
-        
-        for oh, (organ1, organ2, organ3, advice) in health_map.items():
-            cnt = counts[oh]
-            if cnt == 0:
-                text += f"**{oh} 기운 부족**: {organ1}, {organ2}, {organ3}이 약합니다. {advice}.\n\n"
-            elif cnt >= 4:
-                text += f"**{oh} 기운 과다**: {organ1}, {organ2}에 열이 많습니다. {advice}.\n\n"
-        
-        text += f"\n**{age+5}세 이후**: 중년기에 접어들면서 체력이 약해집니다. 규칙적인 운동과 균형 잡힌 식사가 필수입니다. 특히 술과 담배는 반드시 줄이십시오.\n\n"
-        
-        if age >= 50:
-            text += "**현재**: 이미 50대 이상이시니 건강 검진을 정기적으로 받으십시오. 고혈압, 당뇨, 관절염 등 성인병을 조기에 발견하는 것이 중요합니다.\n\n"
-        
-        text += "<div class='sub-title'>4. 종합 개운법</div>\n\n"
-        text += "운을 좋게 만드는 방법을 알려드립니다.\n\n"
-        
-        # 용신 색상/방향
-        colors = {'목':'녹색', '화':'빨강', '토':'황색', '금':'흰색', '수':'검정/파랑'}
-        directions = {'목':'동쪽', '화':'남쪽', '토':'중앙', '금':'서쪽', '수':'북쪽'}
-        
-        text += f"**색상**: {colors[weak]} 옷을 자주 입고, {colors[weak]} 소품을 사용하십시오.\n"
-        text += f"**방향**: {directions[weak]}으로 이사하거나, 책상을 {directions[weak]} 방향으로 두십시오.\n"
-        text += f"**직업**: {weak} 기운과 관련된 직업이 유리합니다.\n"
-        text += f"**음식**: {weak} 기운을 보충하는 음식을 많이 드십시오.\n\n"
-        
-        text += f"가장 중요한 것은 **마음가짐**입니다. 긍정적으로 생각하고, 감사하는 마음을 가지십시오. 좋은 마음이 좋은 운을 부릅니다.\n\n"
-        
-        # ===== 에필로그 =====
-        text += "<div class='chapter-title'>에필로그</div>\n\n"
-        
-        text += f"마지막으로, {name} 님께 이 말씀을 드리고 싶습니다.\n\n"
-        
-        text += "**'살아있다는 것 자체가 축복입니다.'**\n\n"
-        
-        text += "귀하는 지금 숨 쉬고 있습니다. 심장이 뛰고 있습니다. 눈으로 세상을 보고, 귀로 소리를 듣고, 입으로 맛을 느끼고 있습니다. 이것이 얼마나 대단한 일입니까. 이 우주에서 생명이 있는 행성이 얼마나 됩니까? 그 행성에서 인간으로 태어날 확률이 얼마나 됩니까? 귀하는 그 기적 같은 확률을 뚫고 인간으로 태어났습니다.\n\n"
-        
-        text += "그러니 불평하지 마십시오. 감사하십시오. 힘들다고 포기하지 마십시오. 끝까지 최선을 다하십시오. 그것이 귀하에게 주어진 생명에 대한 예의입니다.\n\n"
-        
-        text += f"제가 귀하께 드릴 수 있는 말씀은 여기까지입니다. 이 긴 글을 끝까지 읽어주셔서 감사합니다.\n\n"
-        
-        text += f"**{name} 님의 남은 인생에 건강과 행복이 가득하기를 진심으로 기원합니다.**\n\n"
-        
-        text += f"{'='*100}\n"
-        text += f"총 {len(text):,}자\n"
-        text += f"작성 일시: {datetime.datetime.now().strftime('%Y년 %m월 %d일 %H시 %M분')}\n"
-        text += f"{'='*100}\n"
-        
-        # HTML 태그 제거 (화면에 코드 노출 방지)
-        import re
-        text = text.replace("<div class='chapter-title'>", "\n\n【 ")
-        text = text.replace("<div class='sub-title'>", "\n■ ")
-        text = text.replace("</div>", " 】")
-        text = re.sub(r'\*\*([^\*]+)\*\*', r'\1', text)  # **bold** 제거
-        
-        return text
-
-# ==============================================================================
-# [4] AI 생성기 (순수 한글)
-# ==============================================================================
-class AIGenerator:
-    """AI 50,000자 순수 한글 생성 - 최신 Groq API"""
-    
-    @staticmethod
-    def call(api_key, msgs, tokens=8000):
-        """Groq API 호출 with retry and language check"""
-        import time
-        import re
-        
-        if not api_key:
-            return None
-        
-        max_retries = 3
-        retry_delay = 10  # 10초 대기 (429 에러 방지)
-        
-        for attempt in range(max_retries):
-            try:
-                # 429 에러 방지를 위한 대기
-                if attempt > 0:
-                    time.sleep(retry_delay * attempt)
-                
-                r = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    json={
-                        "model": "llama-3.3-70b-versatile",
-                        "messages": msgs,
-                        "temperature": 0.9,
-                        "max_tokens": tokens,
-                        "top_p": 0.95,
-                        "frequency_penalty": 1.5,
-                        "presence_penalty": 1.3
-                    },
-                    timeout=300
-                )
-                
-                # 429 에러 특별 처리
-                if r.status_code == 429:
-                    if attempt < max_retries - 1:
-                        time.sleep(retry_delay * (attempt + 2))
-                        continue
-                    else:
-                        return "⚠️ API 요청 한도 초과. 1분 후 다시 시도해주세요."
-                
-                r.raise_for_status()
-                content = r.json()['choices'][0]['message']['content']
-                
-                # 중국어/일본어 검사
-                chinese = re.findall(r'[\u4e00-\u9fff]', content)
-                japanese = re.findall(r'[\u3040-\u309f\u30a0-\u30ff]', content)
-                
-                # 한자가 괄호 안에 있는 경우는 제외하고 계산
-                content_no_paren = re.sub(r'\([^)]*\)', '', content)
-                chinese_no_paren = re.findall(r'[\u4e00-\u9fff]', content_no_paren)
-                
-                # 괄호 밖 중국어/일본어가 많으면 재시도
-                if len(chinese_no_paren) > 10 or len(japanese) > 5:
-                    if attempt < max_retries - 1:
-                        msgs.append({
-                            "role": "assistant",
-                            "content": content
-                        })
-                        msgs.append({
-                            "role": "user",
-                            "content": "❌ 중국어/일본어가 포함되어 있습니다! 반드시 100% 순수 한글로만 다시 작성하세요. 한자는 오직 괄호 () 안에만 넣을 수 있습니다."
-                        })
-                        time.sleep(3)
-                        continue
-                
-                return content
-                
-            except requests.exceptions.Timeout:
-                if attempt < max_retries - 1:
-                    continue
-                return "⚠️ 응답 시간 초과. 다시 시도해주세요."
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    continue
-                return f"⚠️ 오류: {str(e)}"
-        
-        return "⚠️ 최대 재시도 횟수 초과. 잠시 후 다시 시도해주세요."
-    
-    @staticmethod
-    def system():
-        """강화된 시스템 프롬프트 - 외국어 완전 금지"""
-        return """당신은 금강도사입니다. 50년간 산속에서 도를 닦으며 사주명리학을 연구한 도사이자 베스트셀러 작가입니다.
-
-【 최우선 규칙 - 이것만은 절대 엄수! 】
-⛔⛔⛔ 중국어 사용 시 즉시 중단! ⛔⛔⛔
-금지 문자 예시: 您(당신), 忙碌(바쁘다), 天賦(천부), 旺(왕성), 等(등), 
-               然而(그러나), 但是(하지만), 最后(마지막), 自己(자기), 什么(무엇),
-               可以(가능), 非常(매우), 需要(필요), 应该(해야), 一定(반드시)
-
-⛔⛔⛔ 일본어 사용 시 즉시 중단! ⛔⛔⛔  
-금지 문자 예시: の, です, ます, 自分, 何か, しかし, そして
-
-⛔⛔⛔ 영어 사용 시 즉시 중단! ⛔⛔⛔
-금지 단어 예시: success, money, career, health, successful, material
-
-✅ 올바른 표현 방법:
-- 您 (X) → 귀하, 당신 (O)
-- 忙碌 (X) → 바쁜 (O)
-- 天賦 (X) → 타고난 재능 (O)
-- 旺 (X) → 왕성한, 강한 (O)
-- successful (X) → 성공적인 (O)
-
-✅ 한자는 오직 괄호 안에만: 갑(甲), 재성(財星)
-
-【 핵심 임무 】
-사주팔자를 바탕으로 한 사람의 전 생애를 소설처럼 서사적으로 풀어냅니다.
-
-【 필수 준수 】
-✅ 순수 한글로만 작성 (한국어 100%)
-✅ 한자 표기는 반드시 괄호 안에: 갑(甲), 자(子), 목(木)
-✅ 천간지지는 항상 한자 포함: 갑(甲)자(子), 을(乙)축(丑)
-✅ 오행도 한자 포함: 목(木), 화(火), 토(土), 금(金), 수(水)
-✅ 소설처럼 서사적으로 (대화체 포함 가능)
-✅ 구체적 사건 묘사
-✅ 감정 표현 풍부하게
-✅ 사주 데이터 100% 반영
-✅ 최소 5,000자 이상 (목표: 8,000자)
-
-【 한자 표기 예시 】
-- 천간: 갑(甲), 을(乙), 병(丙), 정(丁), 무(戊), 기(己), 경(庚), 신(辛), 임(壬), 계(癸)
-- 지지: 자(子), 축(丑), 인(寅), 묘(卯), 진(辰), 사(巳), 오(午), 미(未), 신(申), 유(酉), 술(戌), 해(亥)
-- 오행: 목(木), 화(火), 토(土), 금(金), 수(水)
-- 십신: 재성(財星), 관성(官星), 인성(印星), 식상(食傷), 비겁(比劫)
-
-【 작성 스타일 】
-- 문장은 자연스럽게, 마치 옆에서 이야기하는 듯
-- "귀하는 ~했습니다" 보다는 "당신은 ~했어요" 같은 친근한 톤
-- 은유와 비유 적극 활용 ("마치 사막에 단비가 내리듯")
-- 과거-현재-미래를 자연스럽게 연결
-
-【 사주 해석 방법 】
-천간: 겉으로 드러나는 성격, 사회적 모습
-지지: 내면의 감정, 숨겨진 욕망
-십신: 재물(재성), 명예(관성), 학습(인성), 표현(식상), 경쟁(비겁)
-십이운성: 생명 주기
-
-이 모든 요소를 종합하여 한 사람의 인생 이야기를 펼쳐주세요."""
-    
-    @staticmethod
-    def generate(api_key, user_info, pillars, counts, daewun, topic, callback=None):
-        """10파트 × 5,000자 = 50,000자 생성"""
-        
-        name = user_info['name']
-        age = user_info['age']
-        married = user_info['married']
-        has_children = user_info['has_children']
-        job = user_info['job']
-        
-        # 사주 정보 요약
-        saju_data = f"""
-이름: {name} ({age}세)
-상태: {'기혼' if married else '미혼'}, 자녀 {'있음' if has_children else '없음'}, 직업: {job}
-
-사주팔자:
-년주: {pillars['년']['t']} - {pillars['년']['s_sip']}/{pillars['년']['b_sip']} ({pillars['년']['unseong']})
-월주: {pillars['월']['t']} - {pillars['월']['s_sip']}/{pillars['월']['b_sip']} ({pillars['월']['unseong']})
-일주: {pillars['일']['t']} - 일간 (본인)
-시주: {pillars['시']['t']} - {pillars['시']['s_sip']}/{pillars['시']['b_sip']} ({pillars['시']['unseong']})
-
-오행: 목{counts['목']}개, 화{counts['화']}개, 토{counts['토']}개, 금{counts['금']}개, 수{counts['수']}개
-
-대운 (57세부터):
-"""
-        for dae in daewun[:3]:
-            saju_data += f"{dae['age']}세: {dae['ganji']} ({dae['s_sip']}/{dae['b_sip']})\n"
-        
-        # 10개 파트
-        parts = [
-            {
-                'title': '프롤로그: 운명의 시작',
-                'prompt': f"{saju_data}\n\n당신이 태어난 순간, 하늘과 땅의 기운이 만나 사주팔자가 정해졌습니다. 이 사주가 당신 인생에 어떤 의미인지, 마치 소설의 첫 장을 여는 것처럼 서사적으로 8,000자로 풀어주세요. 당신의 천간({pillars['일']['t'][0:3]})과 지지({pillars['일']['t'][4:7]})가 어떤 성격을 만들었는지 구체적으로요."
-            },
-            {
-                'title': '제1장: 어린 시절 (0-10세)',
-                'prompt': f"{saju_data}\n\n0세부터 10세까지의 어린 시절을 8,000자로 그려주세요. 가족 관계, 성격 형성, 학교 생활, 친구들과의 추억. 년주({pillars['년']['t']})의 영향을 받은 어린 시절의 모습을요."
-            },
-            {
-                'title': '제2장: 청소년기 (11-20세)',
-                'prompt': f"{saju_data}\n\n11세부터 20세까지의 청소년기를 8,000자로. 사춘기의 방황, 첫사랑, 입시 스트레스, 진로 고민. 월주({pillars['월']['t']})가 만든 사회적 관계를요."
-            },
-            {
-                'title': '제3장: 청년기 (21-30세)',
-                'prompt': f"{saju_data}\n\n21세부터 30세까지를 8,000자로. 취업, 연애, 결혼 여부, 사회 적응. 십신({pillars['일']['s_sip']}, {pillars['월']['s_sip']})이 어떻게 영향을 주었는지요."
-            },
-            {
-                'title': f'제4장: 현재 ({age}세)',
-                'prompt': f"{saju_data}\n\n현재 {age}세인 {name}님의 상황을 8,000자로 깊이 파헤쳐주세요. 직업({job}), 가정 상황(기혼 여부, 자녀), 고민, 바람. 지금 이 순간의 감정까지요."
-            },
-            {
-                'title': f'제5장: 57세 대운 - {daewun[0]["ganji"]}',
-                'prompt': f"{saju_data}\n\n57세부터 시작되는 {daewun[0]['ganji']} 대운을 8,000자로 해석해주세요. 이 시기의 사고수, 횡재수, 건강 문제, 가족 관계 변화까지 예측해주세요."
-            },
-            {
-                'title': '제6장: 건강과 재물',
-                'prompt': f"{saju_data}\n\n오행 밸런스(목{counts['목']}, 화{counts['화']}, 토{counts['토']}, 금{counts['금']}, 수{counts['수']})를 분석해서, 건강 취약 부위와 재물운을 8,000자로 상세하게 풀어주세요. 어떤 질병을 조심해야 하고, 돈은 언제 들어오는지요."
-            },
-            {
-                'title': '제7장: 개운법',
-                'prompt': f"{saju_data}\n\n운을 좋게 만드는 구체적 방법을 8,000자로 알려주세요. 색상, 방향, 숫자, 음식, 직업, 만나야 할 사람. 실천 가능한 조언만요."
-            },
-            {
-                'title': '제8장: 사고수와 주의사항',
-                'prompt': f"{saju_data}\n\n인생에서 조심해야 할 시기와 사건을 8,000자로 경고해주세요. 교통사고, 질병, 사업 실패, 이혼 위기 등. 구체적 나이와 상황까지요."
-            },
-            {
-                'title': '에필로그: 축복',
-                'prompt': f"{saju_data}\n\n{name}님의 남은 인생에 대한 희망과 축복의 메시지를 8,000자로 전해주세요. 따뜻하고 감동적으로, 마치 소설의 마지막 장처럼요."
-            }
-        ]
-        
-        # 생성
-        results = []
-        total = len(parts)
-        
-        for i, part in enumerate(parts, 1):
-            if callback:
-                callback(f"{part['title']} 생성 중...", i / total)
-            
-            msgs = [
-                {"role": "system", "content": AIGenerator.system()},
-                {"role": "user", "content": part['prompt']}
-            ]
-            
-            res = AIGenerator.call(api_key, msgs, 8000)
-            if res:
-                results.append(f"\n\n{'='*100}\n{part['title']}\n{'='*100}\n\n{res}")
-            
-            # 429 에러 방지 - API 요청 간격 충분히 확보
-            if i < total:
-                time.sleep(15)  # 15초 대기
-        
-        # 최종 조합
-        full = f"""
-{'='*100}
-【 {name} 님의 인생 대서사시 - AI 완전판 】
-{'='*100}
-
-{age}세 | {'기혼' if married else '미혼'} | 자녀 {'있음' if has_children else '없음'} | {job}
-
-총 {len(parts)}개 챕터
-
-{'='*100}
-"""
-        full += ''.join(results)
-        full += f"\n\n{'='*100}\n총 {len(full):,}자\n{'='*100}\n"
-        
-        return full
-
-# ==============================================================================
-# [5] 메인 UI - 2페이지 구조
-# ==============================================================================
-def main():
-    # 세션 상태 초기화
-    if 'page' not in st.session_state:
-        st.session_state.page = 'input'  # 'input' 또는 'result'
-    if 'chat_history' not in st.session_state:
-        st.session_state.chat_history = []
-    
-    # ===== 페이지 1: 입력 화면 =====
-    if st.session_state.page == 'input':
-        st.markdown('''
-        <div class="master-header">
-            <h1>📖 운명서</h1>
-            <div class="subtitle">運命書 · AI가 쓰는 당신만의 인생 이야기</div>
+  if(isOverall){
+    const step = OVERALL_STEPS[Math.min(stepIdx, OVERALL_STEPS.length-1)];
+    return(
+      <div style={{padding:"30px 20px"}}>
+        {/* 타이틀 */}
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{fontSize:42,marginBottom:8}}>🔮</div>
+          <h3 style={{color:C.gold,margin:0,fontSize:17,letterSpacing:3}}>종합운세 대하소설 집필 중</h3>
+          <p style={{color:C.textMuted,fontSize:12,marginTop:4}}>3편 구성 · 약 2~4분 소요</p>
         </div>
-        ''', unsafe_allow_html=True)
-        
-        # AI 사용 방식 선택 (메인 화면)
-        st.markdown("### 🤖 생성 방식 선택")
-        col_btn1, col_btn2 = st.columns(2)
-        
-        with col_btn1:
-            use_ai_btn = st.button(
-                "🤖 AI 사용 (50,000자)\n⏰ 10~15분 소요",
-                use_container_width=True,
-                type="primary" if st.session_state.get('use_ai', False) else "secondary"
-            )
-            if use_ai_btn:
-                st.session_state.use_ai = True
-        
-        with col_btn2:
-            use_code_btn = st.button(
-                "📜 코드 생성 (30,000자)\n⚡ 즉시 완료",
-                use_container_width=True,
-                type="primary" if not st.session_state.get('use_ai', False) else "secondary"
-            )
-            if use_code_btn:
-                st.session_state.use_ai = False
-        
-        # 선택된 방식 표시
-        use_ai = st.session_state.get('use_ai', False)
-        if use_ai:
-            st.success("✅ AI 생성 모드 (더 상세하고 자연스러운 문장)")
-        else:
-            st.info("✅ 코드 생성 모드 (빠르고 체계적인 구조)")
-        
-        # API 키 입력 (항상 표시)
-        st.markdown("### 🔑 Groq API Key")
-        api_key = st.text_input(
-            "API 키를 입력하세요 (AI 모드에만 필요)",
-            type="password",
-            placeholder="gsk_...",
-            help="https://console.groq.com 에서 무료로 발급받으세요"
-        )
-        
-        if use_ai and not api_key:
-            st.warning("⚠️ AI 모드를 사용하려면 API 키가 필요합니다!")
-        
-        st.markdown("---")
-        
-        with st.form("user_input"):
-            st.subheader("📌 기본 정보")
-            
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                name = st.text_input("이름", "홍길동")
-                gender = st.radio("성별", ["남", "여"], horizontal=True)
-            with col2:
-                cal_type = st.radio("달력", ["양력", "음력", "윤달"], horizontal=True)
-            
-            st.markdown("### 📅 생년월일")
-            c1, c2, c3 = st.columns(3)
-            year = c1.number_input("년", 1900, 2030, 1990)
-            month = c2.number_input("월", 1, 12, 1)
-            day = c3.number_input("일", 1, 31, 1)
-            
-            st.markdown("### 🕐 시간")
-            time_yn = st.radio("시간", ["알고 있음", "모름"], horizontal=True)
-            t_idx = 6
-            if time_yn == "알고 있음":
-                ji_times = [
-                    "자시(子時) 23-01시", "축시(丑時) 01-03시", "인시(寅時) 03-05시",
-                    "묘시(卯時) 05-07시", "진시(辰時) 07-09시", "사시(巳時) 09-11시",
-                    "오시(午時) 11-13시", "미시(未時) 13-15시", "신시(申時) 15-17시",
-                    "유시(酉時) 17-19시", "술시(戌時) 19-21시", "해시(亥時) 21-23시"
-                ]
-                t_idx = st.selectbox("시", range(12), format_func=lambda x: ji_times[x], index=6)
-            
-            st.markdown("---")
-            st.subheader("🎯 개인화")
-            married = st.radio("결혼", ["미혼", "기혼"], horizontal=True) == "기혼"
-            has_children = False
-            if married:
-                has_children = st.radio("자녀", ["없음", "있음"], horizontal=True) == "있음"
-            job = st.text_input("직업", "회사원")
-            topic = st.selectbox("주제", ["종합운", "재물운", "직장운", "결혼운", "건강운"])
-            
-            submit = st.form_submit_button("✨ 생성하기", use_container_width=True, type="primary")
-        
-        if submit:
-            with st.spinner("사주 계산 중..."):
-                pillars, counts, daewun, day_oh, day_gan, birth_y = SajuEngine.calculate(
-                    year, month, day, t_idx, gender, time_yn=="모름", cal_type
-                )
-                
-                age = 2026 - birth_y
-                user_info = {
-                    'name': name, 'age': age,
-                    'married': married, 'has_children': has_children, 'job': job
-                }
-            
-            with st.spinner("대서사시 생성 중..."):
-                if use_ai and api_key:
-                    progress_placeholder = st.empty()
-                    def progress_callback(msg, pct):
-                        progress_placeholder.progress(pct, text=msg)
-                    
-                    final_text = AIGenerator.generate(
-                        api_key, user_info, pillars, counts, daewun, topic, 
-                        callback=progress_callback
-                    )
-                    progress_placeholder.empty()
-                else:
-                    final_text = EpicGenerator.generate(user_info, pillars, counts, daewun, topic, day_oh, day_gan)
-            
-            # 결과 저장 및 페이지 전환
-            st.session_state.result = final_text
-            st.session_state.pillars = pillars
-            st.session_state.user_info = user_info
-            st.session_state.daewun = daewun
-            st.session_state.use_ai = use_ai
-            st.session_state.api_key = api_key if use_ai else None
-            st.session_state.page = 'result'
-            st.rerun()
-    
-    # ===== 페이지 2: 결과 화면 =====
-    elif st.session_state.page == 'result':
-        # 상단 네비게이션
-        col1, col2, col3 = st.columns([1, 3, 1])
-        with col1:
-            if st.button("⬅️ 처음으로"):
-                st.session_state.page = 'input'
-                st.rerun()
-        with col2:
-            st.markdown(f"<h2 style='text-align:center; color:#2e7d32;'>📖 {st.session_state.user_info['name']} 님의 운명서</h2>", unsafe_allow_html=True)
-        with col3:
-            st.download_button(
-                "📥 다운로드",
-                st.session_state.result,
-                file_name=f"{st.session_state.user_info['name']}_운세.txt",
-                mime="text/plain"
-            )
-        
-        st.markdown("---")
-        
-        # 탭 구성: 명식표 | 운세 | AI상담
-        tab1, tab2, tab3 = st.tabs(["📊 명식표", "📜 운세 내용", "🤖 AI 상담"])
-        
-        # 탭 1: 명식표
-        with tab1:
-            p = st.session_state.pillars
-            
-            # 60갑자 차트 (접을 수 있게 - 모바일 최적화)
-            with st.expander("📊 천간지지 60갑자 원반 보기", expanded=False):
-                st.markdown(create_gapja_chart(), unsafe_allow_html=True)
-            
-            st.markdown(f"### 📜 {st.session_state.user_info['name']} 님의 사주팔자")
-            
-            # 백그라운드 데이터 저장 (화면에 표시하지 않음)
-            p = st.session_state.pillars
-            saju_backup = {
-                '일주': p['일']['t'],
-                '월주': p['월']['t'],
-                '년주': p['년']['t'],
-                '시주': p['시']['t']
-            }
-            st.session_state.saju_backup = saju_backup
-            
-            # 간단한 카드 형식으로 표시
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.markdown(f"""
-                <div style="text-align:center; padding:30px 20px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                            border-radius:15px; color:white; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
-                    <h2 style="margin:0; font-size:1.2rem; opacity:0.9;">🎯 일주 (본인)</h2>
-                    <h1 style="margin:15px 0; font-size:2.5rem; font-weight:bold;">{p['일']['t']}</h1>
-                    <p style="margin:5px 0; font-size:1rem; opacity:0.9;">{p['일']['han']}</p>
-                    <p style="margin:5px 0; font-size:0.95rem;">{p['일']['unseong']}</p>
-                    <p style="margin:0; font-size:0.9rem; opacity:0.8;">{p['일']['s_sip']} / {p['일']['b_sip']}</p>
+
+        {/* 큰 진행바 */}
+        <div style={{marginBottom:24}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+            <span style={{color:C.textSub,fontSize:12,fontWeight:"600"}}>전체 진행률</span>
+            <span style={{color:C.gold,fontSize:14,fontWeight:"700"}}>{progress}%</span>
+          </div>
+          <div style={{background:C.bgSub,borderRadius:12,height:14,overflow:"hidden",border:`1px solid ${C.borderDim}`}}>
+            <div style={{
+              width:`${progress}%`,height:"100%",borderRadius:12,
+              background:`linear-gradient(90deg, #7c4a00, #c9960f, #a0720a)`,
+              transition:"width 0.8s ease",
+              boxShadow:"0 0 8px rgba(160,114,10,0.4)"
+            }}/>
+          </div>
+        </div>
+
+        {/* 3편 섹션 진행 표시 */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:22}}>
+          {[
+            {title:"제1편",sub:"천성·기질·오행",done:progress>=45,active:progress<45&&progress>0},
+            {title:"제2편",sub:"대운·재물·직업",done:progress>=78,active:progress>=45&&progress<78},
+            {title:"제3편",sub:"애정·건강·결론",done:progress>=99,active:progress>=78&&progress<99},
+          ].map((s,i)=>(
+            <div key={i} style={{
+              background: s.done?"#f0fdf4": s.active?"#fffbef":"#fafafa",
+              border:`1.5px solid ${s.done?C.green: s.active?C.gold:C.borderDim}`,
+              borderRadius:10,padding:"10px 8px",textAlign:"center",
+              transition:"all 0.4s"
+            }}>
+              <div style={{fontSize:18,marginBottom:3}}>
+                {s.done?"✅": s.active?"✍️":"⏳"}
+              </div>
+              <div style={{color:s.done?C.green: s.active?C.gold:C.textMuted,fontSize:12,fontWeight:"700"}}>{s.title}</div>
+              <div style={{color:C.textMuted,fontSize:10,marginTop:2}}>{s.sub}</div>
+              {s.done&&<div style={{color:C.green,fontSize:9,marginTop:3}}>완성!</div>}
+              {s.active&&<div style={{color:C.gold,fontSize:9,marginTop:3}}>집필 중{dots}</div>}
+            </div>
+          ))}
+        </div>
+
+        {/* 현재 단계 */}
+        <div style={{background:C.bgAccent,border:`1px solid ${C.borderDim}`,borderRadius:10,padding:"12px 16px",textAlign:"center"}}>
+          <span style={{fontSize:18,marginRight:8}}>{step.icon}</span>
+          <span style={{color:C.textSub,fontSize:13,fontWeight:"600"}}>{step.label}{dots}</span>
+        </div>
+
+        {/* 단계 타임라인 */}
+        <div style={{marginTop:18,display:"flex",flexWrap:"wrap",gap:5,justifyContent:"center"}}>
+          {OVERALL_STEPS.map((s,i)=>(
+            <div key={i} style={{
+              width:8,height:8,borderRadius:"50%",
+              background: i<stepIdx ? C.green : i===stepIdx ? C.gold : C.borderDim,
+              transition:"background 0.4s",
+              boxShadow: i===stepIdx ? `0 0 6px ${C.gold}` : "none"
+            }}/>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // 일반 운세 로딩
+  return(
+    <div style={{padding:"50px 20px",textAlign:"center"}}>
+      <div style={{fontSize:40,marginBottom:14}}>{tabIcon}</div>
+      <h4 style={{color:C.gold,margin:"0 0 6px",fontSize:15,letterSpacing:3}}>{tabLabel} 풀이 중{dots}</h4>
+      <p style={{color:C.textMuted,fontSize:11,marginBottom:16}}>AI가 사주를 깊이 분석하고 있습니다</p>
+      <div style={{display:"inline-flex",alignItems:"center",gap:6,
+        background: aiMode==="offline" ? "rgba(239,68,68,0.1)" : "rgba(34,197,94,0.1)",
+        border: `1px solid ${aiMode==="offline" ? "rgba(239,68,68,0.3)" : "rgba(34,197,94,0.3)"}`,
+        borderRadius:20,padding:"4px 14px",marginBottom:20}}>
+        <span style={{fontSize:12}}>{aiMode==="offline" ? "🔴" : "⚡"}</span>
+        <span style={{color: aiMode==="offline" ? "#ef4444" : "#16a34a",fontSize:11,fontWeight:"600"}}>
+          {aiMode==="offline" ? "자체 분석 엔진 작동 중" : "Groq 무료 모드로 빠르게 분석 중"}
+        </span>
+      </div>
+
+      {/* 물결 애니메이션 바 */}
+      <div style={{maxWidth:280,margin:"0 auto"}}>
+        <div style={{background:C.bgSub,borderRadius:8,height:8,overflow:"hidden",border:`1px solid ${C.borderDim}`}}>
+          <div style={{
+            height:"100%",borderRadius:8,
+            background:`linear-gradient(90deg, transparent, #c9960f, transparent)`,
+            animation:"wave 1.5s ease-in-out infinite",
+            width:"60%",
+          }}/>
+        </div>
+      </div>
+
+      {/* 운세별 메시지 */}
+      <p style={{color:C.textDim,fontSize:11,marginTop:16,fontStyle:"italic"}}>
+        ✦ 사주팔자의 오묘한 이치를 풀어내는 중 ✦
+      </p>
+
+      <style>{`
+        @keyframes wave {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(280%); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════
+//  프롬프트 생성
+// ══════════════════════════════════════════════
+function buildPrompt(tabId,saju,compat,part){
+  const tab=TABS.find(t=>t.id===tabId);
+  const p=saju.pillars;
+  const sajuText=`년주:${p[3].cg}${p[3].jj}(${p[3].cgk}${p[3].jjk}), 월주:${p[2].cg}${p[2].jj}(${p[2].cgk}${p[2].jjk}), 일주:${p[1].cg}${p[1].jj}(${p[1].cgk}${p[1].jjk}), 시주:${p[0].cg}${p[0].jj}(${p[0].cgk}${p[0].jjk})`;
+  const ohText=Object.entries(saju.ohCnt).map(([k,v])=>`${OHE[k]}${k}(${OHN[k]}):${v}개`).join(", ");
+  const f=saju.form;
+  const personal=`성별:${f.gender==="male"?"남성":"여성"}, 결혼상태:${MKR[f.marital]||f.marital}, 직업:${JKR[f.job]||f.job}, 출생시진:${f.siLabel||""}`;
+
+  const siSpec=f.marital==="single"&&(tabId==="marriage"||tabId==="love")?"미혼이므로 결혼 시기와 이상적 인연을 구체적으로 풀이. ":f.marital==="married"&&tabId==="marriage"?"기혼이므로 부부 관계 운을 중심으로. ":f.marital==="divorced"&&tabId==="marriage"?"이혼 경험자이므로 재결합/재혼 인연을. ":"";
+  const jobSpec=tabId==="career"?`현재 ${JKR[f.job]||f.job}의 관점에서 직장·직업운 풀이. `:"";
+
+  let compatExtra="";
+  if(tabId==="compat"&&compat){
+    const cy=parseInt(compat.year);
+    const cyp=ypCalc(cy);const cmp=mpCalc(cy,parseInt(compat.month));
+    const cdp=dpCalc(cy,parseInt(compat.month),parseInt(compat.day));
+    const chp=hpCalc(parseInt(compat.hour),cdp.ciIdx);
+    compatExtra=`\n\n【상대방 사주】\n년주:${cyp.cg}${cyp.jj}, 월주:${cmp.cg}${cmp.jj}, 일주:${cdp.cg}${cdp.jj}, 시주:${chp.cg}${chp.jj}\n상대방 성별:${compat.gender==="male"?"남성":"여성"}`;
+  }
+
+  if(tabId==="overall"){
+    const parts=[
+`【제1편 — 천명(天命)의 뿌리 — 하늘이 새긴 팔자와 타고난 기질】
+이 사주팔자에 하늘이 어떤 천명(天命)을 새겨 보냈는지, 일간(${saju.ilgan}/${saju.ilganKr})의 신명(神明), 오행 분포(${ohText}), 조상신의 음덕이 담긴 년·월주, 본인의 영혼을 담은 일주, 자녀·말년이 담긴 시주의 기운을 신명스럽고 풍부하게 풀이해주세요. 복성(福星)과 흉성(凶星)의 타고난 구조, 용신(用神)과 기신(忌神)의 의미를 고대 역술가가 전하듯 깊이 있게 서술하십시오.`,
+`【제2편 — 대운·세운의 물결 — 하늘이 10년마다 보내는 기운과 재물·직업의 천복(天福)】
+현재까지 조상신이 어떤 기운의 물결을 보내왔는지, 앞으로의 대운에서 복성이 드는 황금기와 흉성이 발동하는 시련기는 언제인지, 올해 세운이 이 사주와 어떻게 맞물리는지 전통 역술가의 문체로 서술해주세요. 재물복(財福)의 흐름, 횡재수(橫財數)가 드는 시기, 천직(天職)인 ${JKR[f.job]||f.job}에서 복성이 발동하는 때를 구체적으로 풀이하십시오.`,
+`【제3편 — 인연·결혼·건강·사고수·종합 천명 결론】
+하늘이 붉은 실로 맺어둔 인연의 기운, 배필성의 흐름(현재 ${MKR[f.marital]||f.marital}), 기신이 발동할 때의 사고수(事故數)와 병액(病厄) 경고, 삼재 해당 여부와 액막이 비방(秘方), 조상신이 이 사주를 통해 전하고자 하는 천명의 핵심을 신명스럽고 따뜻하게 서술해주세요.`,
+    ];
+    return`당신은 수십 년 경력의 대한민국 최고 사주명리학 거장입니다. 하늘의 이치를 읽는 역술가로서, 단순한 정보 나열이 아니라 한 사람의 천명(天命)을 조상신의 목소리로 전하듯 깊고 신명스럽게 풀이해주세요.
+
+【사주팔자 — 하늘이 새긴 여덟 글자】
+${sajuText}
+일간: ${saju.ilgan}(${saju.ilganKr}) — 하늘이 점지한 ${OH[saju.ilgan]}의 기운
+오행: ${ohText}
+생년: ${saju.birthYear}년 / ${personal}
+
+${parts[part||0]}
+
+【서술 방식 — 신명스러운 역술 문체】
+- "하늘이 점지하셨습니다", "조상신이 도우십니다", "복성이 발동합니다", "흉성이 물러갑니다", "천명을 완수하는 길", "조상의 음덕(蔭德)" 등 전통 역술 언어를 자연스럽게 사용
+- 횡재수·사고수·관재수·삼재·귀인성 등 사주 전문 용어를 적극 활용
+- 단순 나열이 아닌 기승전결이 있는 스토리 형식, 소제목 활용
+- 구체적인 시기, 숫자, 방향, 색상, 길방·길일 조언 포함
+- 5,000~8,000자 분량으로 최대한 상세하게 작성
+- 마지막에 조상신이 전하는 메시지 형식으로 결론 작성`;
+  }
+
+  const guides={
+    wealth:"재복(財福)의 구조, 횡재수(橫財數)가 드는 시기, 재물이 새어나가는 기신 시기, 투자·사업·직장에서 복성이 발동하는 때, 재물을 지키는 비방(秘方), 길방(吉方)·길색(吉色)·길수(吉數)를 포함하여 조상신이 재복을 어떻게 열어주는지 신명스럽게",
+    business:"사업의 흥망성쇠, 하늘이 점지한 천직(天職)과 유리한 업종, 동업에서 주의할 기운, 사업 확장의 황금 시기와 내실을 다져야 할 시련 시기, 귀인이 찾아오는 방향과 때를 포함하여 조상신이 사업복을 어떻게 열어주는지",
+    health:"기신 오행과 연결된 취약 장기, 사고수(事故數)와 병액(病厄)이 발동하기 쉬운 시기, 천수(天壽)를 누리는 비방, 용신 기운으로 몸을 보강하는 음식·생활법, 조상신이 경고하는 건강 신호를 포함하여",
+    accident:"흉성이 발동하는 사고수 시기, 교통·외상·수술 등 위험의 종류, 기신 오행이 강해지는 때, 액운을 물리치는 북두칠성 기도법·청수 기원·비방(秘方)을 포함하여 조상신의 경고와 보호법을",
+    love:"하늘이 붉은 실로 맺어둔 천생연분의 기운, 배필성(남성=재성/여성=관성)의 활성화 시기, 귀인성이 발동하는 방향, 사랑에서 흉성이 발동하는 주의 시기를 포함하여 신명스럽게",
+    marriage:"하늘이 점지한 배필의 기운, 결혼 길시(吉時)와 길방(吉方), 일지의 배우자 자리 분석, 부부 관계에서 복성이 강한 시기와 기신이 발동하는 주의 시기, 결혼 전 궁합 확인의 중요성을 포함하여",
+    samjae:"삼재(三災) 해당 여부 판단, 들삼재·눌삼재·날삼재의 시기와 기운, 삼재 기간의 주의사항, 새벽 기도·청수 기원·선행 쌓기 등 삼재를 물리치는 영적 비방(秘方)을 포함하여",
+    protection:"기신(忌神) 오행이 강해지는 액운 시기, 북두칠성 기도법·청수 기원·용신 방향 활용 등 액막이 비방(秘方), 손 없는 날(길일) 활용법, 선행으로 흉성을 물리치는 방법을 포함하여",
+    career:"하늘이 점지한 천직(天職)의 방향, 관성·식상 기운으로 본 직업 복성 분석, 승진·이직의 복성이 드는 시기, 직장에서 귀인이 찾아오는 방향과 때, 기신 발동 시기의 직업 주의사항을 포함하여",
+    study:"인성(印星) 기운으로 본 학업 복, 시험 복성이 드는 시기와 방향, 하늘이 이 사주에 점지한 학문 분야, 집중력 신명이 발동하는 환경을 포함하여 조상신이 어떻게 학업을 돕는지",
+    family:"하늘이 이 생에 맺어준 가족 영적 인연, 년주·월주·시주에 담긴 조상·부모·자녀와의 기운, 부모 음덕의 강약, 자녀 인연의 복성과 주의 시기, 가족에게 복이 오는 비방을 포함하여",
+    move:"이사 길방(吉方)과 흉방(凶方), 이사 길시(吉時)와 흉시, 손 없는 날 활용법, 새 집에서 조상신께 입주 고하는 기도법, 부동산 투자의 복성 시기와 주의사항을 포함하여",
+    travel:"여행 길방(吉方)·길시(吉時), 기신 기운이 강한 시기의 여행 주의사항, 이 사주의 해외운 기운 분석, 여행 전 조상신 기원법을 포함하여",
+    friend:"천을귀인(天乙貴人)의 기운 분석, 귀인이 찾아오는 방향과 때, 귀인의 특성, 소인배를 만나는 기신 시기 주의사항, 덕을 쌓아 귀인을 끌어당기는 비방을 포함하여",
+    lawsuit:"관재수(官災數)가 발동하는 시기, 충(沖)·형(刑) 기운 분석, 법적 문제 예방을 위한 계약 주의사항, 소송에서 조상신의 가호를 구하는 기도법을 포함하여",
+    newyear:"올해 세운(歲運)이 이 사주와 어떻게 맞물리는지, 복성이 충만한 달과 흉성이 발동하는 달, 올해 횡재수와 사고수가 드는 시기, 조상신이 올해 이 사주에게 전하는 천명의 메시지를 포함하여",
+    daily:"(별도 처리)",
+    daewoon:"현재 대운에서 조상신이 어떤 기운을 보내고 있는지, 복성 대운과 흉성 대운의 구분, 앞으로의 대운 변화에서 황금기와 시련기, 각 대운에서 복을 극대화하는 비방을 포함하여",
+    compat:"두 사주의 오행 상생·상극 관계, 천간·지지의 합(合)과 충(沖)·형(刑) 분석, 하늘이 이 두 인연을 어떻게 연결했는지, 궁합의 강점과 주의해야 할 부분, 두 사람의 인연을 더욱 깊게 하는 비방을 포함하여",
+  };
+
+  // ── 일일운세 특별 처리 (300자, 날짜 기반) ──
+  if(tabId==="daily"){
+    const today=new Date();
+    const yy=today.getFullYear(), mm=today.getMonth()+1, dd=today.getDate();
+    const weekDay=["일","월","화","수","목","금","토"][today.getDay()];
+    const focusArr=["재물과 횡재수","귀인과 인연","건강과 신명","천직과 업무","사랑과 연분","학업과 지혜","여행과 이동"];
+    const todayFocus=focusArr[(yy*31+mm*12+dd)%focusArr.length];
+    return`당신은 사주명리학 전문가입니다. 하늘의 기운을 읽는 역술가로서 신명스럽게 오늘의 기운을 전해주세요.
+
+【사주팔자】
+${sajuText}
+일간: ${saju.ilgan}(${saju.ilganKr}) — ${OH[saju.ilgan]}의 기운
+${personal}
+
+【오늘 날짜】 ${yy}년 ${mm}월 ${dd}일 (${weekDay}요일)
+【오늘 하늘의 초점】 ${todayFocus}
+
+오늘 하루(${mm}월 ${dd}일 ${weekDay}요일)의 기운을 아래 형식으로 신명스럽게 작성해주세요.
+🔮 오늘의 하늘 기운: (조상신이 오늘 보내는 기운, 한 줄)
+✅ 오늘 하늘이 권하는 것: (복성이 발동하는 행동, 한 줄)
+⚠️ 오늘 기신이 발동하는 것: (흉성이 붙는 행동, 한 줄)
+🍀 길방·길색·길수: (방향·색상·숫자, 한 줄)
+🙏 조상신의 말씀: (따뜻하고 신명스러운 응원, 한 줄)
+총 300자 내외로 간결하고 신명스럽게 작성해주세요.`;
+  }
+
+  return`당신은 수십 년 경력의 대한민국 최고 사주명리학 거장입니다. 하늘의 이치를 읽는 역술가로서, 조상신의 목소리로 전하듯 신명스럽고 깊이 있게 풀이해주세요.
+
+【사주팔자 — 하늘이 새긴 여덟 글자】
+${sajuText}
+일간: ${saju.ilgan}(${saju.ilganKr}) — ${OH[saju.ilgan]}의 기운
+오행: ${ohText}
+생년: ${saju.birthYear}년 / ${personal}${compatExtra}
+
+【풀이 주제】 "${tab.label}"
+${siSpec}${jobSpec}
+
+【서술 요구사항 — 신명스러운 역술 문체】
+${guides[tabId]||""} — 조상신의 목소리로 전하듯 신명스럽고 감동적인 문체로 서술해주세요.
+- "하늘이 점지하셨습니다", "조상신이 도우십니다", "복성(福星)이 발동합니다", "흉성이 물러갑니다", "천명(天命)", "음덕(蔭德)", "귀인(貴人)", "비방(秘方)" 등 전통 역술 언어 적극 활용
+- 횡재수·사고수·관재수·삼재·귀인성 등 사주 전문 용어를 자연스럽게 녹임
+- 소제목을 활용한 체계적 구성, 기승전결이 있는 스토리 형식
+- 구체적 시기, 숫자, 길방(吉方), 길색(吉色), 길일(吉日) 조언 포함
+- 4,000~6,000자 분량으로 최대한 상세하게 작성
+- 마지막에 조상신이 전하는 메시지 형식으로 핵심 조언 3가지 정리`;
+}
+
+// ══════════════════════════════════════════════
+//  🔴 STAGE 1 — Claude API (종합·대운·궁합)
+// ══════════════════════════════════════════════
+async function callClaude(prompt,maxTokens){
+  const res=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:maxTokens,
+      messages:[{role:"user",content:prompt}]})
+  });
+  if(!res.ok) throw new Error(`Claude HTTP ${res.status}`);
+  const data=await res.json();
+  if(data.error) throw new Error(data.error.message||"Claude 오류");
+  return data.content?.map(c=>c.text||"").join("")||"";
+}
+
+// ══════════════════════════════════════════════
+//  🟡 STAGE 2 — Groq API (Llama 4 Maverick → 3.3-70b 폴백)
+// ══════════════════════════════════════════════
+const GROQ_MODELS=["meta-llama/llama-4-maverick-17b-128e-instruct","llama-3.3-70b-versatile"];
+async function callGroq(prompt,maxTokens,groqKey){
+  if(!groqKey) throw new Error("GROQ_KEY_MISSING");
+  let lastErr=null;
+  for(const model of GROQ_MODELS){
+    try{
+      const res=await fetch("https://api.groq.com/openai/v1/chat/completions",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${groqKey}`},
+        body:JSON.stringify({model,max_tokens:maxTokens,
+          messages:[
+            {role:"system",content:"당신은 수십 년 경력의 대한민국 최고 사주명리학 거장입니다. 천명(天命)·조상신(祖上神)·신명(神明)·복성(福星)·흉성(凶星)·귀인(貴人)·비방(秘方)·음덕(蔭德) 등 전통 역술 언어를 자연스럽게 사용하여 조상신의 목소리로 전하듯 신명스럽고 깊이 있게 풀이해주세요. 반드시 한국어로 작성하십시오."},
+            {role:"user",content:prompt}
+          ]})
+      });
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data=await res.json();
+      if(data.error) throw new Error(data.error.message);
+      const txt=data.choices?.[0]?.message?.content||"";
+      if(!txt) throw new Error("빈 응답");
+      return txt;
+    }catch(e){ lastErr=e; continue; }
+  }
+  throw lastErr||new Error("Groq 모든 모델 실패");
+}
+
+// ══════════════════════════════════════════════
+//  🟢 STAGE 3 — 자체 사주 풀이 엔진 v2 (오프라인 서술형 / 20,000자)
+// ══════════════════════════════════════════════
+
+const pick=(arr,seed)=>arr[Math.abs(Math.floor(seed))%arr.length];
+const strSeed=(s)=>String(s).split("").reduce((a,c)=>a+c.charCodeAt(0),0);
+
+const ILGAN_DESC={
+  甲:{
+    nature:"갑목(甲木) 일간으로 태어난 당신에게 하늘은 거목(巨木)의 기운을 점지하였습니다. 하늘을 향해 곧게 뻗은 거목처럼, 당신은 태어날 때부터 천지신명(天地神明)으로부터 강직하고 굳센 기상을 타고났습니다. 조상의 음덕(蔭德)이 뿌리가 되어 어떤 폭풍에도 꺾이지 않는 천명(天命)을 품고 이 세상에 오셨습니다.",
+    strength:"하늘이 내리신 리더십과 추진력은 당신의 천부적 재능입니다. 새로운 길을 개척하고 사람들을 이끄는 신명(神明)의 기운이 강하게 흐르며, 한번 결심하면 귀신도 피하는 집중력으로 목표를 향해 나아갑니다. 주변 사람들이 자연스럽게 따르는 것은 하늘이 내리신 카리스마 덕분입니다.",
+    weakness:"다만 하늘의 뜻은 강함 속에 유연함도 함께 요구합니다. 지나친 고집은 때로 복(福)을 막는 장애물이 되니, 타인의 충고를 귀담아 듣는 것이 천명을 온전히 펼치는 길입니다.",
+    career:"하늘이 점지한 직분은 정치, 경영, 군인, 경찰, 교육, 법조계 등 지도력을 발휘하는 자리입니다. 이 길을 걸을 때 조상신이 가장 강하게 도우십니다.",
+    health:"간담(肝膽)의 기운을 각별히 보살펴야 합니다. 술을 절제하고 눈의 피로와 근육·인대 건강에 신경 쓰는 것이 천수(天壽)를 누리는 길입니다.",
+    lucky_color:"파란색, 초록색", lucky_dir:"동쪽", lucky_num:"1, 3"
+  },
+  乙:{
+    nature:"을목(乙木) 일간으로 태어난 당신에게 하늘은 강인한 생명력의 기운을 점지하였습니다. 거센 바람에도 부러지지 않고 담장을 타고 오르는 덩굴처럼, 어떤 역경 속에서도 살아남아 꽃을 피우는 천명을 안고 오셨습니다. 조상의 음덕이 당신의 유연함 속에 깃들어 있습니다.",
+    strength:"천지의 섬세한 기운을 온몸으로 받아들이는 감수성과 심미안은 하늘이 내리신 재능입니다. 사람의 마음을 읽고 조화를 이루는 신명의 기운이 흘러, 주변에서 자연스럽게 신뢰와 사랑을 받습니다. 꾸준한 인내로 결실을 맺는 것이 이 사주의 천명입니다.",
+    weakness:"하늘의 뜻은 당신에게 자신을 믿는 용기를 요구합니다. 남의 시선에 지나치게 흔들리면 복의 기운이 새어나가니, 내면의 신명을 믿고 결단을 내리는 연습이 필요합니다.",
+    career:"하늘이 점지한 직분은 예술, 디자인, 상담, 교육, 의료, 문학 등 감성과 섬세함이 빛나는 자리입니다. 이 길에서 조상신의 가호가 함께합니다.",
+    health:"간담 계통과 신경계 건강을 보살펴야 합니다. 스트레스가 쌓이면 신기(神氣)가 어지러워지니 규칙적인 휴식으로 기운을 다스리십시오.",
+    lucky_color:"초록색, 옅은 파란색", lucky_dir:"동쪽, 남동쪽", lucky_num:"2, 3"
+  },
+  丙:{
+    nature:"병화(丙火) 일간으로 태어난 당신에게 하늘은 태양의 기운을 점지하였습니다. 온 누리를 밝히는 태양처럼, 당신은 태어날 때부터 주위를 환하게 비추고 생명력을 불어넣는 천명을 부여받았습니다. 하늘의 가장 밝은 빛이 이 사주에 담겨 있어, 가는 곳마다 신명이 함께합니다.",
+    strength:"하늘이 내리신 밝음과 열정은 사람들을 끌어당기는 신명의 기운입니다. 한번 결심하면 천지를 움직이는 추진력으로 밀어붙이며, 대중 앞에서 빛을 발하는 것이 이 사주의 천명입니다. 조상신이 화려한 무대를 열어주시는 사주입니다.",
+    weakness:"태양의 기운이 지나치면 만물을 태우듯, 열정이 과도하면 충동적 결정으로 복을 잃을 수 있습니다. 하늘의 뜻은 밝음과 차분함의 균형 속에 있습니다.",
+    career:"하늘이 점지한 직분은 연예, 방송, 영업, 마케팅, 정치, 강사 등 사람들 앞에 서는 자리입니다. 이 길에서 신명이 가장 강하게 도우십니다.",
+    health:"심장과 혈압을 각별히 보살펴야 합니다. 화(火)의 기운이 과도해지지 않도록 마음의 평정을 유지하는 것이 천수를 누리는 길입니다.",
+    lucky_color:"빨간색, 주황색", lucky_dir:"남쪽", lucky_num:"2, 7"
+  },
+  丁:{
+    nature:"정화(丁火) 일간으로 태어난 당신에게 하늘은 촛불의 기운을 점지하였습니다. 어둠 속에서 은은히 빛을 발하는 촛불처럼, 당신은 세상의 어두운 곳을 따뜻하게 밝히는 천명을 안고 오셨습니다. 신명(神明)이라는 글자 그대로, 이 사주에는 보이지 않는 신령한 기운이 특별히 깃들어 있습니다.",
+    strength:"하늘이 내리신 직관력과 통찰력은 보통 사람이 보지 못하는 것을 꿰뚫어 보는 신명의 능력입니다. 사람의 마음 깊은 곳을 읽는 것은 조상신이 내리신 영적 감수성 덕분이며, 한번 마음을 준 인연은 영적으로도 깊이 연결된 소중한 인연입니다.",
+    weakness:"신명이 강한 사주는 예민함도 함께 따릅니다. 지나친 내면의 고통은 신기(神氣)를 소진시키니, 스스로를 너그럽게 대하는 것이 하늘의 뜻에 부합합니다.",
+    career:"하늘이 점지한 직분은 의학, 심리상담, 예술, 문학, 종교, 철학 등 깊이 있는 탐구의 자리입니다. 신명이 특별히 가호하는 분야입니다.",
+    health:"심장과 소화기를 보살펴야 합니다. 스트레스가 쌓이면 심화(心火)가 오르고 신기가 흔들리니, 마음의 안정이 곧 건강의 근본입니다.",
+    lucky_color:"빨간색, 보라색", lucky_dir:"남쪽, 남동쪽", lucky_num:"3, 7"
+  },
+  戊:{
+    nature:"무토(戊土) 일간으로 태어난 당신에게 하늘은 대지(大地)의 기운을 점지하였습니다. 만물을 품어 기르는 산과 같은 존재로, 하늘과 땅 사이에서 가장 안정적인 중심의 자리를 천명으로 부여받으셨습니다. 조상의 두터운 음덕이 대지처럼 당신을 떠받치고 있습니다.",
+    strength:"하늘이 내리신 신용과 성실함은 어떤 관계에서도 신뢰의 기둥이 됩니다. 사람들이 자연스럽게 모여드는 것은 조상신이 넓은 포용의 기운을 내려주신 덕분이며, 묵묵히 실행하는 힘은 땅의 신명이 함께하기 때문입니다.",
+    weakness:"대지는 변화보다 안정을 원합니다. 지나친 고집으로 하늘이 열어주는 새로운 기회의 문을 막지 않도록, 때로는 과감히 변화를 받아들이는 것이 복을 여는 길입니다.",
+    career:"하늘이 점지한 직분은 부동산, 건설, 금융, 행정, 공무원, 교육 등 안정의 기운이 빛나는 자리입니다.",
+    health:"비위(脾胃) 소화기를 보살펴야 합니다. 과식을 삼가고 규칙적인 생활로 대지의 기운을 안정시키는 것이 천수를 누리는 길입니다.",
+    lucky_color:"노란색, 황토색", lucky_dir:"중앙, 북동쪽", lucky_num:"5, 0"
+  },
+  己:{
+    nature:"기토(己土) 일간으로 태어난 당신에게 하늘은 기름진 전답(田畓)의 기운을 점지하였습니다. 씨앗을 받아 생명으로 피워내는 비옥한 땅처럼, 당신은 모든 것을 받아들이고 가치 있게 변환시키는 천명을 부여받으셨습니다. 조상의 근면한 음덕이 이 사주에 깊이 스며있습니다.",
+    strength:"하늘이 내리신 꼼꼼함과 성실함은 맡은 일을 빈틈없이 완수하는 신명의 능력입니다. 현실적 감각과 인내심으로 큰 결실을 맺는 것이 이 사주의 천명이며, 작은 씨앗도 풍성한 열매로 키우는 복(福)의 기운이 담겨 있습니다.",
+    weakness:"하늘의 뜻은 세밀함과 큰 안목이 함께하기를 원합니다. 지나친 걱정은 신기를 소진시키니 큰 그림을 보는 여유를 가지는 것이 중요합니다.",
+    career:"하늘이 점지한 직분은 회계, 행정, 의료, 요리, 상업, 교육 등 세밀함이 빛나는 자리입니다.",
+    health:"소화기와 피부를 보살펴야 합니다. 습기와 냉기를 조심하고 몸을 따뜻하게 유지하는 것이 건강의 근본입니다.",
+    lucky_color:"노란색, 갈색", lucky_dir:"중앙, 남서쪽", lucky_num:"5, 0"
+  },
+  庚:{
+    nature:"경금(庚金) 일간으로 태어난 당신에게 하늘은 강철과 원석의 기운을 점지하였습니다. 광산에서 캐낸 원석처럼 무한한 잠재력을 품고 있으며, 갈고 닦을수록 더욱 빛나는 천명을 부여받으셨습니다. 하늘은 이 사주에 강한 의지와 정의의 신명을 담아 내보내셨습니다.",
+    strength:"하늘이 내리신 결단력과 정의감은 불의 앞에서도 굴하지 않는 신명의 기운입니다. 어떤 역경에도 꺾이지 않는 강한 의지력과 목표를 향해 일직선으로 나아가는 집중력은 조상신이 내리신 천부적 재능입니다.",
+    weakness:"강철도 단련을 거쳐야 보검이 되듯, 유연함을 갖추는 것이 하늘이 원하는 완성의 길입니다. 감정 표현을 부드럽게 하면 더 많은 귀인이 찾아옵니다.",
+    career:"하늘이 점지한 직분은 군인, 경찰, 법조인, 의사, 기술자, 금융·투자 분야입니다. 이 길에서 조상신이 강하게 가호합니다.",
+    health:"폐와 대장을 보살펴야 합니다. 맑은 공기와 규칙적인 호흡으로 금(金)의 기운을 맑게 유지하는 것이 천수의 길입니다.",
+    lucky_color:"흰색, 금색", lucky_dir:"서쪽", lucky_num:"4, 9"
+  },
+  辛:{
+    nature:"신금(辛金) 일간으로 태어난 당신에게 하늘은 완성된 보석의 기운을 점지하였습니다. 오랜 세월 연마되어 찬란히 빛나는 보석처럼, 당신은 태어날 때부터 하늘의 정교한 손길로 다듬어진 존재입니다. 신명이 특별히 사랑하는 사주로, 예리한 통찰과 아름다움을 추구하는 천명을 지니셨습니다.",
+    strength:"하늘이 내리신 완벽을 향한 의지와 섬세한 감각은 어느 분야에서든 최고를 만들어내는 신명의 능력입니다. 날카로운 분석력과 한번 정한 원칙을 지키는 굳건함은 조상신이 내려주신 귀한 덕목입니다.",
+    weakness:"하늘은 보석에게도 유연함을 요구합니다. 지나친 완벽주의는 신기를 소모하니, 스스로에게 너그러움을 베푸는 것이 복을 여는 길입니다.",
+    career:"하늘이 점지한 직분은 의학, 연구, 예술, 법조, 금융, 디자인 등 섬세함과 전문성이 요구되는 자리입니다.",
+    health:"폐와 피부를 보살펴야 합니다. 스트레스가 신기를 흔들기 전에 마음의 평화를 먼저 찾는 것이 건강의 근본입니다.",
+    lucky_color:"흰색, 은색", lucky_dir:"서쪽, 북서쪽", lucky_num:"4, 9"
+  },
+  壬:{
+    nature:"임수(壬水) 일간으로 태어난 당신에게 하늘은 대해(大海)의 기운을 점지하였습니다. 모든 강이 흘러드는 바다처럼, 당신은 천지의 모든 지혜와 경험을 받아들이는 광대한 천명을 부여받으셨습니다. 하늘은 이 사주에 시대를 꿰뚫는 지혜의 신명을 담아 내보내셨습니다.",
+    strength:"하늘이 내리신 통찰력과 지혜는 남들이 보지 못하는 것을 꿰뚫어 보는 신명의 눈입니다. 유연한 적응력으로 어떤 환경에서도 살아남으며, 큰 그림을 그리고 전략을 세우는 능력은 조상신이 내려주신 귀한 재능입니다.",
+    weakness:"대해의 기운이 너무 넓으면 방향을 잃을 수 있습니다. 하나에 집중하는 훈련이 하늘이 열어주는 복의 통로를 넓힙니다.",
+    career:"하늘이 점지한 직분은 외교, 무역, 연구, 철학, 종교, 예술, 금융 분야입니다. 물의 기운이 흐르는 곳에서 신명이 도우십니다.",
+    health:"신장과 방광을 보살펴야 합니다. 냉기를 조심하고 몸을 따뜻하게 유지하는 것이 수(水)의 기운을 다스리는 길입니다.",
+    lucky_color:"검은색, 진한 파란색", lucky_dir:"북쪽", lucky_num:"1, 6"
+  },
+  癸:{
+    nature:"계수(癸水) 일간으로 태어난 당신에게 하늘은 이슬과 샘물의 기운을 점지하였습니다. 대지를 촉촉이 적시는 이슬비처럼, 당신은 세상에 스며들어 생명을 살리는 은밀하고 깊은 천명을 안고 오셨습니다. 이 사주에는 보이지 않는 세계와 소통하는 영적 감수성이 특별히 담겨 있습니다.",
+    strength:"하늘이 내리신 직관력과 감수성은 사람의 마음 깊은 곳을 읽고 보이지 않는 기운을 감지하는 신명의 능력입니다. 조용하지만 깊은 존재감으로 주변에 선한 영향력을 미치는 것이 이 사주의 천명입니다.",
+    weakness:"하늘은 당신에게 자신의 능력을 믿는 용기를 요구합니다. 스스로를 과소평가하는 것은 조상신이 내려주신 복을 막는 장애물이 됩니다.",
+    career:"하늘이 점지한 직분은 예술, 문학, 상담, 의료, 종교, 철학, 심리치료 분야입니다. 영적 기운이 강한 분야에서 신명이 강하게 도우십니다.",
+    health:"신장과 방광, 면역력을 보살펴야 합니다. 냉증과 부종에 유의하고 몸을 따뜻하게 유지하는 것이 천수의 길입니다.",
+    lucky_color:"검은색, 짙은 파란색", lucky_dir:"북쪽, 북서쪽", lucky_num:"1, 6"
+  }
+};
+
+const OH_ORGAN={木:"간·담낭·눈·근육·인대",火:"심장·소장·혈관·혀",土:"비장·위장·소화기·입",金:"폐·대장·피부·코",水:"신장·방광·뼈·귀"};
+const OH_SEASON={木:"봄(1~4월)",火:"여름(5~7월)",土:"환절기(3·6·9·12월)",金:"가을(8~10월)",水:"겨울(11월~1월)"};
+const OH_DIR={木:"동쪽",火:"남쪽",土:"중앙",金:"서쪽",水:"북쪽"};
+const OH_NUM={木:"1, 3",火:"2, 7",土:"5, 0",金:"4, 9",水:"1, 6"};
+const OH_COLOR={木:"초록, 파랑",火:"빨강, 주황",土:"노랑, 황토",金:"흰색, 금색",水:"검정, 짙은 파랑"};
+const OH_RELATE={木:{生:"水",剋:"土",被剋:"金"},火:{生:"木",剋:"金",被剋:"水"},土:{生:"火",剋:"水",被剋:"木"},金:{生:"土",剋:"木",被剋:"火"},水:{生:"金",剋:"火",被剋:"土"}};
+const JJ_CHAR={
+  子:"영리하고 직관이 뛰어나며 생존 본능이 강합니다",丑:"성실하고 인내심이 강하며 신중합니다",
+  寅:"용기 있고 추진력이 강하며 독립심이 넘칩니다",卯:"온화하고 친화력이 있으며 예술 감각이 뛰어납니다",
+  辰:"포부가 크고 다재다능하며 때로 변덕스럽습니다",巳:"지혜롭고 신중하며 집중력이 강합니다",
+  午:"열정적이고 표현력이 풍부하며 독립심이 강합니다",未:"온화하고 배려심이 깊으며 예술적 감각이 있습니다",
+  申:"민첩하고 재치 있으며 적응력이 탁월합니다",酉:"완벽주의 성향이 있으며 심미안이 뛰어납니다",
+  戌:"충성심이 강하고 정의감이 넘치며 용감합니다",亥:"지혜롭고 자유를 사랑하며 탐구심이 강합니다"
+};
+
+function getOhAnalysis(ohCnt){
+  const entries=Object.entries(ohCnt).sort((a,b)=>b[1]-a[1]);
+  const strong=entries.filter(([,v])=>v>=2).map(([k])=>k);
+  const weak=entries.filter(([,v])=>v===0).map(([k])=>k);
+  const balanced=strong.length===0&&weak.length===0;
+  const total=Object.values(ohCnt).reduce((a,b)=>a+b,0);
+  return{strong,weak,balanced,total,entries};
+}
+
+function getYongshin(ilgan,ohCnt){
+  // 일간 오행의 강약에 따른 용신 추론
+  const ilganOh=OH[ilgan];
+  const cnt=ohCnt[ilganOh]||0;
+  const {strong,weak}=getOhAnalysis(ohCnt);
+  // 일간이 강하면 억제해주는 오행이 용신, 약하면 생조해주는 오행이 용신
+  if(cnt>=2||strong.includes(ilganOh)){
+    // 강한 경우 → 剋하거나 설기하는 오행이 용신
+    const k=OH_RELATE[ilganOh]?.剋; // 내가 극하는 오행 (재성)
+    const b=OH_RELATE[ilganOh]?.被剋; // 나를 극하는 오행 (관성)
+    return{type:"신강",yongshin:b||k,desc:"사주 기운이 강한 신강(身强) 구조입니다. 강한 기운을 적절히 설기하고 다스리는 오행을 활용하면 크게 발전할 수 있습니다."};
+  } else {
+    // 약한 경우 → 생조해주는 오행이 용신
+    const g=OH_RELATE[ilganOh]?.生; // 나를 생하는 오행 (인성)
+    return{type:"신약",yongshin:g||ilganOh,desc:"사주 기운이 다소 약한 신약(身弱) 구조입니다. 일간을 도와주는 인성(印星)의 기운을 활용하고 생조(生助)하는 환경에 있으면 크게 성장합니다."};
+  }
+}
+
+function selfOverall(s){
+  const p=s.pillars; // [시주, 일주, 월주, 년주]
+  const yp=p[3], mp=p[2], dp=p[1], hp=p[0];
+  const ilganD=ILGAN_DESC[s.ilgan]||ILGAN_DESC["甲"];
+  const {strong,weak,balanced}=getOhAnalysis(s.ohCnt);
+  const yon=getYongshin(s.ilgan,s.ohCnt);
+  const gender=s.form.gender==="male"?"남성":"여성";
+  const marital={single:"미혼",married:"기혼",divorced:"이혼",bereaved:"사별"}[s.form.marital]||"미혼";
+  const job={employee:"직장인",business:"자영업자",freelance:"프리랜서",student:"학생",none:"무직",publicJob:"공무원",medical:"의료직",artist:"예술·창작직",it:"IT개발자",finance:"금융·투자업",other:"기타직종"}[s.form.job]||"직장인";
+  const dw=s.daewoon||[];
+  const strongDesc=strong.length>0?`${strong.map(k=>`${OHE[k]}${k}(${OHN[k]})`).join("·")} 기운이 강하게 흐르며,`:"오행이 비교적 고르게 분포되어 있으며,";
+  const weakDesc=weak.length>0?`반면 ${weak.map(k=>`${OHE[k]}${k}(${OHN[k]})`).join("·")} 기운이 부족하여 이 오행과 관련된 영역을 의식적으로 보완해 나가는 것이 중요합니다.`:"특별히 결핍된 오행 없이 비교적 균형 잡힌 구조입니다.";
+
+  const txt=
+`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔮 사주팔자 천명(天命) 완전 풀이 🔮
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【하늘이 새긴 여덟 글자】
+년주(年柱): ${yp.cg}${yp.jj}(${yp.cgk}${yp.jjk}) — ${yp.ani}띠, 조상신의 기운
+월주(月柱): ${mp.cg}${mp.jj}(${mp.cgk}${mp.jjk}) — 부모·형제 덕의 기운
+일주(日柱): ${dp.cg}${dp.jj}(${dp.cgk}${dp.jjk}) — 본인과 배우자의 기운
+시주(時柱): ${hp.cg}${hp.jj}(${hp.cgk}${hp.jjk}) — 자녀·말년의 기운
+
+오행 분포: 木${s.ohCnt["木"]}개 火${s.ohCnt["火"]}개 土${s.ohCnt["土"]}개 金${s.ohCnt["金"]}개 水${s.ohCnt["水"]}개
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✦ 제1장 — 천명(天命)과 타고난 기질
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+하늘은 사람을 내보낼 때 반드시 그 사람만의 쓰임새와 역할을 함께 새겨 보냅니다. 이것이 바로 천명(天命)이며, 사주팔자는 그 천명을 읽어내는 고대의 지혜입니다. ${gender}인 당신의 일간은 ${s.ilgan}(${s.ilganKr})으로, 하늘이 당신에게 ${OH[s.ilgan]}의 기운을 근본으로 점지하셨습니다.
+
+${ilganD.nature}
+
+${s.birthYear}년 ${yp.ani}띠의 해, ${mp.cgk}월에 태어난 당신의 사주는 조상신(祖上神)의 음덕(蔭德)이 깊이 스며있는 구조입니다. 특히 일지(日支) ${dp.jj}(${dp.jjk})는 전생의 인연과 현생에서 맺어진 내면의 기운을 상징하며, ${JJ_CHAR[dp.jj]||"뚜렷한 성격적 특징"}는 천성이 당신의 영혼 깊은 곳에 새겨져 있습니다.
+
+년지(年支) ${yp.jj}(${yp.jjk})의 ${yp.ani}띠 기운에는 당신의 조상으로부터 내려온 영적 유산이 담겨 있습니다. ${JJ_CHAR[yp.jj]||"이 기운"}는 성품이 핏줄을 타고 흘러 당신에게 전해졌으며, 이 조상의 기운이 삶의 굵직한 고비마다 보이지 않는 손길로 당신을 이끌어왔습니다.
+
+${ilganD.strength}
+
+이것은 단순한 개인의 능력이 아닙니다. 하늘이 당신을 이 세상에 내보내면서 함께 점지한 신명(神明)의 기운입니다. 이 기운을 충분히 발휘하는 것이 곧 천명을 완수하는 길입니다.
+
+${ilganD.weakness}
+
+하늘은 강함과 함께 반드시 보완할 과제도 함께 주십니다. 이것은 벌이 아니라 성장의 여지이며, 이를 깨닫고 다듬어 나갈 때 조상신이 더욱 강하게 도우십니다.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✦ 제2장 — 오행(五行) 기운과 용신(用神)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+천지(天地)의 모든 이치는 木·火·土·金·水 다섯 기운의 순환으로 이루어집니다. 사주팔자에 담긴 이 다섯 기운의 균형이 재물복(財物福), 건강, 인연, 출세, 수명까지 삶의 모든 영역을 주관합니다.
+
+당신의 사주를 살피니, ${strongDesc} ${weakDesc}
+
+${yon.desc}
+
+용신(用神)이란 하늘이 당신의 사주에 부족한 기운을 채워주도록 점지한 가장 소중한 오행입니다. 당신의 용신은 ${yon.yongshin}(${OHN[yon.yongshin]||"균형"}) 기운으로, 이 기운을 가까이 할수록 조상신의 음덕이 더욱 강하게 발동하여 삶의 모든 흐름이 원활해집니다.
+
+용신 기운을 생활에서 활용하는 비방(秘方)입니다. 거주지나 이사 방향은 ${OH_DIR[yon.yongshin]||"남쪽"}이 길하고, 옷이나 소품에 ${OH_COLOR[yon.yongshin]||"다양한 색상"}을 활용하면 기운이 보강됩니다. 행운의 숫자 ${OH_NUM[yon.yongshin]||"1, 5"}는 중요한 계약, 날짜, 번호에 활용하면 좋습니다.
+
+복성(福星)이 빛나는 시기인 ${strong.length>0?OH_SEASON[strong[0]]:"봄"}에는 하늘이 문을 활짝 열어 귀인(貴人)과 재물이 자연스럽게 찾아옵니다. 이 시기에 중요한 결정을 내리고 도전하면 조상신이 뒤를 받쳐주십니다.
+
+반면 기신(忌神) 기운이 강해지는 시기에는 흉성(凶星)이 발동하여 예상치 못한 시련이 올 수 있습니다. 이때는 새로운 시도보다 몸과 마음을 단단히 지키며 액운이 지나가길 기다리는 것이 하늘의 뜻에 부합합니다.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✦ 제3장 — 사주 네 기둥이 전하는 천기(天機)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+사주팔자의 네 기둥은 하늘이 한 사람의 인생 전체를 네 챕터로 나누어 새겨놓은 천기(天機)의 책입니다.
+
+【년주(年柱) ${yp.cg}${yp.jj} — 조상신과 유년의 기운】
+년주는 조상으로부터 내려오는 영적 유산의 뿌리입니다. ${yp.cg}(${yp.cgk})와 ${yp.jj}(${yp.jjk})에 깃든 ${OH[yp.cg]}·${OH[yp.jj]}의 기운은 당신의 가문에 흐르는 신명(神明)의 성격을 보여줍니다. 조상신의 음덕이 두텁게 자리하고 있어, 인생의 고비마다 보이지 않는 손길이 당신을 지켜왔습니다. 이 조상의 기운에 감사하고 기도하는 것이 복을 여는 첫 번째 열쇠입니다.
+
+【월주(月柱) ${mp.cg}${mp.jj} — 부모 덕과 사회적 천명】
+월주는 이 세상에 나를 내보낸 부모의 기운이자, 사회에서 나의 역할을 알려주는 기둥입니다. ${mp.cg}(${mp.cgk})와 ${mp.jj}(${mp.jjk})의 기운은 부모님과의 인연, 형제자매와의 영적 연결, 그리고 사회에서 당신이 어떤 빛을 발해야 하는지를 담고 있습니다. 부모님께 효도하고 감사한 마음을 간직할 때 이 기둥의 복이 더욱 활성화됩니다.
+
+【일주(日柱) ${dp.cg}${dp.jj} — 영혼의 본모습과 배우자 인연】
+일주는 사주팔자의 심장입니다. 일간 ${dp.cg}(${dp.cgk})는 당신의 영혼이 이 세상에 내려올 때 가져온 본래의 기질이며, 일지 ${dp.jj}(${dp.jjk})는 전생의 인연으로 이어진 배우자 자리를 의미합니다. ${JJ_CHAR[dp.jj]||"강한 기운"}는 특성의 배우자와 깊은 인연이 있으며, 이 일주의 기운이 안정될수록 결혼생활과 중년 이후의 삶에 조상신의 가호가 충만해집니다.
+
+【시주(時柱) ${hp.cg}${hp.jj} — 자녀 인연과 말년의 복】
+시주는 자녀와의 영적 인연, 그리고 노후에 하늘이 준비해 둔 복의 마지막 챕터입니다. ${hp.cg}(${hp.cgk})와 ${hp.jj}(${hp.jjk})에 담긴 ${OH[hp.cg]}의 기운은 자녀들이 가져올 기운의 성격을 보여줍니다. 말년에는 이 ${OHN[OH[hp.cg]]} 기운과 어울리는 환경에서 진정한 안식과 복락(福樂)을 누리게 됩니다.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✦ 제4장 — 대운(大運)의 흐름 — 하늘이 정한 인생의 물결
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+대운(大運)은 하늘이 10년 단위로 바꾸어 보내는 인생의 큰 기운입니다. 이 기운의 성격에 따라 복성이 빛나는 황금기(黃金期)와 흉성이 발동하는 시련기(試鍊期)가 교차합니다. 이 흐름을 미리 알고 순응하는 자는 흥하고, 거스르는 자는 고통받는 것이 천지의 이치입니다.
+
+${dw.slice(0,6).map((d,i)=>`${d.age}세(${d.year}년~) 대운 ${d.cg}${d.jj}(${d.cgk}${d.jjk}): ${OH[d.cg]}·${OH[d.jj]} 기운 — ${
+  OH[d.cg]===yon.yongshin||OH[d.jj]===yon.yongshin?"🌟 복성(福星) 대운. 조상신이 가장 강하게 도우시는 황금기입니다. 적극적으로 도전하고 귀인을 만날 절호의 시기입니다.":
+  OH[d.cg]===OH[s.ilgan]||OH[d.jj]===OH[s.ilgan]?"⭐ 일간 강화 대운. 신명의 기운이 충만해져 자신의 역량을 최대로 발휘할 수 있습니다. 하늘이 능력을 시험하는 시기입니다.":
+  OH_RELATE[OH[s.ilgan]]?.生===OH[d.cg]||OH_RELATE[OH[s.ilgan]]?.生===OH[d.jj]?"📖 인성(印星) 대운. 귀인의 도움과 지식·지혜가 찾아오는 시기. 배움과 준비로 다음 도약을 쌓아가십시오.":
+  OH_RELATE[OH[s.ilgan]]?.剋===OH[d.cg]||OH_RELATE[OH[s.ilgan]]?.剋===OH[d.jj]?"💰 재성(財星) 대운. 재물과 이성 인연이 움직이는 시기. 재물복이 열리나 관리에 신중을 기하십시오.":
+  "⚡ 변화와 시련의 대운. 흉성이 발동하기 쉬운 시기입니다. 욕심을 줄이고 기도와 선행으로 액운을 물리치십시오."
+}`).join("\n\n")}
+
+하늘이 이 사주에 새긴 대운의 전체 흐름을 보면, ${dw.length>0?`${dw[0].age}세`:"청년기"}부터 본격적인 천명의 길이 열립니다. 인생 중반에 조상신의 가호가 가장 강하게 발동하며, 후반부로 갈수록 쌓아온 덕(德)과 복이 꽃을 피워 안정과 풍요의 시기가 옵니다.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✦ 제5장 — 천직(天職)과 재물복(財物福)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+하늘은 모든 사람에게 가장 빛나는 자리, 즉 천직(天職)을 정해두었습니다. 현재 ${job}으로 활동하는 당신에게 하늘이 점지한 직분은 ${ilganD.career} 이 길에서 조상신의 가호가 가장 강하게 발동하여 성취와 명예가 따라옵니다.
+
+재물복은 재성(財星), 즉 일간이 다스리는 오행의 기운을 통해 발동합니다. 당신의 사주에는 ${strong.length>0?`${strong.map(k=>OHN[k]).join("·")} 기운이 강해`:"균형 잡힌 오행의 조화로"} 꾸준한 노력이 결실로 이어지는 재복(財福) 구조를 갖추고 있습니다.
+
+복성이 드는 ${OH_SEASON[yon.yongshin]||"봄"}에는 뜻밖의 재물이 들어오는 횡재수(橫財數)가 발동할 수 있습니다. 이 시기에는 귀인이 좋은 소식을 가져오거나 숨겨진 기회가 드러나므로, 주변의 인연을 소중히 하고 새로운 제안에 마음을 열어두십시오.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✦ 제6장 — 인연과 배필운 — 하늘이 맺어준 실
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+하늘은 태어나기 전 이미 붉은 실로 인연을 이어두었다고 합니다. ${s.ilgan}(${s.ilganKr}) 일간은 인간관계에서 ${
+  ["甲","丙","戊","庚","壬"].includes(s.ilgan)?"하늘이 내리신 직선적이고 강직한 기운으로 관계를 이끕니다. 겉과 속이 같아 신명이 신뢰의 복을 내려주지만, 유연함을 기르면 더 많은 귀인이 찾아옵니다":"하늘이 내리신 섬세하고 공감하는 기운으로 관계를 가꿉니다. 상대의 마음을 읽는 영적 감수성이 뛰어나 자연스럽게 귀인을 끌어당기는 복이 있습니다"
+}.
+
+현재 ${marital} 상태인 당신의 배필운을 보면, ${
+  s.form.marital==="single"?"하늘이 이미 정해둔 인연이 때를 기다리고 있습니다. 일주(日柱)의 배우자 자리가 인연의 씨앗을 품고 있으며, 자신의 천명에 충실하게 살아갈 때 조상신이 정해둔 배필이 자연스럽게 그 붉은 실을 당겨올 것입니다. 억지로 찾는 인연보다 스스로 빛날 때 만남이 이루어집니다":
+  s.form.marital==="married"?"하늘이 붉은 실로 이어준 소중한 인연과 함께하고 있습니다. 부부 간의 기운이 서로를 보완하도록 하늘이 설계하였으니, 감사와 배려로 관계를 매일 새롭게 하는 것이 이 인연의 복을 온전히 누리는 길입니다":
+  "하늘은 새로운 인연의 씨앗을 이미 준비해두고 있습니다. 지나간 인연을 통해 영혼이 한층 깊어진 당신은, 이제 더욱 성숙한 눈으로 하늘이 정해둔 새 인연을 알아볼 수 있게 되었습니다"
+}.
+
+귀인성(貴人星)이 강하게 발동하는 방향은 ${OH_DIR[yon.yongshin]||"동쪽"}입니다. 이 방향에서 오는 인연, 혹은 ${OH_COLOR[yon.yongshin]||"다양한 색상"}의 기운을 지닌 사람이 당신의 천생연분이자 귀인일 가능성이 높습니다.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✦ 제7장 — 건강과 사고수 — 몸을 지키는 하늘의 경고
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+하늘은 기신(忌神)이 발동하는 시기에 사고수(事故數)와 병액(病厄)의 신호를 먼저 보내어 경고합니다. 이 신호를 알아채고 몸을 사리는 것이 천수(天壽)를 누리는 지혜입니다.
+
+${s.ilgan}(${s.ilganKr}) 일간의 선천적 취약 부위는 ${ilganD.health} 이는 하늘이 이 사주에게 특별히 보살피도록 맡긴 몸의 부분입니다.
+
+기신 오행과 연결된 ${weak.length>0?weak.map(k=>`${OHN[k]}(${OH_ORGAN[k]})`).join("·"):"몸 전반"} 계통은 ${weak.length>0?OH_SEASON[weak[0]]:"환절기"}에 흉성이 발동하기 쉬우니 이 시기에 각별한 보살핌이 필요합니다. 사고수가 드는 시기에는 교통, 수술, 외상에 주의하고, 새벽 기도와 조상신께 가호를 구하는 것이 액운을 물리치는 비방(秘方)입니다.
+
+${strong.length>0?`강한 ${strong.map(k=>OHN[k]).join("·")} 기운이 과도해지지 않도록`:""} 계절의 변화에 따라 몸의 기운을 다스리십시오. 건강은 곧 신명(神命)을 보전하는 일이며, 몸을 소중히 하는 것이 하늘에 대한 감사의 표현입니다.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✦ 제8장 — 천명(天命)의 결론 — 하늘이 당신에게 전하는 말씀
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+사주팔자를 모두 살피고 나니, 하늘이 이 사주에 담아 보낸 뜻이 분명하게 보입니다. 어떤 사주도 완전히 좋거나 나쁜 것은 없습니다. 복(福)과 액(厄)이 공존하는 것이 천지의 법칙이며, 중요한 것은 자신의 천명을 알고 그에 맞게 살아가는 것입니다.
+
+${s.ilgan}(${s.ilganKr}) 일간의 당신에게 하늘이 전하는 말씀은 이렇습니다.
+
+첫째, 하늘이 점지한 천직과 방향을 믿고 꾸준히 나아가십시오. 조상신이 이미 그 길에 복을 심어두었습니다. 흔들리지 않는 믿음과 성실함이 그 복을 꽃피웁니다.
+
+둘째, 용신 ${OHN[yon.yongshin]||"균형"} 기운을 생활 속에서 가까이 하십시오. 이 기운은 조상신이 당신에게 보내주는 도움의 통로입니다. 방향은 ${OH_DIR[yon.yongshin]||"동쪽"}, 색상은 ${OH_COLOR[yon.yongshin]||"다양한 색상"}, 숫자는 ${OH_NUM[yon.yongshin]||"1, 5"}를 활용하십시오.
+
+셋째, 기신이 발동하는 시련의 시기에는 욕심을 내려놓고 선행을 쌓으며 조상신께 기도하십시오. 하늘은 고통 속에서도 반드시 탈출구를 열어두십니다. 시련은 더 큰 복을 위한 하늘의 준비 과정입니다.
+
+당신의 사주에는 분명한 천명이 빛나고 있습니다. 하늘이 이 세상에 내보낸 단 하나의 당신으로서, 조상신의 음덕을 받들고 천명의 길을 당당히 걸어가시길 바랍니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ 자체 분석 모드 — AI 서버 연결 시 더욱 깊은 신명 풀이를 받으실 수 있습니다
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+  return txt;
+}
+
+function selfWealth(s){
+  const {strong,weak}=getOhAnalysis(s.ohCnt);
+  const yon=getYongshin(s.ilgan,s.ohCnt);
+  const ilganD=ILGAN_DESC[s.ilgan]||ILGAN_DESC["甲"];
+  const p=s.pillars;
+  const yp=p[3], mp=p[2];
+  const seed=strSeed(s.ilgan+s.birthYear);
+  const wealthSeason=OH_SEASON[yon.yongshin]||pick(["봄(1~3월)","여름(4~6월)","가을(7~9월)","겨울(10~12월)"],seed);
+  const cautionSeason=OH_SEASON[weak[0]]||pick(["3월","6월","9월","12월 환절기"],seed+1);
+  const jobLabel={employee:"직장인",business:"자영업자",freelance:"프리랜서",student:"학생",none:"무직",publicJob:"공무원",medical:"의료직",artist:"예술·창작직",it:"IT개발자",finance:"금융·투자업",other:"기타직종"}[s.form.job]||"직장인";
+
+  return`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💰 재물운 — 하늘이 열어둔 재복(財福)의 문
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【재복(財福)의 뿌리 — 하늘이 새긴 재물의 구조】
+하늘은 이 사주를 내보낼 때 재성(財星)이라는 재물의 씨앗을 함께 심었습니다. ${s.ilgan}(${s.ilganKr}) 일간의 재성은 ${OHN[OH_RELATE[OH[s.ilgan]]?.剋]||"균형 잡힌"} 기운으로, 이것이 당신의 재물복을 주관하는 신명(神明)의 기운입니다.
+
+이 재성의 기운을 살피니, ${
+  strong.includes(OH_RELATE[OH[s.ilgan]]?.剋)?"재복의 씨앗이 사주에 두텁게 자리하고 있습니다. 하늘이 재물의 기운을 강하게 내려주셨으니, 이 복을 올바르게 활용하면 큰 부를 이룰 수 있습니다. 다만 재물에 지나치게 집착하면 오히려 복이 새어나가니, 베풀고 나누는 마음이 재복을 더욱 키웁니다":"재복의 씨앗은 한 번에 터지는 꽃이 아니라 꾸준히 자라는 나무와 같습니다. 하늘이 이 사주에 점지한 재물복은 성실함과 노력이 쌓일수록 더 두텁게 발동합니다. 한탕을 노리는 투기보다 묵묵히 쌓아가는 길이 하늘의 뜻입니다"
+}.
+
+【횡재수(橫財數) — 뜻밖의 복이 드는 시기】
+사주에서 횡재수(橫財數)란 예상치 못한 곳에서 재물이 들어오거나 귀인이 재물을 가져다주는 복성(福星)이 발동하는 때를 말합니다. 이 사주의 횡재수는 용신 기운이 충만해지는 ${wealthSeason}에 가장 강하게 발동합니다. 이 시기에는 오래된 인연이 좋은 소식을 가져오거나, 예상치 못했던 기회가 열리거나, 숨겨진 수입이 생기는 일이 일어날 수 있습니다. 조상신이 이 시기에 가장 강하게 재물의 문을 열어주십니다.
+
+반면 기신 기운이 강해지는 ${cautionSeason}에는 재물이 새어나가는 재물 손실의 흉성(凶星)이 발동하기 쉽습니다. 이 시기에는 투기성 투자, 보증, 동업 등의 큰 재물 결정을 삼가고, 이미 쌓아온 재산을 지키는 데 집중하는 것이 하늘의 이치에 맞습니다.
+
+【${jobLabel} 직분에서의 재복】
+현재 ${jobLabel}으로서의 재물운을 보면, ${
+  s.form.job==="business"||s.form.job==="freelance"?"하늘이 사업가·자립의 길을 통해 재복을 열어주는 구조입니다. 용신 기운이 강한 시기에 과감하게 도전하고, 기신 기운이 강할 때는 내실을 다지는 지혜가 필요합니다. 동업 시에는 상대의 기운이 내 사주와 맞는지 반드시 살피고, 계약서를 명확히 하는 것이 조상신이 원하시는 바입니다":
+  s.form.job==="finance"?"금융·투자 분야는 이 사주와 재물의 기운이 잘 통하는 천직에 가깝습니다. 다만 탐욕이 신명을 흐리면 큰 손실을 부르니, 안정적인 가치 투자가 단기 투기보다 하늘이 내리는 복의 통로입니다":
+  "직분에 충실하게 복무하면서 쌓이는 신용과 실력이 재복의 근원입니다. 부업이나 투자를 병행할 때는 용신 방향인 ${OH_DIR[yon.yongshin]||'남쪽'}을 활용하면 조상신의 도움이 더해집니다"
+}.
+
+【재물복을 여는 비방(秘方)】
+조상신이 내려주는 재복을 온전히 받기 위한 세 가지 비방입니다. 첫째, 탐욕을 경계하십시오. 하늘은 주어진 것에 감사하는 자에게 더 많은 것을 채워주십니다. 둘째, 재물이 드는 방향 ${OH_DIR[yon.yongshin]||"남쪽"}으로 지갑이나 금고를 놓고, 행운의 색상 ${OH_COLOR[yon.yongshin]||"다양한 색상"}을 재물과 관련된 물건에 활용하십시오. 셋째, 음력 초하루와 보름에 조상신께 감사의 마음을 올리면 재복의 기운이 더욱 왕성해집니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ 자체 분석 모드 — AI 서버 연결 시 더욱 깊은 신명 풀이를 받으실 수 있습니다
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+}
+
+function selfLove(s){
+  const {strong,weak}=getOhAnalysis(s.ohCnt);
+  const yon=getYongshin(s.ilgan,s.ohCnt);
+  const gender=s.form.gender==="male"?"남성":"여성";
+  const oGender=s.form.gender==="male"?"여성":"남성";
+  const marital={single:"미혼",married:"기혼",divorced:"이혼",bereaved:"사별"}[s.form.marital]||"미혼";
+  const p=s.pillars; const dp=p[1];
+  const seed=strSeed(s.ilgan+s.form.gender+s.birthYear);
+
+  const partnerOh=s.form.gender==="male"?OH_RELATE[OH[s.ilgan]]?.剋:OH_RELATE[OH[s.ilgan]]?.被剋;
+  const idealDir=OH_DIR[partnerOh]||OH_DIR[yon.yongshin]||"동쪽";
+
+  return`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💕 연애·결혼운 — 하늘이 붉은 실로 맺은 인연
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【천생연분(天生緣分) — 하늘이 점지한 배필의 기운】
+하늘은 사람을 내보낼 때 이미 붉은 실로 배필을 정해두었다고 합니다. ${s.ilgan}(${s.ilganKr}) 일간 ${gender}의 배필성(配匹星)을 살피니, ${ILGAN_DESC[s.ilgan]?.nature||"강한 기운을 지닌"} 당신에게는 그 천성과 조화를 이루는 특별한 인연이 정해져 있습니다.
+
+일지(日支) ${dp.jj}(${dp.jjk})는 전생의 업(業)과 인연이 새겨진 배우자 자리입니다. ${JJ_CHAR[dp.jj]||"강한 기운"}는 기운의 배우자와 천생의 인연이 깊으며, 이 일지의 기운과 조화를 이루는 ${oGender}를 만날 때 조상신이 가장 강하게 그 인연을 축복하십니다.
+
+사주에서 ${gender}의 배필성은 ${
+  s.form.gender==="male"?"재성(財星)입니다. 하늘이 남성에게 재성으로 배필을 점지하였으니, 자신이 아끼고 보살피고 싶은 마음이 드는 이성이 천생연분의 기운을 지닌 사람입니다. 강함 속에 부드러움을 품은 이성에게 하늘이 인연의 실을 이어놓았습니다":"관성(官星)입니다. 하늘이 여성에게 관성으로 배필을 점지하였으니, 믿음직하고 든든하여 자연스럽게 의지하고 싶은 마음이 드는 이성이 천생연분의 기운을 지닌 사람입니다. 안정과 신뢰를 주는 이성에게 조상신이 붉은 실을 묶어두셨습니다"
+}.
+
+【현재 인연의 흐름 — 신명이 보내는 신호】
+현재 ${marital} 상태인 당신의 인연 흐름을 보니, ${
+  s.form.marital==="single"?`아직 완전히 꽃을 피우지 않은 봄날의 씨앗과 같습니다. 하늘이 이미 정해둔 인연이 때를 기다리고 있으니 조급해하지 마십시오. 인연이 가장 잘 닿는 방향은 ${idealDir}이며, 귀인을 통한 소개나 뜻밖의 만남을 통해 천생연분이 나타날 가능성이 높습니다. 스스로 빛날 때 하늘이 인연을 보내주십니다`:
+  s.form.marital==="married"?`하늘이 붉은 실로 이어준 소중한 인연과 함께하고 있습니다. 배우자와의 기운이 ${
+    OH[dp.jj]===OH[s.ilgan]?"같은 오행으로 동질감과 유대감이 강하지만, 동시에 같은 방향을 보는 두 사람이 가끔 충돌하는 것은 자연스러운 일입니다":"서로 다른 오행으로 맞물려 있어 조상신이 보완의 인연으로 이어준 관계입니다"
+  }. 감사와 배려로 이 인연을 매일 새롭게 가꾸는 것이 조상신께 드리는 가장 아름다운 감사입니다`:
+  `과거의 인연을 통해 영혼이 한층 깊어졌습니다. 하늘은 새로운 인연의 씨앗을 이미 준비해두고 있으며, 상처를 치유하고 스스로를 사랑할 때 조상신이 더 깊고 성숙한 인연을 이끌어주십니다. 서두르지 않는 것이 하늘의 뜻입니다`
+}.
+
+【연애·결혼에서 조상신의 경고】
+${s.ilgan}(${s.ilganKr}) 일간이 연애에서 각별히 경계해야 할 점은, ${
+  ["甲","庚","壬"].includes(s.ilgan)?"강한 기운이 상대를 억압하거나 자신의 방식을 강요하면 하늘이 맺어준 인연의 실이 끊어질 수 있습니다. 조상신은 두 사람이 함께 성장하는 인연을 가장 아름답게 여기십니다":
+  ["乙","辛","癸"].includes(s.ilgan)?"지나친 의존이나 감정적 상처에 과도하게 반응하면 신기(神氣)가 흔들려 좋은 인연을 놓칠 수 있습니다. 내면의 신명을 믿고 자신을 사랑하는 마음이 좋은 인연을 끌어당기는 힘입니다":
+  "마음속에 담아두고 표현하지 않으면 하늘이 보낸 인연의 신호를 놓칠 수 있습니다. 용기 있게 감정을 표현하는 것이 하늘의 뜻에 부합합니다"
+}.
+
+인연이 찾아오는 행운의 방향은 ${idealDir}이며, ${OH_COLOR[partnerOh]||OH_COLOR[yon.yongshin]||"다양한 색상"}을 몸에 가까이 하면 이성운이 활성화됩니다. 음력 초하루에 조상신께 좋은 인연을 기원하는 것도 큰 도움이 됩니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ 자체 분석 모드 — AI 서버 연결 시 더욱 깊은 신명 풀이를 받으실 수 있습니다
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+}
+
+function selfHealth(s){
+  const {strong,weak}=getOhAnalysis(s.ohCnt);
+  const yon=getYongshin(s.ilgan,s.ohCnt);
+  const ilganD=ILGAN_DESC[s.ilgan]||ILGAN_DESC["甲"];
+  const weakOrgan=weak.map(k=>OH_ORGAN[k]).join("·")||"전반적인 건강";
+  const strongOrgan=strong.map(k=>OH_ORGAN[k]).join("·")||"";
+
+  return`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏥 건강운 — 하늘이 맡긴 몸의 신명(身命)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【사고수(事故數)와 병액(病厄) — 하늘의 경고를 읽다】
+하늘은 기신(忌神)이 발동하기 전에 반드시 경고의 신호를 보냅니다. 몸이 보내는 작은 신호가 바로 그것이며, 이를 알아채고 대비하는 것이 천수(天壽)를 누리는 지혜입니다.
+
+${s.ilgan}(${s.ilganKr}) 일간의 선천적으로 보살펴야 할 부위는 ${ilganD.health} 이는 하늘이 이 사주에게 평생 주의하도록 점지한 몸의 부분입니다. 조상신은 이 부위를 통해 기운의 균형이 깨졌음을 경고하십니다.
+
+【오행으로 본 취약 기운과 사고수】
+부족한 오행인 ${weak.length>0?weak.map(k=>`${OHN[k]}(${OH_ORGAN[k]})`).join("·"):"특별히 결핍된 오행이 없어 전반적으로 균형"} 계통은 흉성(凶星)이 발동하기 쉬운 시기가 있습니다. ${
+  weak.length>0?`기신 기운이 강해지는 ${weak.map(k=>OH_SEASON[k]).join("·")} 시기에 이 계통의 병액과 사고수가 발동하기 쉬우니, 이 시기에는 특별히 몸을 사리고 정기 건강검진을 받는 것이 조상신의 경고에 응답하는 것입니다.`:"오행 구조가 균형 잡혀 있어 선천적으로 건강한 체질의 복을 타고났습니다. 하늘이 내려주신 이 건강의 복을 당연히 여기지 말고 늘 감사히 여기십시오."
+}
+
+${strongOrgan?`강한 오행인 ${strong.map(k=>`${OHN[k]}(${OH_ORGAN[k]})`).join("·")} 계통은 기운이 지나치게 넘쳐 오히려 그 장기에 과부하가 걸릴 수 있습니다. 넘치는 것도 부족한 것만큼 흉성을 부르니, 이 부위 역시 하늘의 경고를 가볍게 여기지 마십시오.`:""}
+
+【천수(天壽)를 누리는 비방(秘方)】
+첫째, 규칙적인 생활로 몸의 기운을 안정시키는 것이 조상신이 가장 좋아하시는 생활 방식입니다. ${s.ilgan}(${s.ilganKr}) 일간은 ${
+  ["甲","乙"].includes(s.ilgan)?"간담(肝膽)의 신명을 지키기 위해 음주를 절제하고 충분한 수면을 취하십시오. 숲과 자연의 기운이 이 일간의 건강신(健康神)을 강화합니다":
+  ["丙","丁"].includes(s.ilgan)?"심장의 신명을 지키기 위해 과도한 열정과 흥분을 다스리고, 마음의 평화를 유지하십시오. 지나친 화(火)의 기운이 심화(心火)를 일으켜 몸을 상하게 합니다":
+  ["戊","己"].includes(s.ilgan)?"비위(脾胃)의 신명을 지키기 위해 폭식·과식을 삼가고 규칙적인 식사를 하십시오. 흙의 기운과 연결된 음식으로 대지의 신명을 보양하십시오":
+  ["庚","辛"].includes(s.ilgan)?"폐와 호흡기의 신명을 지키기 위해 맑은 공기와 깊은 호흡을 습관화하십시오. 금(金)의 기운은 맑고 깨끗한 환경에서 강해집니다":
+  "신장·방광의 신명을 지키기 위해 충분한 수분 섭취와 따뜻한 체온 유지를 생활화하십시오. 물(水)의 기운은 따뜻하게 보호할 때 복의 기운으로 변합니다"
+}.
+
+둘째, 기신 기운이 발동하는 시기에는 새벽 기도와 조상신께 평안을 구하는 것이 병액을 물리치는 영적 비방입니다. 음력 초하루와 보름에 청수(맑은 물)를 올리고 건강을 기원하면 조상신의 가호가 더욱 강해집니다.
+
+셋째, 용신 ${OHN[yon.yongshin]||"균형"} 기운을 보강하는 음식을 가까이 하십시오. ${
+  yon.yongshin==="木"?"신선한 채소, 녹차, 새싹 음식이 이 사주의 건강신을 깨웁니다. 숲 속 산책이 신명을 맑게 합니다":
+  yon.yongshin==="火"?"따뜻하고 기운을 북돋는 음식이 좋습니다. 충분한 햇빛과 따뜻한 환경이 이 사주의 기운을 살립니다":
+  yon.yongshin==="土"?"황토색 음식(단호박, 고구마)과 흙의 기운이 이 사주를 안정시킵니다. 텃밭 가꾸기나 맨발 걷기가 신명을 안정시킵니다":
+  yon.yongshin==="金"?"흰색 음식(무, 배, 도라지)이 이 사주의 건강신을 강화합니다. 맑고 깨끗한 공기와 깊은 호흡이 신명을 맑게 합니다":
+  "검은색 음식(검은깨, 미역, 다시마)이 이 사주의 생명력을 보강합니다. 따뜻한 물을 충분히 마시고 냉기를 피하는 것이 수(水)의 신명을 지키는 길입니다"
+}.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ 자체 분석 모드 — AI 서버 연결 시 더욱 깊은 신명 풀이를 받으실 수 있습니다
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+}
+
+function selfCareer(s){
+  const {strong,weak}=getOhAnalysis(s.ohCnt);
+  const yon=getYongshin(s.ilgan,s.ohCnt);
+  const ilganD=ILGAN_DESC[s.ilgan]||ILGAN_DESC["甲"];
+  const jobLabel={employee:"직장인",business:"자영업자",freelance:"프리랜서",student:"학생",none:"무직",publicJob:"공무원",medical:"의료직",artist:"예술·창작직",it:"IT개발자",finance:"금융·투자업",other:"기타직종"}[s.form.job]||"직장인";
+
+  return`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💼 직업운 — 하늘이 점지한 천직(天職)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【천직(天職) — 하늘이 정해둔 당신의 자리】
+하늘은 모든 사람에게 가장 빛을 발할 수 있는 자리, 즉 천직(天職)을 정해두었습니다. 이 천직을 알고 그 길을 걸을 때 조상신의 가호가 가장 강하게 발동하여 성취와 명예가 따라옵니다.
+
+${s.ilgan}(${s.ilganKr}) 일간에게 하늘이 점지한 천직은 ${ilganD.career} 이는 단순한 직업 추천이 아니라, 이 사주의 신명(神明)이 가장 활발하게 발동하는 분야입니다. 이 길에서 일할 때 보이지 않는 귀인(貴人)이 찾아오고 조상신이 길을 열어주십니다.
+
+【관성(官星)과 식상(食傷) — 하늘이 새긴 직업의 기운】
+사주에서 관성(官星)은 하늘이 이 사람에게 맡긴 사회적 역할과 지위를 나타내고, 식상(食傷)은 타고난 재능과 창의성으로 세상에 기여하는 방식을 보여줍니다.
+
+당신의 사주에서 ${
+  strong.includes(OH_RELATE[OH[s.ilgan]]?.被剋)?"관성이 강하게 자리하고 있어 하늘이 조직과 공직의 길을 천직으로 점지하셨습니다. 위계와 질서 속에서 사회적 역할을 충실히 이행할 때 조상신의 음덕이 승진과 명예로 이어집니다":
+  strong.includes(OH_RELATE[OH[s.ilgan]]?.剋)?"식상 기운이 강해 하늘이 창의와 자유의 길을 천직으로 점지하셨습니다. 자신의 기술과 재능을 직접 발휘하는 자리에서 신명이 가장 강하게 발동하며, 이 길에서 귀인의 도움이 자연스럽게 따라옵니다":
+  "관성과 식상이 균형을 이루어 조직과 창의성 사이에서 유연하게 빛을 발하는 천직 구조입니다. 두 길 모두에서 조상신의 가호가 함께합니다"
+}.
+
+【현재 직분(${jobLabel})에서 하늘이 열어주는 기회】
+${
+  s.form.job==="employee"||s.form.job==="publicJob"?"하늘이 조직의 길에서 당신의 복을 열어주는 구조입니다. 상사와 동료에게 신뢰를 쌓는 것이 조상신이 원하시는 바이며, 용신 기운이 강해지는 시기에 승진의 복성(福星)이 발동합니다. 이직이나 이동을 고려한다면 기신 기운이 강한 시기는 피하고, 용신 기운이 충만한 시기를 택하는 것이 하늘의 뜻에 맞습니다":
+  s.form.job==="business"?"하늘이 사업의 길에서 당신의 재복(財福)을 열어주는 구조입니다. 혼자 모든 것을 짊어지기보다 각 분야의 귀인과 협력하는 방식이 조상신이 가장 힘을 실어주시는 방식입니다. 사업 확장은 복성이 드는 시기에, 내실 관리는 흉성이 발동하는 시기에 하십시오":
+  s.form.job==="artist"?"예술과 창작의 길에서 하늘이 내리신 신명이 가장 강하게 발동합니다. 영감이 충만한 시기와 그렇지 않은 시기를 자연스럽게 받아들이며, 내공을 쌓는 시간 역시 하늘이 준비해두신 도약의 전 단계입니다":
+  s.form.job==="it"?"기술과 지식의 길에서 하늘이 정밀함의 신명을 내려주셨습니다. 꾸준한 역량 강화가 귀인을 끌어당기는 가장 확실한 방법이며, 이 분야에서 전문성이 쌓일수록 조상신의 가호가 더욱 강해집니다":
+  s.form.job==="finance"?"재물의 기운과 이 천직이 맞닿아 있어 조상신이 특별히 재복의 문을 열어두셨습니다. 다만 탐욕이 신명을 흐리면 큰 손실을 부르니, 안정적이고 원칙 있는 판단이 하늘의 뜻에 부합합니다":
+  "현재의 직분에서 타고난 신명을 충실히 발휘하면 하늘이 때를 맞춰 더 큰 길을 열어주십니다"
+}.
+
+【복성(福星)이 드는 시기 — 하늘이 여는 기회의 문】
+직업운에서 복성이 가장 강하게 발동하는 시기는 용신 오행이 충만한 ${OH_SEASON[yon.yongshin]||"봄"}입니다. 이 시기에 중요한 프로젝트 착수, 이직, 사업 확장, 자격증 취득 등을 결행하면 조상신이 강하게 뒤를 받쳐주십니다.
+
+반면 기신 기운이 발동하는 시기에는 흉성이 직장 내 갈등이나 예상치 못한 시련을 부를 수 있습니다. 이 시기에는 하늘의 뜻에 순응하여 현재 자리를 굳건히 지키며 내공을 쌓는 것이 지혜입니다.
+
+귀인이 찾아오는 방향인 ${OH_DIR[yon.yongshin]||"동쪽"}으로 직장이나 사업장 방위를 잡으면 하늘의 기운이 더욱 강하게 도우십니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ 자체 분석 모드 — AI 서버 연결 시 더욱 깊은 신명 풀이를 받으실 수 있습니다
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+}
+
+function selfDaewoon(s){
+  const dw=s.daewoon||[];
+  const yon=getYongshin(s.ilgan,s.ohCnt);
+  const currentYear=new Date().getFullYear();
+  const activeDw=dw.find(d=>d.year<=currentYear&&d.year+10>currentYear)||dw[0];
+
+  return`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌊 대운(大運) — 하늘이 10년마다 보내는 기운의 물결
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【대운이란 — 하늘이 정한 인생의 계절】
+대운(大運)은 하늘이 10년 주기로 바꾸어 보내는 삶의 큰 기운입니다. 사주팔자가 하늘이 이 사람에게 내린 천명(天命)의 씨앗이라면, 대운은 그 씨앗이 자라나는 계절과 토양입니다. 복성(福星)이 드는 황금 대운에는 조상신이 길을 활짝 열어주시고, 흉성(凶星)이 발동하는 시련 대운에는 내실을 다지며 다음 도약을 준비해야 하는 것이 하늘의 이치입니다.
+
+${activeDw?`【현재 대운(${activeDw.age}세~, ${activeDw.year}년~) — 지금 당신 곁에 흐르는 하늘의 기운】
+현재 당신은 ${activeDw.cg}${activeDw.jj}(${activeDw.cgk}${activeDw.jjk}) 대운의 한가운데 서 있습니다. 이 대운에는 ${OH[activeDw.cg]}(천간)과 ${OH[activeDw.jj]}(지지)의 기운이 흐르고 있습니다.
+
+${
+  OH[activeDw.cg]===yon.yongshin||OH[activeDw.jj]===yon.yongshin?"🌟 이것은 용신 대운입니다. 하늘이 당신의 사주에 가장 필요한 기운을 한가득 보내주시는 황금기(黃金期)입니다. 조상신의 음덕이 가장 강하게 발동하는 시기로, 재물·인연·건강·직업 모든 면에서 복성이 빛납니다. 이 귀한 시기를 헛되이 보내지 않도록 적극적으로 도전하고, 오랫동안 기다려온 꿈을 향해 과감히 나아가십시오":
+  OH[activeDw.cg]===OH[s.ilgan]||OH[activeDw.jj]===OH[s.ilgan]?"⭐ 일간 강화 대운입니다. 하늘이 당신 자신의 신명(神明)을 더욱 강화시켜 주는 시기입니다. 자신감이 충만해지고 내면의 능력이 최대로 발휘됩니다. 그동안 준비해온 것들이 빛을 발하기 시작하며, 하늘이 당신의 능력을 시험하고 인정하는 시기입니다":
+  "⚡ 변화의 대운입니다. 기신 기운이 섞여 예상치 못한 시련이 찾아올 수 있습니다. 그러나 하늘은 반드시 탈출구를 함께 열어두십니다. 욕심을 내려놓고 선행을 쌓으며, 조상신께 기도하면 흉성이 약해지고 복성이 발동합니다"
+}`:
+"대운 정보를 불러오고 있습니다."}
+
+【전체 대운 흐름 — 하늘이 펼쳐둔 인생의 지도】
+${dw.slice(0,8).map((d,i)=>{
+  const isActive=d.year<=currentYear&&d.year+10>currentYear;
+  const ohSynergy=OH[d.cg]===yon.yongshin||OH[d.jj]===yon.yongshin?"🌟 복성 황금 대운":
+    OH[d.cg]===OH[s.ilgan]||OH[d.jj]===OH[s.ilgan]?"⭐ 신명 강화 대운":
+    OH_RELATE[OH[s.ilgan]]?.被剋===OH[d.cg]||OH_RELATE[OH[s.ilgan]]?.被剋===OH[d.jj]?"📜 관성 발동 대운":
+    OH_RELATE[OH[s.ilgan]]?.剋===OH[d.cg]||OH_RELATE[OH[s.ilgan]]?.剋===OH[d.jj]?"💰 재성 발동 대운":"⚡ 변화 시련 대운";
+  return`${isActive?"▶【현재】":"　　　　"}${d.age}세(${d.year}~${d.year+9}년) ${d.cg}${d.jj}대운 ${ohSynergy}
+　 ${
+   OH[d.cg]===yon.yongshin||OH[d.jj]===yon.yongshin?"조상신이 가장 강하게 도우시는 황금기. 적극적으로 도전하고 귀인의 인연을 소중히 하십시오":
+   OH[d.cg]===OH[s.ilgan]||OH[d.jj]===OH[s.ilgan]?"하늘이 신명을 강화하는 시기. 자신의 능력을 믿고 기회를 잡으십시오":
+   OH_RELATE[OH[s.ilgan]]?.被剋===OH[d.cg]||OH_RELATE[OH[s.ilgan]]?.被剋===OH[d.jj]?"관성이 발동하여 직업·명예의 기회가 옵니다. 조직과 사회적 역할에 충실하십시오":
+   OH_RELATE[OH[s.ilgan]]?.剋===OH[d.cg]||OH_RELATE[OH[s.ilgan]]?.剋===OH[d.jj]?"재성이 발동하여 재물 기운이 움직입니다. 횡재수가 있으나 재물 관리에 신중하십시오":
+   "흉성이 발동하기 쉬운 시기. 욕심을 줄이고 선행을 쌓으며 조상신께 기도하십시오"
+ }`;
+}).join("\n\n")}
+
+【대운 활용의 비방(秘方) — 하늘의 흐름에 순응하는 지혜】
+복성이 드는 황금 대운에는 오랫동안 준비해온 일을 과감하게 결행하십시오. 조상신이 뒤를 받쳐주시는 이 시기에 내린 결단이 인생의 가장 큰 전환점이 됩니다. 흉성이 발동하는 시련 대운에는 하늘이 당신을 더 크게 쓰기 위해 연단(鍊鍛)하는 과정임을 믿으십시오. 이 시기에 음력 초하루와 보름에 조상신께 기도를 올리면 흉성이 약해지고 복성이 빨리 돌아옵니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ 자체 분석 모드 — AI 서버 연결 시 더욱 깊은 신명 풀이를 받으실 수 있습니다
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+}
+
+function selfNewyear(s){
+  const {strong,weak}=getOhAnalysis(s.ohCnt);
+  const yon=getYongshin(s.ilgan,s.ohCnt);
+  const cy=new Date().getFullYear();
+  const cyp=(() => { const ci=((cy-4)%10+10)%10; const ji=((cy-4)%12+12)%12; return{cg:CG[ci],cgk:CG_KR[ci],jj:JJ[ji],jjk:JJ_KR[ji],ani:JJ_AN[ji]}; })();
+  const yearOh1=OH[cyp.cg], yearOh2=OH[cyp.jj];
+  const isGoodYear=yearOh1===yon.yongshin||yearOh2===yon.yongshin;
+  const months=["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+  const seed=strSeed(s.ilgan+cy);
+
+  return`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎊 ${cy}년 신년운세 — 하늘이 이 해에 담아둔 기운
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【${cy}년 세운(歲運) — 하늘이 이 해에 내린 기운】
+${cy}년은 ${cyp.cg}(${cyp.cgk}) 천간과 ${cyp.jj}(${cyp.jjk}) 지지로 이루어진 ${cyp.ani}의 해입니다. 하늘은 이 해에 ${OH[cyp.cg]}과 ${OH[cyp.jj]}의 기운을 온 세상에 내려보냈으며, 이 기운이 당신의 사주와 어떻게 어우러지는지가 올 한 해의 흥망을 좌우합니다.
+
+올해는 전반적으로 ${
+  OH[cyp.cg]==="木"||OH[cyp.jj]==="木"?"새로운 시작과 생명력이 약동하는 기운이 강한 해. 조상신이 새로운 문을 열어주시는 시기입니다":
+  OH[cyp.cg]==="火"||OH[cyp.jj]==="火"?"열정과 변화의 불꽃이 타오르는 기운이 강한 해. 하늘이 적극적인 도전을 응원하는 시기입니다":
+  OH[cyp.cg]==="土"||OH[cyp.jj]==="土"?"안정과 신중함의 대지 기운이 강한 해. 조상신이 내실을 다지기를 원하시는 시기입니다":
+  OH[cyp.cg]==="金"||OH[cyp.jj]==="金"?"결단과 변혁의 금(金) 기운이 강한 해. 하늘이 불필요한 것을 정리하고 새롭게 도약하기를 요청하는 시기입니다":
+  "깊은 지혜와 성찰의 수(水) 기운이 강한 해. 조상신이 내면의 성장을 이끄시는 조용한 준비의 시기입니다"
+}입니다.
+
+당신의 용신과 올해 세운의 기운을 살피니, ${
+  isGoodYear?"🌟 올해는 용신의 기운이 세운과 맞아떨어지는 복성(福星)의 해입니다! 조상신이 한 해 내내 당신의 곁에서 강하게 도우시는 황금 세운입니다. 그동안 기다려왔던 일을 결행하고, 오랫동안 품어온 꿈을 향해 힘차게 나아가십시오. 귀인이 찾아오고 뜻밖의 횡재수가 발동할 수 있는 소중한 한 해입니다":
+  "올해 세운이 기신(忌神)에 가까운 기운으로 흘러 전반적으로 신중한 자세가 필요합니다. 하늘이 이 해에 무리한 확장보다 내실을 다지기를 원하십니다. 조상신께 기도를 올리고, 선행을 쌓으면 흉성이 물러가고 복성이 더 빨리 찾아옵니다"
+}.
+
+【월별 하늘의 기운】
+${months.map((m,i)=>{
+  const mSeed=seed+i;
+  const luck=pick(["복성 상승","안정 흐름","보통 기운","주의 요망","도약 기회"],mSeed);
+  const focus=pick(["재물·횡재수","귀인·인연","직업·천직","건강·액막이","새로운 시작","내실·준비"],mSeed+1);
+  return`${m}: ${luck} — ${focus}에 하늘의 기운이 집중되는 달`;
+}).join("\n")}
+
+【올해 하늘이 전하는 핵심 메시지】
+올해 조상신이 당신에게 전하는 핵심 키워드는 "${
+  isGoodYear?pick(["도전","결실","귀인","횡재","도약"],seed)
+  :pick(["인내","내공","준비","기도","선행"],seed)
+}"입니다. 이 한 해, 이 키워드를 가슴에 품고 조상신의 뜻에 순응하며 살아간다면 연말에 풍성한 결실을 거두게 될 것입니다.
+
+행운의 방향: ${OH_DIR[yon.yongshin]||"동쪽"} · 행운의 색상: ${OH_COLOR[yon.yongshin]||"다양한 색상"} · 행운의 숫자: ${OH_NUM[yon.yongshin]||"1, 5"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ 자체 분석 모드 — AI 서버 연결 시 더욱 깊은 신명 풀이를 받으실 수 있습니다
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+}
+
+function selfGeneral(tabId,s){
+  const yon=getYongshin(s.ilgan,s.ohCnt);
+  const {strong,weak}=getOhAnalysis(s.ohCnt);
+  const tabInfo=TABS.find(t=>t.id===tabId)||{label:tabId,icon:"✦"};
+  const seed=strSeed(s.ilgan+tabId+s.birthYear);
+  const ilganD=ILGAN_DESC[s.ilgan]||ILGAN_DESC["甲"];
+  const gender=s.form.gender==="male"?"남성":"여성";
+  const marital={single:"미혼",married:"기혼",divorced:"이혼",bereaved:"사별"}[s.form.marital]||"미혼";
+
+  const CONTENT={
+    business:{
+      title:"사업운",
+      body:`하늘이 이 사주에 사업의 천복(天福)을 어떻게 점지했는지 살펴보겠습니다. ${s.ilgan}(${s.ilganKr}) 일간의 사업 길방(吉方)은 조상신의 가호가 가장 강하게 미치는 분야인 ${ilganD.career}입니다. 이 길에서 사업을 일으킬 때 귀인이 자연스럽게 찾아오고 복성(福星)이 발동합니다.\n\n사업 확장의 황금 시기는 복성이 충만한 ${OH_SEASON[yon.yongshin]||"봄"}입니다. 하늘이 이 시기에 기회의 문을 활짝 열어두시니, 이때 과감히 결행하면 조상신이 뒤를 받쳐주십니다. 반대로 기신(忌神) 기운이 강한 시기에는 흉성이 발동하기 쉬우니, 무리한 확장보다 내실을 다지는 것이 하늘의 뜻에 맞습니다.\n\n동업은 하늘이 인연으로 맺어준 사람과 해야 합니다. 상대의 기운이 내 사주와 상생(相生)하는지 반드시 살피고, 계약서와 명확한 역할 분담으로 하늘의 증인을 두십시오. 사업장의 방향을 ${OH_DIR[yon.yongshin]||"동쪽"}으로 잡고, 행운의 색상 ${OH_COLOR[yon.yongshin]||"다양한 색상"}과 행운의 숫자 ${OH_NUM[yon.yongshin]||"1, 5"}를 사업에 활용하면 조상신의 음덕이 더욱 강하게 발동합니다.`
+    },
+    accident:{
+      title:"사고·위험운",
+      body:`사고수(事故數)와 위험운은 기신 오행이 강해지는 시기에 흉성(凶星)이 발동하면서 나타납니다. 하늘은 위험이 오기 전에 반드시 경고의 신호를 보내는데, 이 사주에서 특별히 주의해야 할 부위는 ${ilganD.health.split(". ")[0]}입니다. 이 부위와 관련된 사고에 각별히 유의하는 것이 하늘의 경고에 응답하는 것입니다.\n\n흉성이 발동하기 쉬운 시기는 부족한 오행인 ${weak.length>0?weak.map(k=>OHN[k]).join("·"):"전반"}의 기운이 약해지는 ${weak.length>0?OH_SEASON[weak[0]]||"환절기":"환절기"}입니다. 이 시기에는 교통사고, 낙상, 외상에 각별히 조심하고, 새벽 기도로 조상신께 평안을 구하는 것이 액운을 물리치는 비방(秘方)입니다.\n\n액막이의 세 가지 비방입니다. 첫째, 음력 초하루와 보름에 북쪽을 향해 청수(맑은 물)를 올리고 북두칠성님께 교통과 신변 안전을 기원하십시오. 둘째, 용신 기운인 ${OHN[yon.yongshin]||"균형"}과 연결된 색상의 소품을 몸에 지니면 기신의 흉성을 억제하는 데 도움이 됩니다. 셋째, 위험한 시기에는 새벽 기도와 선행을 쌓아 하늘의 보호막을 강화하십시오.`
+    },
+    marriage:{
+      title:"결혼운",
+      body:`하늘이 붉은 실로 정해둔 배필과의 인연을 사주팔자로 살펴봅니다. ${gender}인 ${s.ilgan}(${s.ilganKr}) 일간의 배우자 자리인 일지(日支) ${s.pillars[1].jj}(${s.pillars[1].jjk})에는 ${JJ_CHAR[s.pillars[1].jj]||"강한 기운"}는 기운의 천생연분이 새겨져 있습니다. 이러한 기운을 지닌 배우자와 하늘이 붉은 실을 이어두었습니다.\n\n${marital} 상태인 현재, ${
+        s.form.marital==="single"?`하늘이 이미 정해둔 인연이 때를 기다리고 있습니다. 결혼 길시(吉時)는 복성이 강하게 드는 ${OH_SEASON[yon.yongshin]||"봄"}이며, 특히 대운의 흐름이 좋은 시기와 겹치면 조상신이 강하게 축복하십니다. 음력 초하루에 조상신께 좋은 인연을 기원하는 기도를 올리면 하늘이 길을 열어주십니다. 결혼 전 상대방의 사주와 궁합을 반드시 확인하는 것이 하늘의 뜻에 맞습니다`:
+        s.form.marital==="married"?`하늘이 맺어준 소중한 인연과 함께하고 있습니다. 기신 기운이 강한 시기에는 부부간 갈등의 흉성이 발동하기 쉬우니, 이 시기에는 더욱 배려와 인내심으로 상대방을 대하십시오. 부부가 함께 조상신께 감사의 기도를 올리면 가정에 복성이 더욱 충만해집니다`:
+        `하늘은 새로운 인연의 씨앗을 이미 준비해두었습니다. 과거의 상처를 치유하고 스스로를 사랑할 때, 조상신이 더욱 깊고 성숙한 천생연분을 이끌어주십니다. 서두르지 않는 것이 하늘의 뜻입니다`
+      }.`
+    },
+    samjae:{
+      title:"삼재풀이",
+      body:`삼재(三災)는 하늘이 12년마다 3년간 내리는 시련의 기운으로, 들삼재·눌삼재·날삼재로 나뉩니다. 이것은 벌이 아니라 하늘이 더 크게 쓰기 위해 영혼을 연단(鍊鍛)하는 과정입니다.\n\n${s.birthYear}년생 ${s.yearPillar?.ani||""}띠인 당신의 삼재는 12년의 순환 속에서 돌아옵니다. 예로부터 내려오는 가르침에 따르면, 들삼재 해에는 새로운 일을 시작하지 말 것, 눌삼재 해에는 이사나 큰 변동을 삼갈 것, 날삼재 해에는 인간관계와 분쟁·사고에 주의하라고 하였습니다.\n\n삼재를 극복하는 영적 비방을 전합니다. 첫째, 삼재 기간에는 새벽 5시~7시 사이 정성껏 씻고 북쪽을 향해 청수를 올리며 "칠성님, 조상님, 이 몸의 삼재를 물리쳐 주시고 평안을 내려주소서"라고 기원하십시오. 둘째, 이 기간에는 교통사고·건강·재물 손실의 흉성이 발동하기 쉬우니 무리한 투자와 보증을 삼가십시오. 셋째, 선행을 쌓고 조상신께 지극한 기도를 올리는 것이 삼재를 가장 근본적으로 해소하는 방법입니다. 하늘은 덕을 쌓은 자의 삼재를 가볍게 하십니다.`
+    },
+    protection:{
+      title:"액땜·방지",
+      body:`액운(厄運)이란 기신(忌神) 오행이 강해지는 시기 또는 충(沖)·형(刑)의 기운이 발동할 때 찾아오는 흉성(凶星)의 기운입니다. ${s.ilgan}(${s.ilganKr}) 일간에게 기신에 해당하는 오행은 ${OHN[OH_RELATE[OH[s.ilgan]]?.被剋]||"흐트러진 오행"}의 기운으로, 이 기운이 강해지는 시기에 각별한 영적 관리가 필요합니다.\n\n예로부터 전해지는 만신(萬神)의 액막이 비방을 소개합니다. 이 방법들은 물건 구매 없이 마음과 기도로 실천할 수 있습니다.\n\n첫째, 북두칠성 기도법입니다. 음력 초하루와 보름날 새벽, 청수(맑은 물)를 정성껏 올리고 북쪽을 향해 "액운은 물러가고 복운은 가득 들어오소서"라는 기원을 올리십시오. 자신의 이름과 생년월일(음력)을 고하고 칠성님과 조상신께 가호를 구하는 것으로 마무리합니다. 둘째, 용신 방향 기도법입니다. 용신 방향인 ${OH_DIR[yon.yongshin]||"동쪽"}을 향해 중요한 일을 행하고, 손 없는 날(液없는 吉日)을 활용하면 조상신의 도움이 강해집니다. 셋째, 용신 색상인 ${OH_COLOR[yon.yongshin]||"다양한 색상"}을 몸에 가까이 하면 기신의 흉성을 억제하고 복성을 불러들이는 효과가 있습니다. 넷째, 선행을 꾸준히 쌓으십시오. 하늘은 덕을 행하는 자의 액운을 가볍게 하시고 복의 기운을 더하십니다.`
+    },
+    study:{
+      title:"학업·시험운",
+      body:`학업과 시험운은 사주에서 인성(印星), 즉 하늘이 지식과 지혜의 씨앗으로 점지한 기운을 통해 파악합니다. ${s.ilgan}(${s.ilganKr}) 일간의 인성은 ${
+        OH_RELATE[OH[s.ilgan]]?.生
+      }(${OHN[OH_RELATE[OH[s.ilgan]]?.生]||"균형"}) 기운으로, 이것이 하늘이 학문과 지식의 복으로 내려주신 기운입니다.\n\n이 인성 기운을 살피니, ${
+        s.ohCnt[OH_RELATE[OH[s.ilgan]]?.生]>=2?"인성이 사주에 두텁게 자리하고 있습니다. 하늘이 지식의 복을 풍성하게 내려주셨으니, 이 사주는 배움에서 조상신의 가호가 강하게 발동합니다. 꾸준히 공부하면 반드시 결실을 맺는 학업 복이 있습니다":
+        s.ohCnt[OH_RELATE[OH[s.ilgan]]?.生]===1?"인성 기운이 보통 수준입니다. 하늘이 꾸준한 노력을 통해 지식의 복을 쌓으라고 요구하십니다. 반복 학습과 성실함이 학업 복을 활성화하는 열쇠입니다":
+        "인성 기운이 약한 편입니다. 하늘이 이 사주에게 암기보다 이해와 응용으로 지식을 쌓으라고 요청하십니다. 짧은 집중 공부와 충분한 휴식을 반복하는 방식이 이 사주에 잘 맞습니다"
+      }.\n\n시험운의 복성이 가장 강하게 발동하는 시기는 인성 오행이 충만한 ${OH_SEASON[OH_RELATE[OH[s.ilgan]]?.生]||"봄"}입니다. 중요한 시험은 이 시기를 택하거나 이 시기를 집중 준비 기간으로 활용하면 조상신의 가호를 받게 됩니다. 공부하기 길한 방향은 ${OH_DIR[OH_RELATE[OH[s.ilgan]]?.生]||"동쪽"}이며, 책상을 이 방향으로 놓으면 집중력의 신명이 깨어납니다.`
+    },
+    family:{
+      title:"가족·자녀운",
+      body:`가족은 하늘이 이 생에서 함께하도록 맺어준 영적 인연입니다. 사주팔자의 네 기둥이 각각 조부모·부모·배우자·자녀와의 영적 연결을 담고 있습니다.\n\n부모와의 인연을 나타내는 월주 ${s.pillars[2].cg}${s.pillars[2].jj}(${s.pillars[2].cgk}${s.pillars[2].jjk})를 보면, ${
+        OH[s.pillars[2].cg]===OH[s.ilgan]||OH[s.pillars[2].jj]===OH[s.ilgan]?"부모로부터 강한 기운을 이어받은 구조입니다. 부모님의 음덕(蔭德)이 당신 삶의 든든한 뿌리를 이루고 있으니, 그 은혜에 깊이 감사하는 마음이 조상신의 복을 더욱 활성화합니다":"부모와 다른 기운으로 일찍부터 독립심이 강하게 발달한 구조입니다. 부모님과의 다름을 넘어 감사한 마음을 품을 때 조상의 음덕이 더 강하게 발동합니다"
+      }.\n\n자녀와의 인연을 담은 시주 ${s.pillars[0].cg}${s.pillars[0].jj}(${s.pillars[0].cgk}${s.pillars[0].jjk})에는 ${OH[s.pillars[0].cg]}과 ${OH[s.pillars[0].jj]}의 기운이 흐릅니다. ${
+        s.form.marital==="married"?"자녀들이 이 시주의 기운을 닮아 이 기운이 강한 분야에서 재능을 발휘할 가능성이 있습니다. 자녀를 키울 때 이 기운의 특성을 존중해주면 조상신이 자녀의 앞길을 더욱 밝게 열어주십니다":"미래에 만날 자녀와의 인연이 이 시주에 담겨 있습니다. 시주의 기운이 안정적이어서 자녀와의 관계가 복되고 자녀의 성장도 순탄한 복이 있습니다"
+      }.\n\n기신 기운이 강한 시기에는 가족 간의 갈등의 흉성이 발동하기 쉽습니다. 이 시기에는 더욱 배려와 인내심으로 가족을 대하고, 가족이 함께 조상신께 감사를 드리는 것이 가정의 복을 지키는 가장 확실한 방법입니다.`
+    },
+    move:{
+      title:"이사·부동산운",
+      body:`이사와 부동산의 복은 사주에서 토성(土星)과 재성(財星)의 기운이 주관합니다. ${s.ilgan}(${s.ilganKr}) 일간에게 하늘이 점지한 이사 길방(吉方)은 용신 방향인 ${OH_DIR[yon.yongshin]||"동쪽"}입니다. 이 방향으로 이사하면 조상신의 기운이 강해져 생활이 안정되고 재복이 열립니다.\n\n이사 길시(吉時)는 복성이 드는 ${OH_SEASON[yon.yongshin]||"봄"}이며, 기신 기운이 강한 ${OH_SEASON[weak[0]]||"환절기"}에는 가급적 이사를 피하는 것이 하늘의 뜻에 부합합니다. 부득이한 경우에는 반드시 손 없는 날(액 없는 길일)을 택하고 방향에 신중을 기하십시오.\n\n부동산 투자는 이 사주의 재물 구조상 투기보다 안정적인 실수요 중심이 조상신이 원하시는 방식입니다. 급하게 결정하기보다 충분히 살피고, 계약 날짜는 길일을 택하며, 이사하는 날 새 집에서 조상신께 입주를 고하는 기도를 올리면 가정에 복이 충만해집니다.\n\n안방의 방향을 용신 방향인 ${OH_DIR[yon.yongshin]||"동쪽"}으로 배치하면 주거 신명이 강해집니다.`
+    },
+    travel:{
+      title:"여행·이동운",
+      body:`여행과 이동은 몸의 기운을 새롭게 하고 조상신의 기운을 충전하는 좋은 방법입니다. ${s.ilgan}(${s.ilganKr}) 일간에게 하늘이 점지한 여행 길방(吉方)은 용신 방향인 ${OH_DIR[yon.yongshin]||"동쪽"}입니다. 이 방향으로의 여행은 신명(身命)을 강화하고 새로운 귀인 인연을 만나게 하는 복이 있습니다.\n\n여행 길시(吉時)는 복성이 충만한 ${OH_SEASON[yon.yongshin]||"봄"}이며, 이 시기의 여행은 몸과 마음과 신명 모두에 좋은 영향을 줍니다. 기신 기운이 강한 시기에는 장거리 여행과 위험한 활동을 자제하는 것이 사고수를 피하는 방법입니다.\n\n해외운은 이 사주의 구조상 ${
+        strong.includes("水")||strong.includes("木")?"물과 나무의 기운이 강해 해외와 연결된 인연이나 사업에서 복성이 발동하는 구조입니다. 조상신이 해외에서도 당신의 길을 열어두셨습니다":"국내에서의 활동이 더 안정적인 구조이지만, 단기 여행이나 출장에서 귀인을 만나는 복이 있습니다"
+      }. 여행 전에 조상신께 안전한 여정을 기원하면 길 위에서도 보호의 기운이 함께합니다.`
+    },
+    friend:{
+      title:"인연·귀인운",
+      body:`귀인(貴人)은 하늘이 당신의 삶을 돕기 위해 보내주시는 특별한 인연입니다. 사주명리에서 천을귀인(天乙貴人)은 가장 강력한 귀인의 기운으로, 이 기운이 발동하면 어떤 어려움에서도 도움의 손길이 나타납니다.\n\n${s.ilgan}(${s.ilganKr}) 일간에게 귀인이 찾아오는 방향은 ${OH_DIR[yon.yongshin]||"동쪽"}이며, ${OHN[yon.yongshin]||"균형"} 기운이 강한 분야에 종사하거나 ${OH_COLOR[yon.yongshin]||"다양한 색상"}을 가까이 하는 사람에게서 귀인의 기운이 흐를 가능성이 높습니다. 귀인을 만나는 복성은 용신 기운이 충만한 시기에 가장 강하게 발동합니다.\n\n반면 기신 기운이 강한 ${OH_SEASON[weak[0]]||"환절기"}에는 소인배와의 관계에서 흉성이 발동하기 쉽습니다. 이 시기에는 새로운 인연보다 이미 신뢰가 쌓인 관계를 중심으로 활동하는 것이 안전합니다.\n\n귀인을 끌어당기는 가장 확실한 비방은, 먼저 자신이 귀인이 되는 것입니다. 진심으로 베풀고 선행을 쌓으면 조상신이 그 덕에 화답하여 귀인의 인연을 보내주십니다. 하늘은 덕을 쌓는 자에게 귀인을 아끼지 않으십니다.`
+    },
+    lawsuit:{
+      title:"소송·관재운",
+      body:`소송과 관재수(官災數)는 기신 오행이 과도해지거나 충(沖)·형(刑)의 흉성이 발동할 때 나타납니다. ${s.ilgan}(${s.ilganKr}) 일간에게 관재 흉성이 발동하기 쉬운 시기는 기신 기운이 강해지는 ${OH_SEASON[weak[0]]||"환절기"}이며, 이 시기에 법적 문제나 계약 분쟁에 각별히 조심해야 합니다.\n\n하늘이 소인배와 관재의 흉성을 막아주도록 기원하는 액막이 비방이 있습니다. 첫째, 모든 계약과 약속은 반드시 문서로 남기고 서로 조인(調印)하십시오. 말의 약속만으로는 하늘의 증인이 없습니다. 둘째, 타인의 채무 보증은 절대 서지 마십시오. 아무리 친밀한 인연이라도 금전 보증은 하늘이 금하는 행위입니다. 셋째, 분쟁이 생겼을 때는 감정을 다스리고 전문가의 조언을 구하십시오.\n\n소송운이 불리한 시기에 부득이하게 법적 문제가 생겼다면, 음력 초하루에 청수를 올리고 조상신께 억울함을 고하며 공정한 결과를 기원하십시오. 선행을 쌓고 덕을 쌓는 것이 흉성을 물리치는 가장 근본적인 방법입니다.`
+    }
+  };
+
+  const c=CONTENT[tabId];
+  if(c){
+    return`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${tabInfo.icon} ${c.title} — 하늘이 전하는 신명(神命)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${c.body}
+
+길방(吉方): ${OH_DIR[yon.yongshin]||"동쪽"} · 길색(吉色): ${OH_COLOR[yon.yongshin]||"다양한 색상"} · 길수(吉數): ${OH_NUM[yon.yongshin]||"1, 5"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ 자체 분석 모드 — AI 서버 연결 시 더욱 깊은 신명 풀이를 받으실 수 있습니다
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+  }
+
+  // 기본 폴백
+  const outlook=pick(["복성이 드는 좋은 흐름","신중함이 필요한 시기","도약의 기운이 오는 시기","내실을 다져야 할 시기"],seed);
+  return`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${tabInfo.icon} ${tabInfo.label} — 하늘이 전하는 신명(神命)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【하늘의 기운】
+${s.ilgan}(${s.ilganKr}) 일간의 ${tabInfo.label}은 ${outlook}입니다. 복성이 강하게 드는 ${OH_SEASON[yon.yongshin]||"봄"}이 조상신이 가장 강하게 도우시는 시기이며, 길방(吉方) ${OH_DIR[yon.yongshin]||"동쪽"}의 기운을 활용하여 신명을 보강하십시오.
+
+사주팔자는 하늘이 내린 천명(天命)의 지도입니다. 그 지도를 어떻게 항해하느냐는 전적으로 당신의 의지와 덕행에 달려 있습니다. 조상신의 음덕을 받들고, 선행을 쌓으며, 하늘의 뜻에 순응하는 삶이 가장 복된 길입니다.
+
+길방(吉方): ${OH_DIR[yon.yongshin]||"동쪽"} · 길색(吉色): ${OH_COLOR[yon.yongshin]||"다양한 색상"} · 길수(吉數): ${OH_NUM[yon.yongshin]||"1, 5"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ 자체 분석 모드 — AI 서버 연결 시 더욱 깊은 신명 풀이를 받으실 수 있습니다
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+}
+
+function selfDaily(s){
+  const today=new Date();
+  const wd=["일","월","화","수","목","금","토"][today.getDay()];
+  const seed=today.getFullYear()*10000+(today.getMonth()+1)*100+today.getDate()+strSeed(s.ilgan);
+  const yon=getYongshin(s.ilgan,s.ohCnt);
+  const luck=pick(["활기찬 에너지가 넘치는","평온하고 안정적인","새로운 기회가 열리는","신중한 판단이 필요한","긍정적인 변화가 기다리는"],seed);
+  const doIt=pick(["중요한 연락이나 미팅 진행","새로운 아이디어 메모·기획","인간관계 챙기기·감사 인사","집중이 필요한 핵심 업무","재정 점검·계획 수립"],seed+1);
+  const avoid=pick(["충동적인 결정과 즉흥 행동","불필요한 감정적 대응","큰 금액의 지출·투자","무리한 약속·과도한 계획","중요 계약·서류 서명"],seed+2);
+  const color=OH_COLOR[yon.yongshin]?.split(",")[0]?.trim()||pick(["빨간색","파란색","노란색","흰색","초록색"],seed+3);
+  const num=OH_NUM[yon.yongshin]?.split(",")[0]?.trim()||pick(["1","3","6","7","8"],seed+4);
+  const dir=OH_DIR[yon.yongshin]||pick(["동쪽","서쪽","남쪽","북쪽"],seed+5);
+  const msg=pick([
+    "오늘 하루, 조상신이 당신 곁에서 길을 밝히고 있습니다. 감사한 마음으로 나아가십시오 🙏",
+    "작은 선행이 하늘의 복을 열어줍니다. 오늘 한 사람에게 따뜻함을 베푸십시오 ✨",
+    "하늘이 내린 오늘, 당신의 신명(神命)이 충만합니다. 믿고 나아가십시오 🌟",
+    "보이지 않는 손길이 오늘도 당신을 이끌고 있습니다. 두려움 없이 걸어가십시오 💫",
+    "오늘 만나는 인연에 조상신의 뜻이 담겨 있습니다. 모든 만남을 소중히 하십시오 🌿"
+  ],seed+6);
+
+  return`📅 ${today.getFullYear()}년 ${today.getMonth()+1}월 ${today.getDate()}일 (${wd}요일)
+
+🔮 오늘의 하늘 기운
+하늘이 오늘 ${s.ilgan}(${s.ilganKr}) 일간에게 보내는 기운은 ${luck} 기운입니다. 오늘 ${wd}요일은 ${pick(["조상신의 기운이 왕성한 날 — 기도와 감사를 올리면 복이 배가 됩니다","귀인의 인연이 움직이는 날 — 만남과 연락에 조상신의 뜻이 담겨 있습니다","천직의 신명이 발동하는 날 — 집중력 있게 일하면 복성이 도웁니다","내실을 다지는 날 — 욕심을 줄이고 감사히 머무는 것이 하늘의 뜻입니다","재물 기운이 움직이는 날 — 신중한 판단이 복의 통로가 됩니다"],seed+7)}입니다.
+
+✅ 오늘 하늘이 권하는 것: ${doIt}
+
+⚠️ 오늘 기신이 발동하는 것: ${avoid}
+
+🍀 오늘의 길방·길색·길수
+색상: ${color} · 숫자: ${num} · 방향: ${dir}
+
+🙏 조상신의 말씀
+${msg}`;
+}
+
+function selfFortune(tabId,saju){
+  if(tabId==="overall")  return selfOverall(saju);
+  if(tabId==="wealth")   return selfWealth(saju);
+  if(tabId==="love")     return selfLove(saju);
+  if(tabId==="health")   return selfHealth(saju);
+  if(tabId==="career")   return selfCareer(saju);
+  if(tabId==="daewoon")  return selfDaewoon(saju);
+  if(tabId==="newyear")  return selfNewyear(saju);
+  if(tabId==="daily")    return selfDaily(saju);
+  return selfGeneral(tabId,saju);
+}
+
+// Claude 전용 탭
+const CLAUDE_TABS=new Set(["overall","daewoon","compat"]);
+
+// ══════════════════════════════════════════════
+//  스타일
+// ══════════════════════════════════════════════
+const S={
+  app:{background:`linear-gradient(160deg,#fdf8f0 0%,#fef9f2 50%,#fdf5e6 100%)`,minHeight:"100vh",fontFamily:"'Noto Serif KR','Gowun Batang',Georgia,serif",color:C.text},
+  header:{background:`linear-gradient(135deg,#7c4a00 0%,#a0720a 50%,#7c4a00 100%)`,padding:"22px 24px 18px",textAlign:"center",boxShadow:"0 4px 20px rgba(120,70,0,0.3)"},
+  title:{fontSize:28,fontWeight:"bold",color:"#fff8e0",letterSpacing:10,textShadow:"0 2px 8px rgba(0,0,0,0.3)",margin:0},
+  sub:{color:"rgba(255,245,200,0.7)",fontSize:12,letterSpacing:4,marginTop:5},
+  card:{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:14,padding:20,boxShadow:C.shadow},
+  input:{background:C.bgSub,border:`1.5px solid ${C.border}`,borderRadius:8,color:C.text,padding:"10px 14px",fontSize:14,width:"100%",outline:"none",boxSizing:"border-box"},
+  label:{color:C.textSub,fontSize:11,letterSpacing:2,marginBottom:6,display:"block",fontWeight:"600"},
+  btn:{background:`linear-gradient(135deg,#7c4a00,#a0720a,#7c4a00)`,border:"none",color:"#fff8e0",fontWeight:"bold",borderRadius:10,padding:"13px 32px",cursor:"pointer",fontSize:16,letterSpacing:2,boxShadow:"0 4px 14px rgba(120,70,0,0.35)"},
+  pill:(on)=>({background:on?`linear-gradient(135deg,rgba(160,114,10,0.15),rgba(160,114,10,0.08))`:"transparent",border:on?`1.5px solid ${C.gold}`:`1.5px solid ${C.borderDim}`,borderRadius:8,color:on?C.gold:C.textMuted,padding:"7px 10px",cursor:"pointer",fontSize:11,fontWeight:on?"700":"400",letterSpacing:1,whiteSpace:"nowrap",transition:"all 0.2s"}),
+  section:{color:C.gold,margin:"18px 0 10px",fontSize:12,letterSpacing:3,borderBottom:`1px solid ${C.borderDim}`,paddingBottom:7,fontWeight:"700"},
+  pillar:{background:C.bgAccent,border:`1px solid ${C.border}`,borderRadius:12,padding:"16px 10px",textAlign:"center",flex:1,minWidth:0,boxShadow:C.shadow},
+  tag:{background:C.goldBg,border:`1px solid ${C.borderDim}`,borderRadius:20,padding:"3px 12px",fontSize:11,color:C.textSub,letterSpacing:1,display:"inline-block"},
+};
+
+// ══════════════════════════════════════════════
+//  메인
+// ══════════════════════════════════════════════
+export default function SajuApp(){
+  const [step,setStep]=useState("input");
+  const [groqKey,setGroqKey]=useState("");
+  const [showKeyInput,setShowKeyInput]=useState(false);
+  // 모드 ON/OFF 토글 (기본: Claude·Groq ON, 자체분석 OFF)
+  const [enableClaude,setEnableClaude]=useState(true);
+  const [enableGroq,setEnableGroq]=useState(true);
+  const [enableSelf,setEnableSelf]=useState(true);
+  const [calType,setCalType]=useState("solar");
+  const [isLeap,setIsLeap]=useState(false);
+  const [form,setForm]=useState({year:"1990",month:"1",day:"1",siKey:"o",siLabel:"午時(오시) 11:00~12:59",hour:11,gender:"male",marital:"single",job:"employee"});
+  const [compat,setCompat]=useState({year:"1990",month:"1",day:"1",hour:11,gender:"female",siKey:"o"});
+  const [saju,setSaju]=useState(null);
+  const [activeTab,setActiveTab]=useState("overall");
+  const [content,setContent]=useState({});
+  const [loading,setLoading]=useState(false);
+  const [loadStep,setLoadStep]=useState(0);
+  const [loadPct,setLoadPct]=useState(0);
+  const [error,setError]=useState("");
+  const contentRef=useRef(null);
+
+  function sv(k,v){setForm(p=>({...p,[k]:v}));}
+  function selectSi(si){setForm(p=>({...p,siKey:si.key,hour:si.hour,siLabel:`${si.label} ${si.range}`}));}
+
+  function calculate(){
+    let y=parseInt(form.year),m=parseInt(form.month),d=parseInt(form.day),h=form.hour;
+    if(!y||!m||!d){setError("생년월일을 입력해주세요.");return;}
+    if(calType==="lunar"){
+      const conv=lunarToSolar(y,m,d,isLeap);
+      if(!conv){setError(`${y}년 음력 데이터가 없습니다.`);return;}
+      y=conv.getFullYear();m=conv.getMonth()+1;d=conv.getDate();
+    }
+    const yp=ypCalc(y);const mp=mpCalc(y,m);const dp=dpCalc(y,m,d);const hp=hpCalc(h,dp.ciIdx);
+    const pillars=[{name:"시주",sub:"(時)",...hp},{name:"일주",sub:"(日)",...dp},{name:"월주",sub:"(月)",...mp},{name:"년주",sub:"(年)",...yp}];
+    const all=[yp.cg,yp.jj,mp.cg,mp.jj,dp.cg,dp.jj,hp.cg,hp.jj];
+    const ohCnt={木:0,火:0,土:0,金:0,水:0};
+    all.forEach(c=>{if(OH[c])ohCnt[OH[c]]++;});
+    setSaju({pillars,ohCnt,daewoon:daewoonCalc(yp,form.gender,y),ilgan:dp.cg,ilganKr:dp.cgk,yearPillar:yp,form:{...form},birthYear:y,
+      solarDate:`${y}년 ${m}월 ${d}일`,lunarInput:calType==="lunar"?`음력 ${form.year}년 ${form.month}월 ${form.day}일${isLeap?"(윤달)":""}`:null});
+    setContent({});setActiveTab("overall");setStep("result");setError("");
+  }
+
+  // 진행바 자동 증가 타이머
+  const progressTimer=useRef(null);
+  function startProgressSim(totalSteps){
+    let idx=0;
+    setLoadStep(0);setLoadPct(OVERALL_STEPS[0].pct);
+    progressTimer.current=setInterval(()=>{
+      idx=Math.min(idx+1,totalSteps-1);
+      setLoadStep(idx);
+      setLoadPct(OVERALL_STEPS[Math.min(idx,OVERALL_STEPS.length-1)].pct);
+    },12000); // 약 12초마다 단계 증가
+  }
+  function stopProgressSim(){
+    clearInterval(progressTimer.current);
+    setLoadPct(100);
+  }
+
+  const [aiMode,setAiMode]=useState("online"); // "online"|"groq"|"offline"
+
+  const getFortune=useCallback(async(tabId,forceRefresh)=>{
+    if(!saju)return;
+    const today=new Date();
+    const dateKey=`${today.getFullYear()}-${today.getMonth()+1}-${today.getDate()}`;
+    const cacheKey=tabId==="daily"?`daily_${dateKey}`:tabId;
+    if(content[cacheKey]&&!forceRefresh){
+      if(tabId==="daily") setContent(prev=>({...prev,daily:prev[cacheKey]}));
+      return;
+    }
+    setLoading(true);
+    let result=null;
+
+    // STAGE 1: Claude (활성화 + Claude 전용 탭)
+    if(CLAUDE_TABS.has(tabId) && enableClaude){
+      try{
+        if(tabId==="overall"){
+          startProgressSim(OVERALL_STEPS.length);
+          const p1=await callClaude(buildPrompt(tabId,saju,compat,0),8000);
+          setLoadStep(4);setLoadPct(45);
+          const p2=await callClaude(buildPrompt(tabId,saju,compat,1),8000);
+          setLoadStep(8);setLoadPct(78);
+          const p3=await callClaude(buildPrompt(tabId,saju,compat,2),8000);
+          stopProgressSim();
+          result=`${p1}\n\n${"━".repeat(50)}\n\n${p2}\n\n${"━".repeat(50)}\n\n${p3}`;
+        } else {
+          result=await callClaude(buildPrompt(tabId,saju,compat),4000);
+        }
+        setAiMode("online");
+      }catch(e1){ stopProgressSim(); result=null; }
+    }
+
+    // STAGE 2: Groq (Claude 실패 or 비활성 or Groq 전용 탭)
+    if(!result && enableGroq){
+      try{
+        const tokens=tabId==="daily"?600:tabId==="overall"||tabId==="daewoon"||tabId==="compat"?3000:2500;
+        result=await callGroq(buildPrompt(tabId,saju,compat),tokens,groqKey);
+        setAiMode("groq");
+      }catch(e){
+        if(e.message==="GROQ_KEY_MISSING") setShowKeyInput(true);
+        result=null;
+      }
+    }
+
+    // STAGE 3: 자체 엔진 (모두 실패 or 자체분석 ON)
+    if(!result && enableSelf){
+      result=selfFortune(tabId,saju);
+      setAiMode("offline");
+    }
+
+    // 아무것도 안켜져 있으면 안내
+    if(!result){
+      result="⚠️ 활성화된 분석 모드가 없습니다.\n위 버튼에서 Claude / Groq / 자체분석 중 하나를 켜주세요.";
+      setAiMode("offline");
+    }
+
+    if(tabId==="daily"){
+      setContent(prev=>({...prev,daily:result,[cacheKey]:result}));
+    } else {
+      setContent(prev=>({...prev,[tabId]:result}));
+    }
+    setLoading(false);setLoadStep(0);setLoadPct(0);
+  },[saju,content,compat,activeTab,groqKey,enableClaude,enableGroq,enableSelf]);
+
+  function handleTab(tabId){
+    setActiveTab(tabId);
+    getFortune(tabId);
+    setTimeout(()=>contentRef.current?.scrollIntoView({behavior:"smooth",block:"start"}),100);
+  }
+
+  const leapM=LEAP_MONTHS[parseInt(form.year)]||0;
+  const currentTab=TABS.find(t=>t.id===activeTab);
+
+  return(
+    <div style={S.app}>
+      <div style={S.header}>
+        <p style={S.title}>사 주 명 리</p>
+        <p style={S.sub}>✦ 천지인의 이치로 보는 운명의 나침반 ✦</p>
+        {/* ── 모드 ON/OFF 토글 ── */}
+        <div style={{marginTop:12,display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap"}}>
+          {[
+            {label:"Claude",  icon:"✦", enabled:enableClaude, toggle:()=>{setEnableClaude(o=>!o);setContent({});},
+              desc:"종합·대운·궁합"},
+            {label:"Groq",    icon:"⚡", enabled:enableGroq,   toggle:()=>{setEnableGroq(o=>!o);setContent({});},
+              desc:"17개 운세"},
+            {label:"자체분석", icon:"🔮", enabled:enableSelf,  toggle:()=>{setEnableSelf(o=>!o);setContent({});},
+              desc:"오프라인"},
+          ].map(m=>(
+            <button key={m.label} onClick={m.toggle} style={{
+              display:"flex",flexDirection:"column",alignItems:"center",gap:2,
+              background: m.enabled
+                ? "rgba(34,197,94,0.25)"
+                : "rgba(255,255,255,0.04)",
+              border: m.enabled
+                ? "1.5px solid rgba(34,197,94,0.7)"
+                : "1.5px solid rgba(255,255,255,0.12)",
+              borderRadius:10,padding:"7px 16px",cursor:"pointer",
+              transition:"all 0.25s",minWidth:72,
+            }}>
+              <div style={{display:"flex",alignItems:"center",gap:5}}>
+                {/* 동그란 ON/OFF 인디케이터 */}
+                <div style={{
+                  width:8,height:8,borderRadius:"50%",flexShrink:0,
+                  background: m.enabled ? "#4ade80" : "rgba(255,255,255,0.18)",
+                  boxShadow: m.enabled ? "0 0 6px #4ade80" : "none",
+                  transition:"all 0.25s"
+                }}/>
+                <span style={{
+                  color: m.enabled ? "#d1fae5" : "rgba(255,245,200,0.25)",
+                  fontSize:12,fontWeight: m.enabled?"700":"400",letterSpacing:1,
+                  transition:"color 0.25s"
+                }}>{m.icon} {m.label}</span>
+              </div>
+              <span style={{
+                color: m.enabled ? "rgba(209,250,229,0.7)" : "rgba(255,255,255,0.15)",
+                fontSize:9,letterSpacing:0.5,transition:"color 0.25s"
+              }}>{m.enabled?"ON":"OFF"} · {m.desc}</span>
+            </button>
+          ))}
+        </div>
+        {/* 현재 작동 모드 표시 */}
+        <div style={{marginTop:6,textAlign:"center"}}>
+          <span style={{
+            fontSize:10,letterSpacing:1,
+            color: aiMode==="online"?"#4ade80": aiMode==="groq"?"#fbbf24":"rgba(255,200,100,0.5)"
+          }}>
+            {aiMode==="online"?"● Claude 분석 중":
+             aiMode==="groq"  ?"● Groq 분석 중":
+             aiMode==="offline"&&(enableSelf)?"● 자체분석 모드":"● 대기 중"}
+          </span>
+        </div>
+        {/* Groq 키 입력 */}
+        <div style={{marginTop:10,display:"flex",justifyContent:"center",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <button onClick={()=>setShowKeyInput(o=>!o)}
+            style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",
+              color:"#fff8e0",borderRadius:7,padding:"4px 12px",cursor:"pointer",fontSize:11,letterSpacing:1}}>
+            🔑 Groq API 키 {groqKey?"✅ 입력됨":"⚠️ 미입력"}
+          </button>
+          <span style={{color:"rgba(255,245,200,0.5)",fontSize:10}}>
+            {groqKey?"Groq 무료 연결 완료":"키 입력 시 17개 운세 무료 사용"}
+          </span>
+        </div>
+        {showKeyInput&&(
+          <div style={{maxWidth:480,margin:"10px auto 0",display:"flex",gap:8}}>
+            <input
+              type="password"
+              placeholder="gsk_xxxxxxxx... (Groq API Key)"
+              value={groqKey}
+              onChange={e=>setGroqKey(e.target.value)}
+              style={{flex:1,background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",
+                borderRadius:7,padding:"7px 12px",color:"#fff8e0",fontSize:12,outline:"none",
+                "::placeholder":{color:"rgba(255,255,255,0.4)"}}}
+            />
+            <button onClick={()=>setShowKeyInput(false)}
+              style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",
+                color:"#fff8e0",borderRadius:7,padding:"7px 14px",cursor:"pointer",fontSize:12}}>
+              확인
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div style={{maxWidth:920,margin:"0 auto",padding:"24px 16px"}}>
+
+        {/* ── 입력 화면 ── */}
+        {step==="input"&&(
+          <div style={{...S.card,maxWidth:600,margin:"0 auto"}}>
+            <h2 style={{color:C.gold,letterSpacing:4,textAlign:"center",marginTop:0,marginBottom:20}}>🔯 생년월일시 입력</h2>
+
+            <p style={S.section}>📅 달력 구분</p>
+            <div style={{display:"flex",gap:10,marginBottom:14}}>
+              {[{v:"solar",l:"☀️ 양력"},{v:"lunar",l:"🌙 음력"}].map(({v,l})=>(
+                <button key={v} onClick={()=>{setCalType(v);setIsLeap(false);}}
+                  style={{...S.pill(calType===v),flex:1,padding:"10px",fontSize:13}}>{l}</button>
+              ))}
+            </div>
+            {calType==="lunar"&&(
+              <div style={{background:"#fffbef",border:`1px solid ${C.borderDim}`,borderRadius:8,padding:"10px 14px",marginBottom:14}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",color:C.gold,fontSize:13}}>
+                  <input type="checkbox" checked={isLeap} onChange={e=>setIsLeap(e.target.checked)} style={{accentColor:C.gold,width:16,height:16}}/>
+                  🌕 윤달(閏月) 출생
+                </label>
+                <p style={{color:C.textMuted,fontSize:11,margin:"5px 0 0 24px"}}>
+                  {leapM>0?`${form.year}년 윤달: 윤${leapM}월`:`${form.year}년은 윤달이 없는 해입니다`}
+                </p>
+              </div>
+            )}
+
+            <p style={S.section}>🗓️ 출생 연월일</p>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+              {[{k:"year",l:"연도",p:"예: 1990"},{k:"month",l:"월",p:"1~12"},{k:"day",l:"일",p:"1~31"}].map(f=>(
+                <div key={f.k}>
+                  <label style={S.label}>{f.l}</label>
+                  <input style={S.input} type="number" placeholder={f.p} value={form[f.k]} onChange={e=>sv(f.k,e.target.value)}/>
                 </div>
-                """, unsafe_allow_html=True)
-            
-            with col2:
-                st.markdown(f"""
-                <div style="text-align:center; padding:30px 20px; background:linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
-                            border-radius:15px; color:white; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
-                    <h2 style="margin:0; font-size:1.2rem; opacity:0.9;">📅 월주</h2>
-                    <h1 style="margin:15px 0; font-size:2.5rem; font-weight:bold;">{p['월']['t']}</h1>
-                    <p style="margin:5px 0; font-size:1rem; opacity:0.9;">{p['월']['han']}</p>
-                    <p style="margin:5px 0; font-size:0.95rem;">{p['월']['unseong']}</p>
-                    <p style="margin:0; font-size:0.9rem; opacity:0.8;">{p['월']['s_sip']} / {p['월']['b_sip']}</p>
+              ))}
+            </div>
+
+            <p style={S.section}>🕐 출생 시진 (十二時辰)</p>
+            {/* 한 줄 가로 스크롤 */}
+            <div style={{overflowX:"auto",paddingBottom:6}}>
+              <div style={{display:"flex",gap:6,minWidth:"max-content"}}>
+                {SIJIN.map(si=>(
+                  <button key={si.key} onClick={()=>selectSi(si)}
+                    style={{
+                      ...S.pill(form.siKey===si.key),
+                      display:"flex",flexDirection:"column",alignItems:"center",
+                      minWidth:72,padding:"7px 6px",borderRadius:10,flexShrink:0
+                    }}>
+                    <span style={{fontSize:18,lineHeight:1}}>{si.emoji}</span>
+                    <span style={{fontSize:10,fontWeight:"700",marginTop:3,color:form.siKey===si.key?C.gold:C.textSub}}>{si.jj}시</span>
+                    <span style={{fontSize:9,color:C.textMuted,marginTop:1,letterSpacing:0}}>{si.range.split("~")[0]}~</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* 선택된 시진 표시 */}
+            {form.siKey&&(
+              <div style={{background:C.goldBg,border:`1px solid ${C.borderDim}`,borderRadius:7,padding:"6px 12px",marginTop:6,fontSize:12,color:C.textSub}}>
+                ✓ 선택: <span style={{color:C.gold,fontWeight:"700"}}>{SIJIN.find(s=>s.key===form.siKey)?.label}</span>
+                <span style={{color:C.textMuted,marginLeft:8,fontSize:11}}>{SIJIN.find(s=>s.key===form.siKey)?.range}</span>
+              </div>
+            )}
+
+            <p style={S.section}>⚧ 성별</p>
+            <div style={{display:"flex",gap:10}}>
+              {[{v:"male",l:"♂ 남성"},{v:"female",l:"♀ 여성"}].map(({v,l})=>(
+                <button key={v} onClick={()=>sv("gender",v)} style={{...S.pill(form.gender===v),flex:1,padding:"10px",fontSize:13}}>{l}</button>
+              ))}
+            </div>
+
+            <p style={S.section}>💍 결혼 상태</p>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {MARITAL.map(({v,l})=>(
+                <button key={v} onClick={()=>sv("marital",v)} style={{...S.pill(form.marital===v),padding:"9px",fontSize:12}}>{l}</button>
+              ))}
+            </div>
+
+            <p style={S.section}>💼 직업 / 업종</p>
+            <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+              {JOBS.map(({v,l})=>(
+                <button key={v} onClick={()=>sv("job",v)} style={{...S.pill(form.job===v),fontSize:11}}>{l}</button>
+              ))}
+            </div>
+
+            {error&&<p style={{color:C.red,textAlign:"center",marginTop:12,fontSize:13}}>{error}</p>}
+            <button style={{...S.btn,width:"100%",marginTop:22}} onClick={calculate}>✦ 사주 풀이 시작 ✦</button>
+            <p style={{color:C.textMuted,fontSize:10,textAlign:"center",marginTop:10}}>* 음력 1940~2040 지원 / 시각 불명 시 '시각 모름' 선택</p>
+          </div>
+        )}
+
+        {/* ── 결과 화면 ── */}
+        {step==="result"&&saju&&(
+          <div>
+            {/* 상단 헤더 */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div>
+                <h3 style={{color:C.gold,margin:0,letterSpacing:3,fontSize:15}}>📜 사주팔자 명식</h3>
+                {saju.lunarInput&&<p style={{color:C.textMuted,fontSize:10,margin:"2px 0 0"}}>🌙 {saju.lunarInput} → ☀️ {saju.solarDate}</p>}
+              </div>
+              <button onClick={()=>setStep("input")}
+                style={{background:C.bgAccent,border:`1px solid ${C.border}`,color:C.textSub,borderRadius:7,padding:"5px 12px",cursor:"pointer",fontSize:11}}>
+                ↩ 다시입력
+              </button>
+            </div>
+
+            {/* 개인정보 배지 */}
+            <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+              {[`${saju.form.gender==="male"?"♂ 남성":"♀ 여성"}`,`${MKR[saju.form.marital]||""}`,`${JKR[saju.form.job]||""}`,`${saju.form.siLabel||""}`].map((t,i)=>(t&&<span key={i} style={S.tag}>{t}</span>))}
+            </div>
+
+            {/* 4기둥 — 가로 컴팩트 */}
+            <div style={{...S.card,marginBottom:10,padding:"14px 16px"}}>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                {saju.pillars.map((p,i)=>(
+                  <div key={i} style={{...S.pillar,padding:"10px 6px"}}>
+                    <div style={{color:C.textMuted,fontSize:9,marginBottom:4}}>{p.name}</div>
+                    <div style={{fontSize:26,color:C.gold,lineHeight:1,fontWeight:"bold"}}>{p.cg}</div>
+                    <div style={{fontSize:9,color:OHC[OH[p.cg]]||"#888",margin:"2px 0"}}>{OH[p.cg]}{OHE[OH[p.cg]]}</div>
+                    <div style={{width:1,height:12,background:C.borderDim,margin:"2px auto"}}/>
+                    <div style={{fontSize:22,color:"#7c4a00",lineHeight:1,fontWeight:"bold"}}>{p.jj}</div>
+                    <div style={{fontSize:9,color:OHC[OH[p.jj]]||"#888",marginTop:2}}>{OH[p.jj]}{OHE[OH[p.jj]]}</div>
+                    <div style={{fontSize:9,color:C.textSub,marginTop:3}}>{p.cgk}{p.jjk}</div>
+                    <div style={{fontSize:8,color:C.textMuted}}>({p.ani})</div>
+                  </div>
+                ))}
+              </div>
+              <p style={{color:C.textMuted,fontSize:10,textAlign:"center",margin:0}}>
+                일간 <span style={{color:C.gold,fontWeight:"bold"}}>{saju.ilgan}({saju.ilganKr})</span> — {OH[saju.ilgan]}({OHN[OH[saju.ilgan]]}) 기운이 나(자신)를 나타냅니다
+              </p>
+            </div>
+
+            {/* ★ 운세 탭 — 명식 바로 아래 배치 ★ */}
+            <div style={S.card} ref={contentRef}>
+              <h4 style={{color:C.gold,margin:"0 0 12px",fontSize:12,letterSpacing:3}}>✦ 운세 풀이 (20가지)</h4>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+                {TABS.map(t=>(
+                  <button key={t.id} style={S.pill(activeTab===t.id)} onClick={()=>handleTab(t.id)}>
+                    {t.icon} {t.label}
+                    {CLAUDE_TABS.has(t.id)
+                      ? <span style={{marginLeft:3,background:"rgba(160,114,10,0.2)",borderRadius:3,padding:"0 4px",fontSize:8,color:C.gold}}>Claude</span>
+                      : <span style={{marginLeft:3,background:"rgba(34,197,94,0.15)",borderRadius:3,padding:"0 4px",fontSize:8,color:"#16a34a"}}>Groq</span>
+                    }
+                    {content[t.id]&&<span style={{marginLeft:3,color:C.green,fontSize:9}}>✓</span>}
+                  </button>
+                ))}
+              </div>
+
+              {/* 궁합 입력 */}
+              {activeTab==="compat"&&(
+                <div style={{background:"#fffbef",border:`1px solid ${C.borderDim}`,borderRadius:10,padding:14,marginBottom:12}}>
+                  <p style={{color:C.textSub,fontSize:11,margin:"0 0 8px",letterSpacing:2}}>💑 상대방 생년월일 입력 (양력)</p>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:8}}>
+                    {[{k:"year",p:"연도"},{k:"month",p:"월"},{k:"day",p:"일"}].map(f=>(
+                      <div key={f.k}><label style={{...S.label,fontSize:9}}>{f.p}</label>
+                        <input style={{...S.input,padding:"6px 8px",fontSize:12}} type="number" placeholder={f.p}
+                          value={compat[f.k]} onChange={e=>setCompat(p=>({...p,[f.k]:e.target.value}))}/></div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:8,marginBottom:8}}>
+                    {[{v:"male",l:"남성"},{v:"female",l:"여성"}].map(({v,l})=>(
+                      <button key={v} onClick={()=>setCompat(p=>({...p,gender:v}))} style={{...S.pill(compat.gender===v),flex:1}}>{l}</button>
+                    ))}
+                  </div>
+                  <button style={{...S.btn,width:"100%",padding:9,fontSize:13}}
+                    onClick={()=>{setContent(p=>({...p,compat:undefined}));getFortune("compat",true);}}>
+                    궁합 분석하기
+                  </button>
                 </div>
-                """, unsafe_allow_html=True)
-            
-            with col3:
-                st.markdown(f"""
-                <div style="text-align:center; padding:30px 20px; background:linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); 
-                            border-radius:15px; color:white; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
-                    <h2 style="margin:0; font-size:1.2rem; opacity:0.9;">🏛️ 년주</h2>
-                    <h1 style="margin:15px 0; font-size:2.5rem; font-weight:bold;">{p['년']['t']}</h1>
-                    <p style="margin:5px 0; font-size:1rem; opacity:0.9;">{p['년']['han']}</p>
-                    <p style="margin:5px 0; font-size:0.95rem;">{p['년']['unseong']}</p>
-                    <p style="margin:0; font-size:0.9rem; opacity:0.8;">{p['년']['s_sip']} / {p['년']['b_sip']}</p>
+              )}
+
+              {/* 풀이 영역 */}
+              <div style={{minHeight:280,background:C.bgSub,borderRadius:12,border:`1px solid ${C.borderDim}`,overflow:"hidden"}}>
+                {loading && (
+                  <LoadingScreen
+                    isOverall={activeTab==="overall"}
+                    stepIdx={loadStep}
+                    progress={loadPct}
+                    tabLabel={currentTab?.label}
+                    tabIcon={currentTab?.icon}
+                    aiMode={aiMode}
+                  />
+                )}
+                {!loading&&content[activeTab]&&(
+                  <div style={{padding:"22px 18px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,paddingBottom:12,borderBottom:`1px solid ${C.borderDim}`}}>
+                      <span style={{fontSize:22}}>{currentTab?.icon}</span>
+                      <h4 style={{color:C.gold,margin:0,fontSize:15,letterSpacing:3}}>{currentTab?.label}</h4>
+                      {activeTab==="daily"&&(()=>{
+                        const t=new Date();
+                        const wd=["일","월","화","수","목","금","토"][t.getDay()];
+                        return<span style={{marginLeft:4,background:C.goldBg,border:`1px solid ${C.borderDim}`,borderRadius:20,padding:"2px 10px",fontSize:11,color:C.textSub}}>
+                          📅 {t.getFullYear()}.{t.getMonth()+1}.{t.getDate()} ({wd})
+                        </span>;
+                      })()}
+                      <button onClick={()=>getFortune(activeTab,true)}
+                        style={{marginLeft:"auto",background:"transparent",border:`1px solid ${C.borderDim}`,color:C.textMuted,borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:10}}>
+                        🔄 재생성
+                      </button>
+                    </div>
+                    {/* 오프라인 모드 배너 */}
+                    {content[activeTab]?.includes("자체 분석 결과")&&(
+                      <div style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"8px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+                        <span>🔴</span>
+                        <div>
+                          <span style={{color:"#c2410c",fontSize:12,fontWeight:"700"}}>자체 분석 모드 작동 중</span>
+                          <span style={{color:"#9a3412",fontSize:11,marginLeft:8}}>AI 서버 일시 점검 · 🔄 재생성으로 AI 풀이 재시도 가능</span>
+                        </div>
+                      </div>
+                    )}
+                    <div style={{color:C.text,lineHeight: activeTab==="daily"?1.9:2,fontSize: activeTab==="daily"?15:14,letterSpacing:0.3,whiteSpace:"pre-line",wordBreak:"keep-all"}}>
+                      {content[activeTab]}
+                    </div>
+                  </div>
+                )}
+                {!loading&&!content[activeTab]&&(
+                  <div style={{textAlign:"center",padding:"60px 20px"}}>
+                    <p style={{fontSize:32,marginBottom:10}}>{currentTab?.icon}</p>
+                    <p style={{color:C.textSub,letterSpacing:2,fontSize:13}}>
+                      위 탭을 클릭하면{" "}
+                      {enableClaude?"Claude AI":enableGroq?"Groq AI":enableSelf?"자체분석 엔진":"(모드 선택 필요)"}
+                      {enableClaude||enableGroq||enableSelf?"가 풀이해드립니다":""}
+                    </p>
+                    {activeTab==="overall"&&<p style={{color:C.textMuted,fontSize:11,marginTop:6}}>종합운세는 3파트 구성 · 약 2~4분 소요</p>}
+                    {activeTab==="daily"&&(()=>{
+                      const t=new Date();
+                      const wd=["일","월","화","수","목","금","토"][t.getDay()];
+                      return<p style={{color:C.gold,fontSize:12,marginTop:8,letterSpacing:1}}>
+                        📅 오늘 {t.getFullYear()}.{t.getMonth()+1}.{t.getDate()} ({wd}) 운세를 300자로 요약해드려요
+                      </p>;
+                    })()}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── 상세 분석 (접기/펼치기) ── */}
+            <DetailPanel saju={saju} />
+
+            <p style={{textAlign:"center",color:C.textMuted,fontSize:10,marginTop:16,letterSpacing:4}}>
+              ✦ 음양오행의 이치로 보는 운명의 흐름 ✦
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════
+//  접기/펼치기 오행·대운 패널
+// ══════════════════════════════════════════════
+function DetailPanel({ saju }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{marginTop:10}}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{width:"100%",background:C.bgAccent,border:`1px solid ${C.border}`,borderRadius:10,
+          padding:"10px",cursor:"pointer",color:C.textSub,fontSize:12,letterSpacing:2,
+          display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+        <span>{open?"▲":"▼"}</span>
+        <span>오행 분포 · 대운 흐름 상세 분석</span>
+        <span style={{color:C.textMuted,fontSize:10}}>{open?"접기":"펼치기"}</span>
+      </button>
+      {open&&(
+        <div style={{marginTop:8}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+            <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:12,padding:16,boxShadow:C.shadow}}>
+              <h4 style={{color:C.gold,margin:"0 0 8px",fontSize:12,letterSpacing:2}}>🌐 오행 분포도</h4>
+              <ResponsiveContainer width="100%" height={145}>
+                <RadarChart data={Object.entries(saju.ohCnt).map(([k,v])=>({subject:OHE[k]+k,value:v,fullMark:4}))}>
+                  <PolarGrid stroke={C.borderDim}/>
+                  <PolarAngleAxis dataKey="subject" tick={{fill:C.textSub,fontSize:11}}/>
+                  <Radar dataKey="value" stroke={C.gold} fill={C.gold} fillOpacity={0.2}/>
+                  <Tooltip contentStyle={{background:C.bgCard,border:`1px solid ${C.border}`,color:C.text,fontSize:11}}/>
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:12,padding:16,boxShadow:C.shadow}}>
+              <h4 style={{color:C.gold,margin:"0 0 10px",fontSize:12,letterSpacing:2}}>📊 오행 현황</h4>
+              {Object.entries(saju.ohCnt).map(([k,v])=>(
+                <div key={k} style={{marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                    <span style={{color:OHC[k],fontSize:11,fontWeight:"600"}}>{OHE[k]} {k}({OHN[k]})</span>
+                    <span style={{color:C.textMuted,fontSize:10}}>{v}/8</span>
+                  </div>
+                  <div style={{background:C.bgSub,borderRadius:4,height:6,overflow:"hidden"}}>
+                    <div style={{width:`${(v/8)*100}%`,height:"100%",background:OHC[k],borderRadius:4,transition:"width 0.6s"}}/>
+                  </div>
                 </div>
-                """, unsafe_allow_html=True)
-            
-            # 시주 정보
-            if p['시']['t'] != '미상':
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown(f"""
-                <div style="text-align:center; padding:25px; background:linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
-                            border-radius:15px; color:white; box-shadow:0 10px 30px rgba(0,0,0,0.3); max-width:600px; margin:0 auto;">
-                    <h3 style="margin:0 0 10px 0; font-size:1.1rem;">🕐 시주 (時柱)</h3>
-                    <h2 style="margin:10px 0; font-size:2rem; font-weight:bold;">{p['시']['t']}</h2>
-                    <p style="margin:5px 0; font-size:1rem;">{p['시']['han']} · {p['시']['unseong']} · {p['시']['s_sip']}/{p['시']['b_sip']}</p>
+              ))}
+            </div>
+          </div>
+          <div style={{background:C.bgCard,border:`1px solid ${C.border}`,borderRadius:12,padding:16,boxShadow:C.shadow}}>
+            <h4 style={{color:C.gold,margin:"0 0 10px",fontSize:12,letterSpacing:2}}>🌊 대운 흐름 (10년 단위)</h4>
+            <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4}}>
+              {saju.daewoon.map((d,i)=>(
+                <div key={i} style={{minWidth:68,background:C.bgAccent,border:`1px solid ${C.borderDim}`,borderRadius:10,padding:"10px 6px",textAlign:"center",flexShrink:0}}>
+                  <div style={{color:C.gold,fontSize:17,fontWeight:"bold"}}>{d.cg}</div>
+                  <div style={{color:"#7c4a00",fontSize:15,fontWeight:"bold"}}>{d.jj}</div>
+                  <div style={{color:C.textSub,fontSize:9,marginTop:2}}>{d.cgk}{d.jjk}</div>
+                  <div style={{color:C.textMuted,fontSize:9}}>~{d.age}세</div>
+                  <div style={{color:C.textMuted,fontSize:8}}>{d.year}~</div>
                 </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.info("⏰ 시주 정보가 없습니다.")
-        
-        # 탭 2: 운세 내용
-        with tab2:
-            st.text_area("운세 내용", st.session_state.result, height=600)
-        
-        # 탭 3: AI 상담
-        with tab3:
-            st.markdown("### 🧙‍♂️ 금강도사")
-            
-            # API 키 확인
-            if st.session_state.use_ai and st.session_state.api_key:
-                api_key = st.session_state.api_key
-                st.success("✅ API 키 연결됨")
-            else:
-                st.warning("💡 AI 상담을 이용하려면 API 키를 입력하세요")
-                api_key = st.text_input("Groq API Key", type="password", key="chat_api", 
-                                       placeholder="gsk_...")
-            
-            if not api_key:
-                st.info("""
-                ### 🔑 API 키 발급 방법
-                1. https://console.groq.com 접속
-                2. 회원가입 (무료)
-                3. API Keys 메뉴에서 발급
-                4. 위 입력창에 붙여넣기
-                """)
-            else:
-                # 질문 입력 먼저 (모바일 UX 개선)
-                st.markdown("### 💬 질문하기")
-                with st.form("chat_form", clear_on_submit=True):
-                    question = st.text_area(
-                        "무엇이든 물어보세요!", 
-                        height=150,
-                        placeholder="예시:\n• 57세 대운에서 재물운이 좋다고 했는데 구체적으로 어떻게 해야 하나요?\n• 제 사주에서 건강이 걱정되는데 어떤 부분을 조심해야 하나요?\n• 직장을 옮겨야 할까요, 현재 직장에 남아야 할까요?",
-                        max_chars=500
-                    )
-                    col_q1, col_q2 = st.columns([3, 1])
-                    with col_q1:
-                        submit_chat = st.form_submit_button("💬 질문하기", use_container_width=True, type="primary")
-                    with col_q2:
-                        clear_chat = st.form_submit_button("🗑️ 대화 초기화", use_container_width=True)
-                
-                if clear_chat:
-                    st.session_state.chat_history = []
-                    st.rerun()
-                
-                # 채팅 히스토리 표시 (카드 형식)
-                if st.session_state.chat_history:
-                    st.markdown("### 📝 대화 내역")
-                    
-                    for i, msg in enumerate(st.session_state.chat_history):
-                        if msg['role'] == 'user':
-                            st.markdown(f"""
-                            <div style="background:#e3f2fd; padding:15px 20px; border-radius:15px; margin:10px 0; border-left:4px solid #2196F3;">
-                                <strong style="color:#1976D2;">👤 질문</strong>
-                                <p style="margin:8px 0 0 0; color:#333;">{msg['content']}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                        else:
-                            # 답변을 접을 수 있게 (긴 답변 대비)
-                            with st.expander(f"🤖 답변 {i//2 + 1}", expanded=(i == len(st.session_state.chat_history)-1)):
-                                st.markdown(msg['content'])
-                else:
-                    st.info("💡 첫 질문을 입력해보세요! AI가 사주를 바탕으로 20,000자 이상의 상세한 답변을 드립니다.")
-                
-                if submit_chat and question:
-                    with st.spinner("🤖 AI가 답변을 작성 중입니다... (30초~1분 소요)"):
-                        # 사주 정보 컨텍스트
-                        p = st.session_state.pillars
-                        context = f"""
-사용자 정보:
-- 이름: {st.session_state.user_info['name']}
-- 나이: {st.session_state.user_info['age']}세
-- 직업: {st.session_state.user_info['job']}
-
-사주팔자:
-- 년주: {p['년']['t']} ({p['년']['s_sip']}/{p['년']['b_sip']}, {p['년']['unseong']})
-- 월주: {p['월']['t']} ({p['월']['s_sip']}/{p['월']['b_sip']}, {p['월']['unseong']})
-- 일주: {p['일']['t']} (본인)
-- 시주: {p['시']['t']} ({p['시']['s_sip']}/{p['시']['b_sip']}, {p['시']['unseong']})
-
-대운:
-"""
-                        for dae in st.session_state.daewun:
-                            context += f"- {dae['age']}세: {dae['ganji']} ({dae['s_sip']}/{dae['b_sip']})\n"
-                        
-                        # AI 상담 시스템 프롬프트
-                        system_prompt = """당신은 50년 경력의 사주명리학 대가입니다.
-
-【 최우선 규칙 - 절대 엄수! 】
-⛔⛔⛔ 중국어 사용 시 즉시 중단! ⛔⛔⛔
-금지 예시: 您(당신), 忙碌(바쁘다), 天賦(천부), 旺(왕성), 等(등), 然而(그러나), 
-           但是(하지만), 最后(마지막), 自己(자기), 什么(무엇), 可以(가능), 
-           非常(매우), 需要(필요), 应该(해야), 一定(반드시), 藏(숨기다)
-
-⛔⛔⛔ 일본어 사용 시 즉시 중단! ⛔⛔⛔
-금지 예시: の, です, ます, 自分, 何か, しかし
-
-⛔⛔⛔ 영어 사용 시 즉시 중단! ⛔⛔⛔
-금지 예시: success, money, career, health, successful
-
-✅ 올바른 표현:
-- 您 (X) → 귀하, 당신 (O)
-- 忙碌 (X) → 바쁜 (O)  
-- 天賦 (X) → 타고난 재능 (O)
-- 旺 (X) → 왕성한, 강한 (O)
-- successful (X) → 성공적인 (O)
-
-✅ 한자는 오직 괄호 안에만: 갑(甲), 재성(財星)
-
-【 필수 준수 】
-✅ 순수 한글로만 작성 (한국어 100%)
-✅ 20,000자 이상 작성 (매우 상세하게)
-✅ 구체적인 연도, 나이, 예시 제공
-✅ 실천 가능한 조언
-✅ 사주 데이터 100% 반영
-
-【 답변 스타일 】
-- 친근하고 따뜻하게
-- 구체적인 상황 묘사
-- 이유와 근거 명확히
-- 주의사항 포함
-
-⚠️ 중국어/일본어/영어 사용 시 즉시 중단됩니다!
-오직 순수 한글만 사용하세요."""
-
-                        # 대화 이력 구성
-                        messages = [{"role": "system", "content": system_prompt}]
-                        
-                        # 이전 대화 포함
-                        for msg in st.session_state.chat_history[-4:]:  # 최근 4개만
-                            messages.append(msg)
-                        
-                        # 현재 질문
-                        messages.append({
-                            "role": "user", 
-                            "content": f"{context}\n\n질문: {question}"
-                        })
-                        
-                        # AI 호출
-                        answer = AIGenerator.call(api_key, messages, 16000)
-                        
-                        if answer and "오류" not in answer and "⚠️" not in answer:
-                            # 히스토리에 추가
-                            st.session_state.chat_history.append({"role": "user", "content": question})
-                            st.session_state.chat_history.append({"role": "assistant", "content": answer})
-                            st.success("✅ 답변이 완료되었습니다!")
-                            st.rerun()
-                        else:
-                            st.error(f"❌ {answer}")
-                            st.info("💡 API 키를 확인하거나 잠시 후 다시 시도해주세요.")
-
-if __name__ == "__main__":
-    main()
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
