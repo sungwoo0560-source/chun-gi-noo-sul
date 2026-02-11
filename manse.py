@@ -7,117 +7,129 @@ from datetime import date, datetime
 #  페이지 설정
 # ══════════════════════════════════════════════
 st.set_page_config(
-    page_title="🔮 사주팔자 천명풀이",
+    page_title="🔮 사주팔자 천명풀이 — 노트북",
     page_icon="🔮",
-    layout="centered",
-    initial_sidebar_state="collapsed"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # ══════════════════════════════════════════════
-#  CSS - 모바일 최적화
+#  CSS - 데스크탑 최적화
 # ══════════════════════════════════════════════
 st.markdown("""
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&display=swap');
   html, body, [class*="css"] { font-family: 'Noto Serif KR', serif; }
   .stApp { background: linear-gradient(160deg,#fdf8f0 0%,#fef9f2 50%,#fdf5e6 100%); }
-  .main .block-container { padding: 0 0 2rem 0; max-width: 480px; }
+  .main .block-container { padding: 1.5rem 2rem 2rem 2rem; max-width: 100%; }
   h1,h2,h3 { color: #7c4a00 !important; }
+
+  /* 사이드바 */
+  section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #2c1a00 0%, #3d2500 60%, #2c1a00 100%) !important;
+    border-right: 2px solid #a0720a;
+  }
+  section[data-testid="stSidebar"] * { color: #fff8e0 !important; }
+  section[data-testid="stSidebar"] .stSelectbox > div > div {
+    background: rgba(255,248,224,0.1) !important;
+    border: 1px solid #a0720a !important;
+    color: #fff8e0 !important;
+  }
+  section[data-testid="stSidebar"] .stTextInput > div > div > input {
+    background: rgba(255,248,224,0.1) !important;
+    border: 1px solid #a0720a !important;
+    color: #fff8e0 !important;
+  }
+  section[data-testid="stSidebar"] .stNumberInput > div > div > input {
+    background: rgba(255,248,224,0.1) !important;
+    border: 1px solid #a0720a !important;
+    color: #fff8e0 !important;
+  }
+  section[data-testid="stSidebar"] label { color: #e8d5a0 !important; font-size: 13px; }
+  section[data-testid="stSidebar"] .stButton > button {
+    background: linear-gradient(135deg,#a0720a,#c9960f,#a0720a) !important;
+    color: #2c1a00 !important; font-weight: 900 !important;
+    border-radius: 10px !important; width: 100% !important;
+    padding: 14px !important; font-size: 17px !important;
+    letter-spacing: 3px !important;
+  }
+
+  /* 메인 버튼 */
   .stButton > button {
     background: linear-gradient(135deg,#7c4a00,#a0720a,#7c4a00) !important;
     color: #fff8e0 !important; border: none !important;
     font-weight: bold !important; letter-spacing: 2px !important;
     border-radius: 10px !important; width: 100% !important;
-    padding: 12px !important; font-size: 16px !important;
+    padding: 10px !important; font-size: 14px !important;
     font-family: 'Noto Serif KR', serif !important;
   }
   .stSelectbox > div > div { background: #faf4e8 !important; border: 1.5px solid #e8d5a0 !important; }
   .stTextInput > div > div > input { background: #faf4e8 !important; border: 1.5px solid #e8d5a0 !important; }
-  .stRadio > div { gap: 8px; }
-  div[data-testid="stMarkdownContainer"] pre {
-    background: #fff8e6 !important; border: 1px solid #e8d5a0 !important;
-    border-radius: 10px !important; padding: 16px !important;
-    font-family: 'Noto Serif KR', serif !important;
-    white-space: pre-wrap !important; font-size: 14px !important;
-    color: #2c1f0e !important; line-height: 1.8 !important;
-  }
-  .header-box {
-    background: linear-gradient(135deg,#7c4a00 0%,#a0720a 50%,#7c4a00 100%);
-    padding: 22px 24px 18px; text-align: center;
-    box-shadow: 0 4px 20px rgba(120,70,0,0.3);
-  }
-  .header-title { font-size: 26px; font-weight: bold; color: #fff8e0;
-    letter-spacing: 8px; text-shadow: 0 2px 8px rgba(0,0,0,0.3); }
-  .header-sub { color: rgba(255,245,200,0.7); font-size: 11px; letter-spacing: 4px; margin-top: 4px; }
+
+  /* 카드 */
   .card {
     background: #ffffff; border: 1px solid #e8d5a0;
-    border-radius: 14px; padding: 18px 16px;
-    box-shadow: 0 2px 12px rgba(160,114,10,0.08);
-    margin: 12px 0;
+    border-radius: 14px; padding: 20px 24px;
+    box-shadow: 0 2px 16px rgba(160,114,10,0.10);
+    margin: 10px 0;
   }
   .pillar-box {
     background: #fff8e6; border: 1px solid #e8d5a0;
-    border-radius: 10px; padding: 12px 8px; text-align: center;
+    border-radius: 12px; padding: 16px 10px; text-align: center;
     flex: 1;
   }
   .oh-badge {
-    display: inline-block; padding: 4px 10px;
-    border-radius: 20px; font-size: 12px;
+    display: inline-block; padding: 5px 14px;
+    border-radius: 20px; font-size: 13px;
     border: 1px solid #e8d5a0; color: #7a5c2a;
-    background: rgba(160,114,10,0.08);
+    background: rgba(160,114,10,0.08); margin: 3px;
   }
-  .tab-btn {
-    background: transparent; border: 1.5px solid #f0e4bb;
-    border-radius: 8px; color: #c9b080; padding: 7px 10px;
-    cursor: pointer; font-size: 11px; letter-spacing: 1px;
-    margin: 3px; display: inline-block;
-  }
-  .tab-btn-active {
-    background: rgba(160,114,10,0.12); border: 1.5px solid #a0720a;
-    color: #a0720a; font-weight: 700;
-  }
+
+  /* 운세 텍스트 */
   .fortune-text {
-    background: #fff8e6; border: 1px solid #e8d5a0;
-    border-radius: 12px; padding: 18px 16px;
-    font-size: 14px; color: #2c1f0e;
-    line-height: 1.9; white-space: pre-wrap;
+    background: #fffcf4; border: 1px solid #e8d5a0;
+    border-radius: 14px; padding: 28px 32px;
+    font-size: 15.5px; color: #2c1f0e;
+    line-height: 2.1; white-space: pre-wrap;
     font-family: 'Noto Serif KR', serif;
+    box-shadow: inset 0 1px 6px rgba(160,114,10,0.06);
   }
   .gold-section {
-    color: #a0720a; font-size: 12px; letter-spacing: 3px;
-    border-bottom: 1px solid #f0e4bb; padding-bottom: 6px;
-    font-weight: 700; margin: 16px 0 10px;
+    color: #a0720a; font-size: 13px; letter-spacing: 3px;
+    border-bottom: 1.5px solid #f0e4bb; padding-bottom: 8px;
+    font-weight: 700; margin: 20px 0 12px;
   }
   .warning-box {
     background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
-    border-radius: 10px; padding: 10px 14px; font-size: 12px;
+    border-radius: 10px; padding: 10px 16px; font-size: 13px;
     color: #be123c; text-align: center; margin: 10px 0;
   }
   .success-box {
     background: rgba(22,163,74,0.08); border: 1px solid rgba(22,163,74,0.25);
-    border-radius: 10px; padding: 10px 14px; font-size: 12px;
+    border-radius: 10px; padding: 10px 16px; font-size: 13px;
     color: #16a34a; text-align: center; margin: 10px 0;
   }
-  /* 모바일 최적화 */
-  @media (max-width: 600px) {
-    .main .block-container { padding: 0 0 2rem 0 !important; }
-    .header-title { font-size: 20px; letter-spacing: 4px; }
+
+  /* 헤더 */
+  .header-box {
+    background: linear-gradient(135deg,#7c4a00 0%,#a0720a 50%,#7c4a00 100%);
+    padding: 28px 32px 22px; text-align: center;
+    box-shadow: 0 4px 24px rgba(120,70,0,0.3);
+    border-radius: 0 0 20px 20px; margin-bottom: 20px;
   }
-  /* 탭 버튼 감추기 */
-  .stTabs [data-baseweb="tab-list"] {
-    gap: 4px; flex-wrap: wrap;
-    background: #fff8e6; border-radius: 10px; padding: 6px;
-  }
-  .stTabs [data-baseweb="tab"] {
-    font-size: 12px !important; padding: 6px 10px !important;
-    color: #7a5c2a !important;
-  }
-  .stTabs [aria-selected="true"] {
-    background: #a0720a !important; color: #fff8e0 !important;
-    border-radius: 6px !important;
+  .header-title { font-size: 34px; font-weight: bold; color: #fff8e0;
+    letter-spacing: 10px; text-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  .header-sub { color: rgba(255,245,200,0.7); font-size: 12px; letter-spacing: 5px; margin-top: 6px; }
+
+  /* 탭 버튼 그룹 */
+  .tab-group-label {
+    font-size: 11px; color: #a0720a; letter-spacing: 2px;
+    font-weight: 700; margin: 14px 0 6px;
+    border-left: 3px solid #a0720a; padding-left: 8px;
   }
 </style>
 """, unsafe_allow_html=True)
+
 
 # ══════════════════════════════════════════════
 #  상수 정의
@@ -1382,241 +1394,328 @@ def render_daewoon(saju, form):
         """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
-#  메인 앱
+#  데스크탑 메인 앱
 # ══════════════════════════════════════════════
 def main():
-    # 세션 초기화
     if "step" not in st.session_state:
         st.session_state.step = "input"
     if "saju" not in st.session_state:
         st.session_state.saju = None
-    if "groq_key" not in st.session_state:
-        st.session_state.groq_key = ""
     if "fortune_cache" not in st.session_state:
         st.session_state.fortune_cache = {}
+    if "groq_key" not in st.session_state:
+        st.session_state.groq_key = ""
     if "active_tab" not in st.session_state:
         st.session_state.active_tab = "overall"
     if "form" not in st.session_state:
         st.session_state.form = {}
 
     render_header()
+    render_sidebar_input()
+    if st.session_state.saju:
+        render_desktop_result()
+    else:
+        st.markdown("""
+        <div style="text-align:center; padding: 80px 40px; color: #a0720a;">
+          <div style="font-size:60px; margin-bottom:20px;">🔮</div>
+          <div style="font-size:22px; letter-spacing:4px; font-weight:700; color:#7c4a00;">천명풀이를 시작하십시오</div>
+          <div style="font-size:15px; color:#b08040; margin-top:16px; line-height:2;">
+            왼쪽 사이드바에 생년월일시를 입력하시면<br>
+            하늘이 내린 팔자의 비밀이 펼쳐집니다
+          </div>
+          <div style="margin-top:30px; font-size:13px; color:#c9a05a; line-height:2.2;">
+            ✦ 19가지 운세 풀이 &nbsp;|&nbsp; ✦ Groq AI 신명 풀이 &nbsp;|&nbsp; ✦ 자체 분석 프로그램
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    if st.session_state.step == "input":
-        render_input_form()
-    elif st.session_state.step == "result":
-        render_result()
 
-def render_input_form():
-    st.markdown('<div style="padding: 0 16px">', unsafe_allow_html=True)
+def render_sidebar_input():
+    with st.sidebar:
+        st.markdown("""
+        <div style="text-align:center; padding: 16px 0 20px;">
+          <div style="font-size:28px;">🔮</div>
+          <div style="font-size:16px; font-weight:700; letter-spacing:5px; color:#e8d5a0; margin-top:6px;">사주 입력</div>
+          <div style="font-size:10px; color:#c9a880; letter-spacing:3px; margin-top:4px;">八字 入力</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    with st.form("saju_form"):
-        st.markdown('<div class="gold-section">📅 생년월일시</div>', unsafe_allow_html=True)
+        with st.form("saju_form"):
+            cal_type = st.selectbox("양력 / 음력", ["양력 (기본)", "음력"])
+            cal_type = "음력" if "음력" in cal_type else "양력"
 
-        cal_type = st.radio("달력 종류", ["양력","음력"], horizontal=True)
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                year = st.number_input("년", min_value=1930, max_value=2010, value=1990, step=1)
+            with col2:
+                month = st.number_input("월", min_value=1, max_value=12, value=1, step=1)
+            with col3:
+                day = st.number_input("일", min_value=1, max_value=31, value=1, step=1)
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            year = st.number_input("년도", min_value=1940, max_value=2010, value=1990, step=1)
-        with col2:
-            month = st.number_input("월", min_value=1, max_value=12, value=1, step=1)
-        with col3:
-            day = st.number_input("일", min_value=1, max_value=31, value=1, step=1)
+            is_leap = False
+            if cal_type == "음력":
+                is_leap = st.checkbox("윤달 여부")
 
-        is_leap = False
-        if cal_type == "음력":
-            is_leap = st.checkbox("윤달 여부")
+            sijin_options = [
+                ("자시 子 (23:00~01:00) 🐭", 0),
+                ("축시 丑 (01:00~03:00) 🐮", 1),
+                ("인시 寅 (03:00~05:00) 🐯", 3),
+                ("묘시 卯 (05:00~07:00) 🐰", 5),
+                ("진시 辰 (07:00~09:00) 🐉", 7),
+                ("사시 巳 (09:00~11:00) 🐍", 9),
+                ("오시 午 (11:00~13:00) 🐴", 11),
+                ("미시 未 (13:00~15:00) 🐑", 13),
+                ("신시 申 (15:00~17:00) 🐵", 15),
+                ("유시 酉 (17:00~19:00) 🐓", 17),
+                ("술시 戌 (19:00~21:00) 🐕", 19),
+                ("해시 亥 (21:00~23:00) 🐗", 21),
+                ("시각 모름 ❓ (오시 기준)", 11),
+            ]
+            si_labels = [s[0] for s in sijin_options]
+            si_idx = st.selectbox("태어난 시각", range(len(si_labels)), format_func=lambda i: si_labels[i], index=6)
+            hour = sijin_options[si_idx][1]
 
-        sijin_options = [
-            ("자시 子 (23:00~01:00) 🐭", 0, "子"),
-            ("축시 丑 (01:00~03:00) 🐮", 1, "丑"),
-            ("인시 寅 (03:00~05:00) 🐯", 3, "寅"),
-            ("묘시 卯 (05:00~07:00) 🐰", 5, "卯"),
-            ("진시 辰 (07:00~09:00) 🐉", 7, "辰"),
-            ("사시 巳 (09:00~11:00) 🐍", 9, "巳"),
-            ("오시 午 (11:00~13:00) 🐴", 11, "午"),
-            ("미시 未 (13:00~15:00) 🐑", 13, "未"),
-            ("신시 申 (15:00~17:00) 🐵", 15, "申"),
-            ("유시 酉 (17:00~19:00) 🐓", 17, "酉"),
-            ("술시 戌 (19:00~21:00) 🐕", 19, "戌"),
-            ("해시 亥 (21:00~23:00) 🐗", 21, "亥"),
-            ("시각 모름 ❓ (오시 기준)", 11, "午"),
-        ]
-        si_labels = [s[0] for s in sijin_options]
-        si_idx = st.selectbox("태어난 시각", range(len(si_labels)), format_func=lambda i: si_labels[i], index=6)
-        hour = sijin_options[si_idx][1]
+            st.markdown("---")
+            gender = st.radio("성별", ["남성", "여성"], horizontal=True)
 
-        st.markdown('<div class="gold-section">👤 개인 정보</div>', unsafe_allow_html=True)
-
-        col_g, col_m = st.columns(2)
-        with col_g:
-            gender = st.radio("성별", ["남성","여성"], horizontal=True)
-        with col_m:
             marital_options = {"미혼 💚":"single","기혼 💍":"married","이혼 💔":"divorced","사별 🕊️":"bereaved"}
             marital_label = st.selectbox("결혼 여부", list(marital_options.keys()))
             marital = marital_options[marital_label]
 
-        job_options = {
-            "💼 직장인":       "employee",
-            "🏢 자영업자":     "business",
-            "🎨 프리랜서":     "freelance",
-            "📚 학생":         "student",
-            "🏛️ 공무원":       "publicJob",
-            "🏥 의료·의약직":  "medical",
-            "💻 IT·개발자":    "it",
-            "📈 금융·투자업":  "finance",
-            "🎭 예술·창작직":  "artist",
-            "⚖️ 법조·행정직":  "legal",
-            "🏫 교육·강사직":  "teacher",
-            "💆 서비스업":     "service",
-            "📦 무직·구직중":  "none",
-            "🔸 기타":         "other",
-        }
-        job_label = st.selectbox("직업", list(job_options.keys()))
-        job = job_options[job_label]
-
-        st.markdown('<div class="gold-section">🔑 Groq API (선택 — 무료)</div>', unsafe_allow_html=True)
-        groq_key = st.text_input(
-            "Groq API Key (없어도 자체 분석 가능)",
-            placeholder="gsk_xxxxxxxxxxxxxxxxxxxx",
-            type="password",
-            value=st.session_state.groq_key
-        )
-        st.caption("🆓 Groq API는 무료입니다 → [groq.com](https://console.groq.com) 에서 발급")
-
-        submitted = st.form_submit_button("🔮 사주 풀이 시작", use_container_width=True)
-
-    if submitted:
-        try:
-            saju = compute_saju(
-                int(year), int(month), int(day), hour,
-                "male" if gender == "남성" else "female",
-                "lunar" if cal_type == "음력" else "solar",
-                is_leap
-            )
-            st.session_state.saju = saju
-            st.session_state.groq_key = groq_key
-            st.session_state.form = {
-                "gender": "male" if gender == "남성" else "female",
-                "marital": marital,
-                "job": job,
+            job_options = {
+                "💼 직장인":"employee","🏢 자영업자":"business","🎨 프리랜서":"freelance",
+                "📚 학생":"student","🏛️ 공무원":"publicJob","🏥 의료·의약직":"medical",
+                "💻 IT·개발자":"it","📈 금융·투자업":"finance","🎭 예술·창작직":"artist",
+                "⚖️ 법조·행정직":"legal","🏫 교육·강사직":"teacher","🔧 기술·제조직":"tech",
+                "💆 서비스업":"service","📦 무직·구직중":"none","🔸 기타":"other",
             }
-            st.session_state.fortune_cache = {}
-            st.session_state.active_tab = "overall"
-            st.session_state.step = "result"
-            st.rerun()
-        except Exception as e:
-            st.error(f"사주 계산 오류: {e}")
+            job_label = st.selectbox("직업", list(job_options.keys()))
+            job = job_options[job_label]
 
-    st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("---")
+            st.markdown('<div style="font-size:11px;color:#e8d5a0;letter-spacing:2px;font-weight:700;margin-bottom:6px;">🔑 Groq API (선택 — 무료)</div>', unsafe_allow_html=True)
+            groq_key = st.text_input(
+                "API Key (없어도 자체 분석 가능)",
+                placeholder="gsk_xxxxxxxxxxxxxxxxxxxx",
+                type="password",
+                value=st.session_state.groq_key
+            )
+            st.caption("🆓 무료 발급 → [console.groq.com](https://console.groq.com)")
 
-def render_result():
-    saju = st.session_state.saju
-    form = st.session_state.form
-    if not saju:
-        st.session_state.step = "input"
-        st.rerun()
-        return
+            submitted = st.form_submit_button("🔮 사주 풀이 시작", use_container_width=True)
 
-    # 내용 표시 시작
+        if submitted:
+            try:
+                saju = compute_saju(
+                    int(year), int(month), int(day), hour,
+                    "male" if gender == "남성" else "female",
+                    "lunar" if cal_type == "음력" else "solar",
+                    is_leap
+                )
+                st.session_state.saju = saju
+                st.session_state.groq_key = groq_key
+                st.session_state.form = {
+                    "gender": "male" if gender == "남성" else "female",
+                    "marital": marital,
+                    "job": job,
+                }
+                st.session_state.fortune_cache = {}
+                st.session_state.active_tab = "overall"
+                st.rerun()
+            except Exception as e:
+                st.error(f"사주 계산 오류: {e}")
 
-    # 상단 정보 카드
-    yp = saju["year_pillar"]
-    ilgan_d = ILGAN_DESC.get(saju["ilgan"], ILGAN_DESC["甲"])
-    gender_str = "남성" if form.get("gender") == "male" else "여성"
-    yon = get_yongshin(saju["ilgan"], saju["oh_cnt"])
+        # 현재 결과 있으면 사이드바에 간략 요약 표시
+        if st.session_state.saju:
+            s = st.session_state.saju
+            yon = get_yongshin(s["ilgan"], s["oh_cnt"])
+            st.markdown("---")
+            st.markdown(f"""
+            <div style="text-align:center; padding:10px 0;">
+              <div style="font-size:11px;color:#e8d5a0;letter-spacing:3px;">현재 풀이중</div>
+              <div style="font-size:26px;font-weight:900;color:#c9a050;letter-spacing:4px;margin:4px 0;">{s['ilgan']} 일간</div>
+              <div style="font-size:12px;color:#e8d5a0;">{s['year_pillar']['ani']}띠 · {'남성' if st.session_state.form.get('gender')=='male' else '여성'}</div>
+              <div style="font-size:12px;color:#c9a050;margin-top:6px;">용신 {OHE.get(yon['yongshin'],'')} {OHN.get(yon['yongshin'],'')}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    st.markdown(f"""
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div>
-          <div style="font-size:11px;color:#a0720a;letter-spacing:3px;font-weight:700">일간(日干)</div>
-          <div style="font-size:28px;font-weight:bold;color:#2c1f0e">{saju['ilgan']} ({saju['ilgan_kr']})</div>
-          <div style="font-size:12px;color:#7a5c2a">{OH.get(saju['ilgan'],'')}({OHN.get(OH.get(saju['ilgan'],''),'')}) · {yp['ani']}띠 · {gender_str}</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:11px;color:#a0720a;letter-spacing:2px;font-weight:700">용신(用神)</div>
-          <div style="font-size:20px;font-weight:bold;color:#2c1f0e">{OHE.get(yon['yongshin'],'')} {OHN.get(yon['yongshin'],'')}</div>
-          <div style="font-size:10px;color:#7a5c2a">{OH_DIR.get(yon['yongshin'],'동쪽')} · {OH_COLOR_MAP.get(yon['yongshin'],'다양한 색상')}</div>
-        </div>
-      </div>
-      <div style="margin-top:10px;font-size:12px;color:#7a5c2a;line-height:1.6;border-top:1px solid #f0e4bb;padding-top:8px">
-        {ilgan_d['nature'][:100]}...
-      </div>
+
+def render_header():
+    st.markdown("""
+    <div class="header-box">
+      <div class="header-title">🔮 사주팔자 천명풀이</div>
+      <div class="header-sub">四柱八字 天命風水 — 하늘이 새긴 여덟 글자의 비밀</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # 사주 기둥
-    render_pillars(saju)
 
-    # 다시 입력 버튼
-    if st.button("🔄 다시 입력하기", use_container_width=False):
-        st.session_state.step = "input"
-        st.session_state.fortune_cache = {}
-        st.rerun()
+def render_desktop_result():
+    saju = st.session_state.saju
+    form = st.session_state.form
+    yon = get_yongshin(saju["ilgan"], saju["oh_cnt"])
+    ilgan_d = ILGAN_DESC.get(saju["ilgan"], ILGAN_DESC["甲"])
+    gender_str = "남성" if form.get("gender") == "male" else "여성"
+    yp = saju["year_pillar"]
 
-    # 대운 흐름
-    render_daewoon(saju, form)
+    # ── 상단 정보 카드 (2컬럼) ──────────────────────
+    col_info, col_oh = st.columns([2, 1])
 
-    # 운세 탭
-    st.markdown('<div class="gold-section">🔮 운세 풀이 선택</div>', unsafe_allow_html=True)
+    with col_info:
+        st.markdown(f"""
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div style="font-size:11px;color:#a0720a;letter-spacing:3px;font-weight:700;">일간(日干)</div>
+              <div style="font-size:36px;font-weight:900;color:#2c1f0e;letter-spacing:4px;">{saju['ilgan']} ({saju['ilgan_kr']})</div>
+              <div style="font-size:14px;color:#7a5c2a;margin-top:4px;">{OH.get(saju['ilgan'],'')}({OHN.get(OH.get(saju['ilgan'],''),'')}) · {yp['ani']}띠 · {gender_str} · {MKR.get(form.get('marital','single'),'미혼')}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:11px;color:#a0720a;letter-spacing:2px;font-weight:700;">용신(用神)</div>
+              <div style="font-size:28px;font-weight:bold;color:#2c1f0e;">{OHE.get(yon['yongshin'],'')} {OHN.get(yon['yongshin'],'')}</div>
+              <div style="font-size:12px;color:#7a5c2a;">{OH_DIR.get(yon['yongshin'],'동쪽')} · {OH_COLOR_MAP.get(yon['yongshin'],'다양한 색상')}</div>
+              <div style="font-size:11px;color:#a0720a;margin-top:4px;">{yon['type']} · 길수 {OH_NUM.get(yon['yongshin'],'1,5')}</div>
+            </div>
+          </div>
+          <div style="margin-top:12px;font-size:13px;color:#7a5c2a;line-height:1.8;border-top:1px solid #f0e4bb;padding-top:10px;">
+            {ilgan_d['nature'][:150]}...
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # 탭 그룹별 표시
-    tab_groups = [
-        ("핵심 운세", ["overall","newyear","daily","daewoon"]),
-        ("재물·직업", ["wealth","business","career"]),
-        ("인연·결혼", ["love","marriage","family"]),
-        ("건강·액운", ["health","accident","samjae","protection"]),
-        ("기타", ["study","move","travel","friend","lawsuit"]),
-    ]
+    with col_oh:
+        oh_cnt = saju["oh_cnt"]
+        max_v = max(oh_cnt.values()) or 1
+        st.markdown('<div class="card" style="height:100%;">', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:11px;color:#a0720a;letter-spacing:3px;font-weight:700;margin-bottom:10px;">오행(五行) 분포</div>', unsafe_allow_html=True)
+        for oh_k, oh_v in oh_cnt.items():
+            bar_w = int(oh_v / max_v * 100) if max_v > 0 else 0
+            st.markdown(f"""
+            <div style="display:flex;align-items:center;gap:8px;margin:5px 0;">
+              <div style="width:50px;font-size:13px;color:#7a5c2a;">{OHE.get(oh_k,'')} {OHN.get(oh_k,'')}</div>
+              <div style="flex:1;background:#f5ecd6;border-radius:6px;height:14px;overflow:hidden;">
+                <div style="width:{bar_w}%;height:100%;background:linear-gradient(90deg,#a0720a,#c9960f);border-radius:6px;"></div>
+              </div>
+              <div style="width:20px;text-align:right;font-size:12px;color:#7a5c2a;font-weight:700;">{oh_v}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    for group_name, tab_ids in tab_groups:
-        group_tabs = [t for t in TABS if t["id"] in tab_ids]
-        if group_tabs:
-            cols = st.columns(len(group_tabs))
-            for col, tab in zip(cols, group_tabs):
-                with col:
-                    is_active = st.session_state.active_tab == tab["id"]
-                    btn_style = "background:#a0720a;color:#fff8e0;" if is_active else "background:#faf4e8;color:#7a5c2a;"
-                    if st.button(
-                        f"{tab['icon']}\n{tab['label']}",
-                        key=f"tab_{tab['id']}",
-                        use_container_width=True
-                    ):
-                        st.session_state.active_tab = tab["id"]
-                        st.rerun()
+    # ── 사주 4기둥 ─────────────────────────────────
+    st.markdown('<div class="gold-section">🌿 사주팔자 — 하늘이 새긴 여덟 글자</div>', unsafe_allow_html=True)
+    pillars = saju["pillars"]
+    labels = ["시주 時柱", "일주 日柱", "월주 月柱", "년주 年柱"]
+    cols_p = st.columns(4)
+    for i, col in enumerate(cols_p):
+        p = pillars[i]
+        with col:
+            st.markdown(f"""
+            <div class="pillar-box">
+              <div style="font-size:11px;color:#a0720a;letter-spacing:2px;font-weight:700;margin-bottom:8px;">{labels[i]}</div>
+              <div style="font-size:32px;font-weight:900;color:#7c4a00;letter-spacing:2px;">{p['cg']}</div>
+              <div style="font-size:32px;font-weight:900;color:#2c1f0e;letter-spacing:2px;">{p['jj']}</div>
+              <div style="font-size:13px;color:#a0720a;margin-top:6px;">{p['cgk']}{p['jjk']}</div>
+              <div style="margin-top:8px;">
+                <span class="oh-badge">{OHE.get(OH.get(p['cg'],''),'')}{OH.get(p['cg'],'')}</span>
+                <span class="oh-badge">{OHE.get(OH.get(p['jj'],''),'')}{OH.get(p['jj'],'')}</span>
+              </div>
+              <div style="font-size:11px;color:#b08040;margin-top:6px;">{p['ani']} 🐾</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    # 선택된 탭 풀이
+    # ── 대운 + 운세 선택 (2컬럼) ────────────────────
+    st.markdown('<div class="gold-section">🌊 대운(大運) 흐름 & 운세 선택</div>', unsafe_allow_html=True)
+    col_dw, col_tabs = st.columns([1, 2])
+
+    with col_dw:
+        dw = saju["daewoon"]
+        current_year = datetime.now().year
+        ilgan_oh = OH.get(saju["ilgan"], "木")
+        for d in dw[:6]:
+            is_active = d["year"] <= current_year < d["year"] + 10
+            oh_cg = OH.get(d["cg"], "")
+            oh_jj = OH.get(d["jj"], "")
+            if oh_cg == yon["yongshin"] or oh_jj == yon["yongshin"]:
+                badge, badge_color = "🌟 황금 대운", "#16a34a"
+            elif oh_cg == ilgan_oh or oh_jj == ilgan_oh:
+                badge, badge_color = "⭐ 신명 대운", "#a0720a"
+            elif oh_cg == OH_RELATE.get(ilgan_oh,{}).get("剋") or oh_jj == OH_RELATE.get(ilgan_oh,{}).get("剋"):
+                badge, badge_color = "💰 재성 대운", "#ca8a04"
+            else:
+                badge, badge_color = "⚡ 시련 대운", "#be123c"
+            border = "2px solid #a0720a" if is_active else "1px solid #f0e4bb"
+            bg = "#fff8e6" if is_active else "#fafaf8"
+            st.markdown(f"""
+            <div style="background:{bg};border:{border};border-radius:10px;padding:8px 12px;margin:4px 0;display:flex;align-items:center;justify-content:space-between;">
+              <div>
+                <div style="font-size:11px;color:#7a5c2a;font-weight:{'700' if is_active else '400'}">
+                  {'▶ ' if is_active else ''}{d['age']}세 ({d['year']}~)
+                </div>
+                <div style="font-size:17px;font-weight:bold;color:#2c1f0e;">{d['cg']}{d['jj']}</div>
+              </div>
+              <div style="font-size:11px;color:{badge_color};font-weight:700;">{badge}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    with col_tabs:
+        st.markdown("**운세 메뉴를 선택하세요**")
+        tab_groups = [
+            ("⭐ 핵심 운세", ["overall","newyear","daily","daewoon"]),
+            ("💰 재물·직업", ["wealth","business","career"]),
+            ("💕 인연·결혼", ["love","marriage","family"]),
+            ("🏥 건강·액운", ["health","accident","samjae","protection"]),
+            ("📚 기타 운세", ["study","move","travel","friend","lawsuit"]),
+        ]
+        for group_name, tab_ids in tab_groups:
+            group_tabs = [t for t in TABS if t["id"] in tab_ids]
+            if group_tabs:
+                st.markdown(f'<div class="tab-group-label">{group_name}</div>', unsafe_allow_html=True)
+                btn_cols = st.columns(len(group_tabs))
+                for col, tab in zip(btn_cols, group_tabs):
+                    with col:
+                        is_active = st.session_state.active_tab == tab["id"]
+                        btn_label = tab["icon"] + chr(10) + tab["label"]
+                        if st.button(btn_label, key=f"tab_{tab['id']}", use_container_width=True):
+                            st.session_state.active_tab = tab["id"]
+                            st.rerun()
+
+    # ── 운세 풀이 결과 ─────────────────────────────
     active_tab = st.session_state.active_tab
     tab_info = next((t for t in TABS if t["id"] == active_tab), TABS[0])
-
     st.markdown(f'<div class="gold-section">{tab_info["icon"]} {tab_info["label"]} 풀이</div>', unsafe_allow_html=True)
 
-    # 캐시 확인
     cache_key = f"{active_tab}_{form.get('gender')}_{form.get('marital')}_{form.get('job')}"
     if cache_key not in st.session_state.fortune_cache:
         groq_key = st.session_state.groq_key
         if groq_key and active_tab != "daily":
-            with st.spinner(f"🔮 {tab_info['label']} 신명 풀이 중... (Groq AI)"):
+            with st.spinner(f"🔮 {tab_info['label']} Groq AI 신명 풀이 중..."):
                 prompt = build_prompt(active_tab, saju, form)
                 result, err = call_groq(prompt, groq_key, max_tokens=4000 if active_tab != "overall" else 6000)
                 if result:
                     st.session_state.fortune_cache[cache_key] = result
-                    st.markdown(f'<div class="success-box">⚡ Groq AI 신명 풀이 완료</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="success-box">⚡ Groq AI 신명 풀이 완료</div>', unsafe_allow_html=True)
                 else:
-                    st.markdown(f'<div class="warning-box">⚠️ {err} — 자체 분석 모드로 전환</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="warning-box">⚠️ {err} — 자체 분석 프로그램으로 전환</div>', unsafe_allow_html=True)
                     st.session_state.fortune_cache[cache_key] = get_self_fortune(active_tab, saju, form)
         else:
             if not groq_key:
-                st.markdown('<div class="warning-box">🔴 자체 분석 모드 — Groq API 키 입력 시 더욱 깊은 신명 풀이 가능</div>', unsafe_allow_html=True)
-            fortune_text = get_self_fortune(active_tab, saju, form)
-            st.session_state.fortune_cache[cache_key] = fortune_text
+                st.markdown('<div class="warning-box">🔴 자체 분석 프로그램 모드 — Groq API 키 입력 시 더욱 깊은 AI 신명 풀이 가능</div>', unsafe_allow_html=True)
+            st.session_state.fortune_cache[cache_key] = get_self_fortune(active_tab, saju, form)
 
-    # 풀이 출력
     fortune_text = st.session_state.fortune_cache.get(cache_key, "")
     if fortune_text:
         html_text = fortune_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         html_text = html_text.replace(chr(10), "<br>")
         st.markdown(f'<div class="fortune-text">{html_text}</div>', unsafe_allow_html=True)
+
+    # 다시 입력 버튼
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_reset, _ = st.columns([1, 3])
+    with col_reset:
+        if st.button("🔄 새로운 사주 입력", use_container_width=True):
+            st.session_state.saju = None
+            st.session_state.fortune_cache = {}
+            st.rerun()
+
 
 if __name__ == "__main__":
     main()
