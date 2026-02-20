@@ -3,6 +3,13 @@ import requests
 import json
 from datetime import date, datetime, timedelta
 import random
+import io
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
 
 # ══════════════════════════════════════════════
 #  페이지 설정
@@ -115,6 +122,14 @@ JJ = ["子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥"]
 JJ_KR = ["자","축","인","묘","진","사","오","미","신","유","술","해"]
 JJ_AN = ["쥐","소","호랑이","토끼","용","뱀","말","양","원숭이","닭","개","돼지"]
 
+# 지지 충(沖) 및 합(合) 매핑
+CHUNG_MAP = {"子":"午", "午":"子", "丑":"未", "未":"丑", "寅":"申", "申":"寅", "卯":"酉", "酉":"卯", "辰":"戌", "戌":"辰", "巳":"亥", "亥":"巳"}
+HAP_MAP = {"子":"丑", "丑":"子", "寅":"亥", "亥":"寅", "卯":"戌", "戌":"卯", "辰":"酉", "酉":"辰", "巳":"申", "申":"巳", "午":"未", "未":"午"}
+
+# 60갑자 리스트 생성
+GANJI_60 = [CG[i % 10] + JJ[i % 12] for i in range(60)]
+GANJI_60_KR = [CG_KR[i % 10] + JJ_KR[i % 12] for i in range(60)]
+
 OH = {"甲":"木","乙":"木","丙":"火","丁":"火","戊":"土","己":"土","庚":"金","辛":"金","壬":"水","癸":"水","子":"水","丑":"土","寅":"木","卯":"木","辰":"土","巳":"火","午":"火","未":"土","申":"金","酉":"金","戌":"土","亥":"水"}
 OHN = {"木":"나무","火":"불","土":"흙","金":"쇠","水":"물"}
 OHE = {"木":"🌿","火":"🔥","土":"🪨","金":"✨","水":"💧"}
@@ -139,12 +154,13 @@ ILGAN_DESC = {
 ess_map = {k: v["nature"] for k, v in ILGAN_DESC.items()}
 
 OH_RELATE = {
-    "木": {"生": "火", "剋": "土"},
-    "火": {"生": "土", "剋": "金"},
-    "土": {"生": "金", "剋": "水"},
-    "金": {"生": "水", "剋": "木"},
-    "水": {"生": "木", "剋": "火"}
+    "木": {"saeng": "火", "geuk": "土"},
+    "火": {"saeng": "土", "geuk": "金"},
+    "土": {"saeng": "金", "geuk": "水"},
+    "金": {"saeng": "水", "geuk": "木"},
+    "水": {"saeng": "木", "geuk": "火"}
 }
+
 
 # 십성 (Sipsung)
 SIPSUNG_LIST = ["비견", "겁재", "식신", "상관", "편재", "정재", "편관", "정관", "편인", "정인"]
@@ -295,33 +311,7 @@ UNSUNG_DEEP = {
 }
 
 # ══════════════════════════════════════════════
-#  8대 엔진 로직
-# ══════════════════════════════════════════════
-def get_yy(char): # 음양
-    return "양" if char in ["甲","丙","戊","庚","壬","子","寅","辰","午","申","戌"] else "음"
-
-def calc_sipsung(ilgan, target): # 십성 (Sipsung Core Logic)
-    if ilgan not in OH or target not in OH: return "비견"
-    i_oh, t_oh = OH[ilgan], OH[target]
-    # Yang/Yin decision logic for stems and branches
-    i_yj = 1 if ilgan in ["甲","丙","戊","庚","壬"] else 0
-    t_yj = 1 if target in ["甲","丙","戊","庚","壬","寅","辰","巳","申","戌","亥"] else 0
-    
-    rel = {"木":{"木":"비","火":"식","土":"재","金":"관","水":"인"},
-           "火":{"火":"비","土":"식","金":"재","水":"관","木":"인"},
-           "土":{"土":"비","金":"식","水":"재","木":"관","火":"인"},
-           "金":{"金":"비","水":"식","木":"재","火":"관","土":"인"},
-           "水":{"水":"비","木":"식","火":"재","土":"관","金":"인"}}
-    
-    base = rel[i_oh][t_oh]
-    is_same = (i_yj == t_yj)
-    
-    if base == "비": return "비견" if is_same else "겁재"
-    if base == "식": return "식신" if is_same else "상관"
-    if base == "재": return "편재" if is_same else "정재"
-    if base == "관": return "편관" if is_same else "정관"
-    if base == "인": return "편인" if is_same else "정인"
-    return "비견"
+# 8대 엔진 및 데이터베이스 (Primary logic below or at line 551)
 
 # ══════════════════════════════════════════════
 #  만신급 거대 데이터베이스 (Recursive Content Expansion)
@@ -556,12 +546,13 @@ def calc_sipsung(ilgan, target): # 십성 계산 엔진
     else: # 지지 (Branch)
         jj_yang = ["寅","申","巳","亥","子","午"] # 명리학적 음양 (체/용 고려)
         y2 = target in jj_yang
+    o1, o2 = OH[ilgan], OH[target]
     
-    rel = "" # Relation
+    # 십성 판정 로직 (ASCII 키 사용)
     if o1 == o2: rel = "비겁"
-    elif OH_RELATE[o1]["生"] == o2: rel = "식상"
-    elif OH_RELATE[o1]["剋"] == o2: rel = "재성"
-    elif OH_RELATE[o2]["剋"] == o1: rel = "관성"
+    elif OH_RELATE[o1]["saeng"] == o2: rel = "식상"
+    elif OH_RELATE[o1]["geuk"] == o2: rel = "재성"
+    elif OH_RELATE[o2]["geuk"] == o1: rel = "관성"
     else: rel = "인성"
     
     mapping = {
@@ -728,101 +719,21 @@ def lunar_to_solar_deep(y, m, d, leap=False):
     try: return date(y, m, d)
     except: return date(y, m, d-1)
 
-def get_jeol_ip_day(y, m):
-    """특정 년/월의 절입일(Jeol-ip Day)을 정밀 계산함"""
-    # 1900년 기준 근사식 (명리학 전문 수식)
-    c = JEOL_CONST[m]
-    # 윤년 보정 및 세기 보정 (100년 단위 미세 조정 포함)
-    y_off = y - 1900
-    day = int(y_off * 0.242199 + c) - int(y_off / 4)
-    
-    # 21세기(2000년~) 미세 보정 데이터링
-    if y >= 2000:
-        if m in [1, 2, 3, 5, 7, 8, 9, 10]: day -= 1
-    elif y <= 1930:
-        if m in [4, 6]: day += 1
-        
-    return day
-
-def get_pillars_deep(y, m, d, h, gender):
-    """
-    [전문 업그레이드] 절기(입춘) 기준 년주/월주 변경 및 한국 태양시 반영
-    """
-    # 1. 한국 태양시 정밀 보정 (UTC+9 기준 30분 차이 반영)
-    # 실제 사주는 동경 135도가 아닌 한국 중심(127.5도) 기준이므로 30분을 뺌
-    real_h = h - 0.5
-    if real_h < 0:
-        real_h += 24
-        # 전날로 넘어가는 경우나 자시(23:30~) 처리 필요
-        # 명리학에서는 23:30부터 다음 날의 '자시'로 간주 (야자시/조자시 로직)
-    
-    # 2. 절입일 계산 (이번 달의 시작 절기)
-    jeol_day = get_jeol_ip_day(y, m)
-    
-    # 3. 년주(Year) 결정 - 입춘(2월 절입일) 기준
-    ipchun_day = get_jeol_ip_day(y, 2)
-    calc_y = y
-    if m < 2 or (m == 2 and d < ipchun_day):
-        calc_y = y - 1 # 입춘 전이면 전년도 기운
-        
-    cy, cj = (calc_y - 4) % 10, (calc_y - 4) % 12
-    yp = {"cg": CG[cy], "jj": JJ[cj], "cgk": CG_KR[cy], "jjk": JJ_KR[cj], "ani": JJ_AN[cj]}
-    
-    # 4. 월주(Month) 결정 - 각 달의 절입일 기준
-    # m월 d일이 해당 월의 절입일 전이면 '이전 달'의 기운을 사용
-    calc_m = m
-    if d < jeol_day:
-        calc_m = m - 1
-        if calc_m == 0: calc_m = 12
-        
-    # 월주 간지 계산 (년주 천간에 따른 월건법 적용)
-    # 갑기(0,5)->병인, 을경(1,6)->무인, 병신(2,7)->경인, 정임(3,8)->임인, 무계(4,9)->갑인
-    month_start_cg = (cy % 5 * 2 + 2) % 10
-    ji_idx = (calc_m + 1) % 12 # 2월(입춘)이 寅(2)이 되도록 조정
-    cm = (month_start_cg + ji_idx - 2 + 10) % 10
-    mp = {"cg": CG[cm], "jj": JJ[ji_idx], "cgk": CG_KR[cm], "jjk": JJ_KR[ji_idx]}
-    
-    # 5. 일주(Day) 결정
-    # 명리학적 하루의 시작은 '자시(23:30)'부터임
-    is_next_day_saju = (h >= 23 and h <= 24) or (h >= 0 and h < 0.5)
-    base_date = date(1900, 1, 1)
-    target_date = date(y, m, d)
-    if h >= 23.5: # 23:30 이후면 명리학적 다음날
-        target_date += timedelta(days=1)
-        
-    diff = (target_date - base_date).days
-    pos = (diff + 10) % 60
-    dp = {"cg": CG[pos % 10], "jj": JJ[pos % 12], "cgk": CG_KR[pos % 10], "jjk": JJ_KR[pos % 12]}
-    
-    # 6. 시주(Hour) 결정 (한국 표준시 30분 보정 반영)
-    # 23:30~01:30(자), 01:30~03:30(축) ...
-    adj_h = (h + 0.5) % 24 # 30분 당겨서 계산 (23:30 -> 00:00)
-    ji_hour = int(adj_h // 2) % 12
-    if h >= 23.5 or h < 1.5: ji_hour = 0
-    elif 1.5 <= h < 3.5: ji_hour = 1
-    elif 3.5 <= h < 5.5: ji_hour = 2
-    elif 5.5 <= h < 7.5: ji_hour = 3
-    elif 7.5 <= h < 9.5: ji_hour = 4
-    elif 9.5 <= h < 11.5: ji_hour = 5
-    elif 11.5 <= h < 13.5: ji_hour = 6
-    elif 13.5 <= h < 15.5: ji_hour = 7
-    elif 15.5 <= h < 17.5: ji_hour = 8
-    elif 17.5 <= h < 19.5: ji_hour = 9
-    elif 19.5 <= h < 21.5: ji_hour = 10
-    elif 21.5 <= h < 23.5: ji_hour = 11
-
-    # 시주 천간 계산 (시두법 적용)
-    # 일간 합 -> 무계(4)->임자, 갑기(0)->갑자 ...
-    day_cg_idx = pos % 10
-    hour_start_cg = (day_cg_idx % 5 * 2) % 10
-    ch = (hour_start_cg + ji_hour) % 10
-    hp = {"cg": CG[ch], "jj": JJ[ji_hour], "cgk": CG_KR[ch], "jjk": JJ_KR[ji_hour]}
-    
-    return [hp, dp, mp, yp]
-
-# ══════════════════════════════════════════════
-#  대운(大運) 심층 서사 데이터베이스 (Daewoon Story DB)
-# ══════════════════════════════════════════════
+# 24절기 평균 입기 시각 데이터 (2000년 KST 기준 베이스 타임)
+JEOL_DATA_KST = {
+    1: 5.87,  # 소한 (Start of Ox Month)
+    2: 4.86,  # 입춘 (Start of Tiger Month)
+    3: 5.92,  # 경칩 (Start of Rabbit Month)
+    4: 4.90,  # 청명 (Start of Dragon Month)
+    5: 5.48,  # 입하 (Start of Snake Month)
+    6: 5.88,  # 망종 (Start of Horse Month)
+    7: 7.48,  # 소서 (Start of Goat Month)
+    8: 7.82,  # 입추 (Start of Monkey Month)
+    9: 7.95,  # 백로 (Start of Rooster Month)
+    10: 8.68, # 한로 (Start of Dog Month)
+    11: 7.82, # 입동 (Start of Pig Month)
+    12: 7.43  # 대설 (Start of Rat Month)
+}
 
 DAEWOON_STORY_DB = {
     "甲": {
@@ -834,7 +745,6 @@ DAEWOON_STORY_DB = {
         "午": "병오(丙午) 대운: 태양이 중천에 뜬 격이니 사방이 환히 밝아집니다. 명예가 드높아지고 화려한 성공을 거두나, 지나친 열기는 화를 부를 수 있으니 겸손하십시오."
     }
 }
-# (각 60갑자별 대운 서사를 500~1000줄 가량 추가하여 물리적 파일 볼륨을 극대화)
 for _stem in ["甲","乙","丙","丁","戊","己","庚","辛","壬","癸"]:
     for _branch in ["子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥"]:
         key = _stem + _branch
@@ -842,30 +752,301 @@ for _stem in ["甲","乙","丙","丁","戊","己","庚","辛","壬","癸"]:
         if _branch not in DAEWOON_STORY_DB[_stem]:
             DAEWOON_STORY_DB[_stem][_branch] = f"{key} 대운: {key}의 기운이 당신의 삶에 깊숙이 스며드는 10년입니다. 하늘의 뜻과 땅의 기운이 조화를 이루어 당신의 명예와 재물을 북돋을 것이니 당당하게 전진하십시오."
 
-def daewoon_deep(yp, gender, birth_year):
-    is_yang = CG.index(yp["cg"]) % 2 == 0
-    fwd = (is_yang and gender == "male") or (not is_yang and gender == "female")
-    runs = []
-    for i in range(10):
-        step = (i+1) if fwd else -(i+1)
-        ci, ji = (CG.index(yp["cg"])+step+100)%10, (JJ.index(yp["jj"])+step+120)%12
-        runs.append({"age": 9+i*10, "year": birth_year+9+i*10, "cg":CG[ci], "jj":JJ[ji], "cgk":CG_KR[ci], "jjk":JJ_KR[ji]})
-    return runs
+class SajuCoreEngine:
+    """
+    [대만신 통합 엔진] 정밀 절기 시각, 4주 8자 산출, 점수제 신강 판정 및 용신 추출 통합 클래스
+    """
+    def __init__(self, y, m, d, h, mn, gender, name="주인공"):
+        self.y, self.m, self.d, self.h, self.mn = y, m, d, h, mn
+        self.gender = gender
+        self.name = name
+        
+        # 1. 태양시 보정 및 기준 시각 설정
+        self.birth_dt = datetime(y, m, d, h, mn)
+        self.adj_birth_dt = self.birth_dt - timedelta(minutes=30)
+        
+        # 2. 엔진 가동
+        self.pils = self._get_pillars()
+        self.ilgan = self.pils[1]["cg"]
+        self.ilgan_oh = OH[self.ilgan]
+        
+        # 3. 대운 및 에너지 분석
+        self.daewoon_runs, self.daewoon_num = self._get_daewoon()
+        self.energy_score = self._analyze_energy()
+        self.strength = "신강" if self.energy_score["total"] >= 50 else "신약"
+        self.yongshin = self._get_yongshin()
 
-def compute_full_mansin(y, m, d, h, gender, name="주인공", cal="solar"):
-    if cal == "음력": # 단순화된 음력 처리
+    def _get_jeol_ip_datetime(self, y, m):
+        if m not in JEOL_DATA_KST: return datetime(y, m, 15)
+        base_val = JEOL_DATA_KST[m]
+        y_off = y - 2000
+        leap_days = (y_off // 4) - (y_off // 100) + (y_off // 400)
+        d_float = base_val + (y_off * 0.242199) - leap_days
+        if y < 2000:
+            d_float += 0.02
+            if y < 1950: d_float += 0.01
+        day_int = int(d_float)
+        time_float = d_float - day_int
+        total_minutes = int(round(time_float * 1440))
+        hour = (total_minutes // 60) % 24
+        minute = total_minutes % 60
+        try: return datetime(y, m, day_int, hour, minute)
+        except ValueError: return datetime(y, m, 28, hour, minute) + timedelta(days=day_int-28)
+
+    def _get_pillars(self):
+        # 년주/월주 판정용 절기 시각
+        curr_jeol_dt = self._get_jeol_ip_datetime(self.adj_birth_dt.year, self.adj_birth_dt.month)
+        ipchun_dt = self._get_jeol_ip_datetime(self.adj_birth_dt.year, 2)
+        
+        calc_y = self.adj_birth_dt.year
+        if self.adj_birth_dt < ipchun_dt: calc_y -= 1
+        cy, cj = (calc_y - 4) % 10, (calc_y - 4) % 12
+        yp = {"cg": CG[cy], "jj": JJ[cj], "cgk": CG_KR[cy], "jjk": JJ_KR[cj], "ani": JJ_AN[cj]}
+        
+        calc_m = self.adj_birth_dt.month
+        if self.adj_birth_dt < curr_jeol_dt:
+            calc_m -= 1
+            if calc_m == 0: calc_m = 12
+        month_start_cg = (cy % 5 * 2 + 2) % 10
+        ji_idx = (calc_m + 1) % 12
+        cm = (month_start_cg + ji_idx - 2 + 10) % 10
+        mp = {"cg": CG[cm], "jj": JJ[ji_idx], "cgk": CG_KR[cm], "jjk": JJ_KR[ji_idx]}
+        
+        target_date = self.adj_birth_dt.date()
+        if self.adj_birth_dt.hour >= 23: target_date += timedelta(days=1)
+        diff = (target_date - date(1900, 1, 1)).days
+        pos = (diff + 10) % 60
+        dp = {"cg": CG[pos % 10], "jj": JJ[pos % 12], "cgk": CG_KR[pos % 10], "jjk": JJ_KR[pos % 12]}
+        
+        ji_hour = ((self.adj_birth_dt.hour + 1) // 2) % 12
+        hour_start_cg = (pos % 10 % 5 * 2) % 10
+        ch = (hour_start_cg + ji_hour) % 10
+        hp = {"cg": CG[ch], "jj": JJ[ji_hour], "cgk": CG_KR[ch], "jjk": JJ_KR[ji_hour]}
+        return [hp, dp, mp, yp]
+
+    def _get_daewoon(self):
+        yp = self.pils[3]
+        is_yang = CG.index(yp["cg"]) % 2 == 0
+        fwd = (is_yang and self.gender == "male") or (not is_yang and self.gender == "female")
+        
+        if fwd:
+            jeol_dt = self._get_jeol_ip_datetime(self.y, self.m)
+            if jeol_dt <= self.birth_dt:
+                nm, ny = (self.m + 1), self.y
+                if nm > 12: nm, ny = 1, self.y + 1
+                jeol_dt = self._get_jeol_ip_datetime(ny, nm)
+            diff_seconds = (jeol_dt - self.birth_dt).total_seconds()
+        else:
+            jeol_dt = self._get_jeol_ip_datetime(self.y, self.m)
+            if jeol_dt > self.birth_dt:
+                pm, py = (self.m - 1), self.y
+                if pm == 0: pm, py = 12, self.y - 1
+                jeol_dt = self._get_jeol_ip_datetime(py, pm)
+            diff_seconds = (self.birth_dt - jeol_dt).total_seconds()
+        
+        dw_num = round(diff_seconds / (86400 * 3))
+        if dw_num == 0: dw_num = 1
+        
+        runs = []
+        mp = self.pils[2]
+        for i in range(10):
+            step = (i+1) if fwd else -(i+1)
+            ci = (CG.index(mp["cg"]) + step + 100) % 10
+            ji = (JJ.index(mp["jj"]) + step + 120) % 12
+            age = dw_num + (i * 10)
+            runs.append({
+                "age": age, "year": self.y + age, "cg": CG[ci], "jj": JJ[ji],
+                "cgk": CG_KR[ci], "jjk": JJ_KR[ji],
+                "desc": DAEWOON_STORY_DB.get(CG[ci], {}).get(JJ[ji], f"{CG_KR[ci]}{JJ_KR[ji]} 대운이로다.")
+            })
+        return runs, dw_num
+
+    def get_sewoon(self, year):
+        """특정 연도의 세운(연주) 산출 - (year-4)%10/12 공식"""
+        si = (year - 4) % 10
+        bi = (year - 4) % 12
+        return {"year": year, "cg": CG[si], "jj": JJ[bi], "cgk": CG_KR[si], "jjk": JJ_KR[bi]}
+
+    def get_sewoon_range(self, start_age, years=10):
+        """특정 나이부터 n년간의 세운 세부 리스트 생성"""
+        results = []
+        for i in range(years):
+            age = start_age + i
+            target_year = self.y + age
+            pillar = self.get_sewoon(target_year)
+            results.append({"age": age, "year": target_year, "pillar": pillar})
+        return results
+
+    def _analyze_energy(self):
+        """[점수제] 신강/신약 정밀 판정 (100점 만점 기준)"""
+        weights = {"월지": 35, "일지": 15, "시지": 10, "년지": 10, "천간": 10} # 약식 가중치
+        score = 0
+        
+        # 일간을 돕는 오행 (비겁, 인성)
+        # 인성(In-seong): 나를 생해주어 기운을 북돋는 오행 (saeng 관계 역추적)
+        mother_oh = next((k for k, v in OH_RELATE.items() if v.get("saeng") == self.ilgan_oh), "")
+        help_oh = [self.ilgan_oh, mother_oh]
+        
+        # 지지 점수 (득령, 득지)
+        for i, label in enumerate(["시지", "일지", "월지", "년지"]):
+            jj = self.pils[i]["jj"]
+            if OH[jj] in help_oh: score += weights[label]
+            
+        # 천간 점수 (득세)
+        for i, label in enumerate(["시주", "일주", "월주", "년주"]):
+            if i == 1: continue # 일간 제외
+            cg = self.pils[i]["cg"]
+            if OH[cg] in help_oh: score += 10 # 천간은 일률적으로 10점
+            
+        # [추가] 오행 개수 산출 (사건 탐지용)
+        elements_cnt = get_oh_cnt(self.pils)
+            
+        return {"total": score, "help_oh": help_oh, "elements": elements_cnt}
+
+    def _get_yongshin(self):
+        """[고도화] 조후 및 억부 기반 용신 추출"""
+        # 1. 조후(調候) 고려: 너무 추울 때(해자축) -> 화(火), 너무 더울 때(사오미) -> 수(水)
+        wolji_jj = self.pils[2]["jj"]
+        if wolji_jj in ["亥", "子", "丑"]: return {"type": "조후", "oh": "火", "desc": "추운 겨울의 기운을 녹여주는 따뜻한 불(火)이 절실히 필요한 사주로다."}
+        if wolji_jj in ["巳", "午", "未"]: return {"type": "조후", "oh": "水", "desc": "타는 듯한 대지를 적셔주는 시원한 물(水)이 생명선이 되는 사주로다."}
+        
+        # 2. 억부(抑扶) 고려: 신강하면 식상/재성/관성, 신약하면 인성/비겁
+        if self.strength == "신강":
+            # 신강하면 극(geuk)하는 오행(재성) 우선 추천
+            target_oh = OH_RELATE[self.ilgan_oh].get("geuk", "")
+            return {"type": "억부", "oh": target_oh, "desc": "기운이 넘치니 이를 잘 다스려 재물(財)로 승화시키는 것이 개운의 열쇠로다."}
+        else:
+            # 신약하면 생(saeng)해주는 오행(인성) 우선 추천
+            target_oh = next((k for k, v in OH_RELATE.items() if v.get("saeng") == self.ilgan_oh), "")
+            return {"type": "억부", "oh": target_oh, "desc": "기운이 부족하니 나를 돕는 학문과 귀인(印)의 힘을 빌려야 대성할 사주로다."}
+
+    def _judge_wealth(self):
+        """재물 구조 판단: 일간이 극(剋)하는 오행(재성)의 개수 기준"""
+        wealth_oh = OH_RELATE[self.ilgan_oh].get("geuk", "")
+        cnt = get_oh_cnt(self.pils)
+        if cnt[wealth_oh] >= 2:
+            return {"type": "사업가형", "desc": "재물 감각이 좋고 사업 수완이 있어 큰 재물을 주무를 실력자이로다."}
+        else:
+            return {"type": "안정형", "desc": "월급형 안정 재물 구조니, 착실히 모아 태산을 이루는 것이 상책이로다."}
+
+    def _judge_marriage(self):
+        """결혼/연애 판단: 남성은 재성, 여성은 관성 기준"""
+        if self.gender == "male":
+            # 남자는 재성(내가 극하는 오행)
+            spouse_oh = OH_RELATE[self.ilgan_oh].get("geuk", "")
+        else:
+            # 여자는 관성(나를 극하는 오행)
+            spouse_oh = next((k for k, v in OH_RELATE.items() if v.get("geuk") == self.ilgan_oh), "")
+        
+        cnt = get_oh_cnt(self.pils)
+        if cnt[spouse_oh] >= 2:
+            return {"status": "긍정", "desc": "연애 경험이 풍부하고 인연이 깊으니 결혼 가능성이 매우 높도다."}
+        else:
+            return {"status": "신중", "desc": "인연이 늦게 닿거나 신중해야 하니, 조급해 말고 때를 기다리거라."}
+
+    def _detect_events(self, age, daewoon_pillar, sewoon_pillar):
+        """특정 시점(나이 + 대운 + 세운)의 사건/사고 탐지"""
+        events = []
+        original_jjs = [p["jj"] for p in self.pils]
+        d_jj = daewoon_pillar["jj"]
+        s_jj = sewoon_pillar["jj"]
+        
+        # 1. 충(沖) 분석 - 삼중 충돌
+        pillar_names = ["년지(가문)", "월지(직장)", "일지(신변)", "시지(자식)"]
+        for i, b in enumerate(original_jjs):
+            # 세운 충 (올해의 변화)
+            if CHUNG_MAP.get(b) == s_jj:
+                msg = f"{pillar_names[i]} 충돌! "
+                if i == 1: msg += "직장 이동이나 사회적 환경의 급변이 예상되노라."
+                elif i == 2: msg += "신변에 큰 변화가 오거나 사고수가 비치니 몸을 사려야 하느니라."
+                else: msg += "주변 환경이 요동치니 안정을 취하는 것이 상책이라."
+                events.append(msg)
+            
+            # 대운 충 (10년 주기의 큰 변화)
+            if CHUNG_MAP.get(b) == d_jj:
+                events.append(f"{pillar_names[i]} 대운 충돌! 인생의 큰 물줄기가 바뀌는 격동의 시기로다.")
+
+        # 2. 사고/건강 특정
+        if CHUNG_MAP.get(original_jjs[2]) == s_jj: # 일지 충
+            elements = self.energy_score.get("elements", {})
+            if elements.get("水", 0) >= 3:
+                events.append("⚠️ 수액(水厄) 주의! 물가나 비 내리는 길을 조심하거라.")
+            if elements.get("火", 0) >= 3:
+                events.append("⚠️ 화액(火厄) 주의! 뜨거운 기운이나 염증성 질환을 경계하라.")
+
+        # 3. 인연/결혼/합
+        spouse_oh = ""
+        if self.gender == "male":
+            spouse_oh = OH_RELATE[self.ilgan_oh].get("geuk", "")
+        else:
+            spouse_oh = next((k for k, v in OH_RELATE.items() if v.get("geuk") == self.ilgan_oh), "")
+        
+        if OH[s_jj] == spouse_oh or HAP_MAP.get(original_jjs[2]) == s_jj:
+            events.append("💍 천생연분의 기운! 배우자 인연이 강하게 들어오거나 혼담이 오갈 시기로다.")
+
+        return events
+
+    def scan_events(self, start_age, years=10):
+        """향후 n년간의 쪽집게 사건 스캔"""
+        report = {}
+        for i in range(years):
+            age = start_age + i
+            target_year = self.y + age
+            
+            # 현재 대운 찾기
+            curr_dw = next((d for d in reversed(self.daewoon_runs) if age >= d["age"]), self.daewoon_runs[0])
+            # 해당 연도 세운
+            curr_sw = self.get_sewoon(target_year)
+            
+            evs = self._detect_events(age, curr_dw, curr_sw)
+            if evs:
+                report[f"{age}세"] = evs
+        return report
+
+    def get_luck_peaks(self, start_age, years=30):
+        """용신운(성공) 및 재성운(발복)의 정점을 스캔"""
+        peaks = {"wealth": [], "success": []}
+        wealth_oh = OH_RELATE[self.ilgan_oh].get("geuk", "")
+        yongshin_oh = self.yongshin["oh"]
+        
+        for i in range(years):
+            age = start_age + i
+            target_year = self.y + age
+            sw = self.get_sewoon(target_year)
+            sw_oh = OH[sw["jj"]]
+            
+            if sw_oh == wealth_oh:
+                peaks["wealth"].append({"age": age, "year": target_year, "pillar": f"{sw['cgk']}{sw['jjk']}"})
+            if sw_oh == yongshin_oh:
+                peaks["success"].append({"age": age, "year": target_year, "pillar": f"{sw['cgk']}{sw['jjk']}"})
+        return peaks
+
+    def get_full_analysis(self):
+        """종합 자동 분석 통합 결과 반환"""
+        return {
+            "wealth": self._judge_wealth(),
+            "marriage": self._judge_marriage(),
+            "interactions": get_interactions(self.pils),
+            "strength": self.strength,
+            "yongshin": self.yongshin
+        }
+
+@st.cache_data(ttl=86400)
+def compute_full_mansin(y, m, d, h, gender, name="주인공", cal_type="양력"):
+    if cal_type == "음력":
         d_obj = lunar_to_solar_deep(y, m, d)
         y, m, d = d_obj.year, d_obj.month, d_obj.day
     
-    pils = get_pillars_deep(y, m, d, h, gender)
-    ilgan = pils[1]["cg"]
-    # 공망 (Gongmang)
-    gongmang = get_gongmang(pils[1]["cg"], pils[1]["jj"])
-    # 오행 개수 (Five Elements Count)
+    # [통합 엔진 가동]
+    engine_core = SajuCoreEngine(y, m, d, h, 0, gender, name)
+    pils = engine_core.pils
+    dw_runs, dw_num = engine_core.daewoon_runs, engine_core.daewoon_num
+    
+    ilgan = engine_core.ilgan
+    gongmang = get_gongmang(ilgan, pils[1]["jj"])
     oh_cnt = get_oh_cnt(pils)
     
-    # 8대 엔진 가동
-    engine = {
+    engine_data = {
         "sipsung": [calc_sipsung(ilgan, p["cg"]) for p in pils] + [calc_sipsung(ilgan, p["jj"]) for p in pils],
         "jijanggan": [JIJANGGAN[p["jj"]] for p in pils],
         "hidden_wealth": get_hidden_wealth(ilgan, [p["jj"] for p in pils]),
@@ -874,14 +1055,32 @@ def compute_full_mansin(y, m, d, h, gender, name="주인공", cal="solar"):
         "interactions": get_interactions(pils),
         "gongmang": gongmang,
         "oh_cnt": oh_cnt,
-        "yongshin": get_yongshin(ilgan, oh_cnt)
+        "strength": engine_core.strength,
+        "energy_score": engine_core.energy_score,
+        "yongshin": engine_core.yongshin
     }
     
+    analysis = engine_core.get_full_analysis()
+    # 향후 20년간의 사건/행운 스캔
+    event_scan = engine_core.scan_events(dw_num, 20)
+    luck_peaks = engine_core.get_luck_peaks(dw_num, 30)
+
+    engine_data.update({
+        "wealth": analysis["wealth"],
+        "marriage": analysis["marriage"],
+        "event_scan": event_scan,
+        "luck_peaks": luck_peaks
+    })
+    
     return {
-        "name": name, "pils": pils, "ilgan": ilgan, "engine": engine, 
-        "daewoon": daewoon_deep(pils[3], gender, y),
+        "name": name, "pils": pils, "ilgan": ilgan, "engine": engine_data, 
+        "daewoon": dw_runs, "daewoon_num": dw_num,
         "gender": gender, "birth_info": f"{y}-{m}-{d} {h}시"
     }
+
+
+
+
 
 # ══════════════════════════════════════════════
 #  만신급 수식어 및 서사 증폭 도구 (Mansin Adjectives & Amplifiers)
@@ -1104,12 +1303,22 @@ def get_essence_chapter(saju, form):
         data = SIPSUNG_DEEP.get(s_type, SIPSUNG_DEEP["비견"])
         text.append(f"**{p_name}의 {s_type}**: {data['nature']}")
         
+    # [신기능] 재물 구조 분석 추가
+    wealth = saju["engine"]["wealth"]
+    text.append(f"\n### 📍 [만신의 재물 비기(秘記): 부귀의 그릇]\n**{wealth['type']}**: {wealth['desc']}\n")
+
     return apply_mansin_filter("\n\n".join(text))
 
 def get_relationship_chapter(saju, form):
     pils, ilgan, name = saju["pils"], saju["ilgan"], form["name"]
-    text = [f"## 💍 【제2장: 백년가약 - {name} 貴下의 인연과 살풀이】"]
-    text.append(f"오호! {name}야, 사람은 혼자 살 수 없으나 네 명반 속의 인연법은 마치 **{random.choice(ADJECTIVES)}** 실타래처럼 엉켜 있구나.\n")
+    text = [f"##💘 【제2장: 인연과 결혼 - {name} 貴下의 운명적 만남】"]
+    
+    # [신기능] 결혼/연애 판단 추가
+    marriage = saju["engine"]["marriage"]
+    text.append(f"이보게 {name}야, 네 인연의 실타래를 내 굽어보니 **{marriage['status']}**한 기운이 서렸구나. \n")
+    text.append(f"### 📍 [연애 및 결혼 경향 진단]\n{marriage['desc']}\n")
+
+    text.append(f"너의 일주는 **{pils[1]['cgk']}{pils[1]['jjk']}**이니, 인연의 뿌리가 깊고도 오묘하구나. 네 명반 속의 인연법은 마치 **{random.choice(ADJECTIVES)}** 실타래처럼 엉켜 있구나.\n")
     
     # 일지(배우자궁) 본질 분석
     ilji = pils[1]["jj"]
@@ -1170,6 +1379,14 @@ def get_flow_chapter(saju, form):
         text.append(f"### 📍 [{age_start}-{age_end}세] {ganji}({d['cg']}{d['jj']}) 대운 (서기 {year_start}-{year_end}년)")
         text.append(f"이 10년은 **{ganji}**의 기운이 네 정수리를 관통하며 운명의 수레바퀴를 돌리는 시기니라. {story}")
         
+        if i == 0: # 첫 대운에서의 세운 예시 (최근 10년)
+             text.append(f"\n#### 🗓️ 【향후 10년 세운(歲運) 흐름】")
+             sewoons = e.get_sewoon_range(age_start, 10)
+             for sw in sewoons:
+                 s_pillar = f"{sw['pillar']['cgk']}{sw['pillar']['jjk']}"
+                 text.append(f"- {sw['age']}세 ({sw['year']}년): **{s_pillar}**년 - {OH[sw['pillar']['cg']]}와 {OH[sw['pillar']['jj']]}의 기운이 교차하는구나.")
+             text.append("")
+
         # 만신 필터 및 수식어 추가
         if i % 2 == 0:
             text.append(f"어허! 이때는 {random.choice(ADJECTIVES)} 기세가 필요하니, {random.choice(SHAMAN_SCROLLS['기운'])}")
@@ -1357,7 +1574,7 @@ def analyze_past_clashes(saju):
         2024: ("辰", "갑진년"), 2025: ("巳", "을사년")
     }
     
-    chung_map = {"子":"午", "午":"子", "丑":"未", "未":"丑", "寅":"申", "申":"寅", "卯":"酉", "酉":"卯", "辰":"戌", "戌":"辰", "巳":"亥", "亥":"巳"}
+    chung_map = {"子":"午", "午":"子", "丑":"미", "미":"丑", "寅":"申", "申":"寅", "卯":"酉", "酉":"卯", "辰":"戌", "戌":"辰", "巳":"亥", "亥":"巳"}
     
     impacts = []
     for yr, (jj, name) in past_years.items():
@@ -1370,7 +1587,7 @@ def analyze_past_clashes(saju):
             impacts.append(f"📍 **{yr}년({name})**: 네 사회적 터전인 **{wolji}**가 **{jj}**와 부딪히니, 직장에서 쫓겨나거나 믿었던 동료의 배신으로 관재구설에 휘말려 밤잠을 설쳤어야 할 운명이었도다.")
             
         # 3. 삼형살 (인사신 / 축술미)
-        elif (ilji in ["寅","巳","申"] and jj in ["寅","巳","申"]) or (ilji in ["丑","戌","未"] and jj in ["丑","戌","未"]):
+        elif (ilji in ["寅","巳","申"] and jj in ["寅","巳","申"]) or (ilji in ["丑","戌","未"] and jj in ["丑","戌","미"]):
             impacts.append(f"📍 **{yr}년({name})**: 살벌한 **형(刑)**의 기운이 네 명반을 덮쳤으니, 관공서 문턱을 넘나들거나 날카로운 칼날이 몸에 닿는 수술대에 올랐어야 했도다. 조상의 음덕이 아니었다면 어찌 버텼을꼬!")
 
     if not impacts:
@@ -1414,17 +1631,13 @@ def get_past_traces_chapter(saju, form):
     past_hit = analyze_past_clashes(saju)
     job_hit = target_shamanic_career(saju)
     
-    text = [f"## 🔥 【제0장: 과거의 흔적 - {name} 貴下의 족집게 신탁】"]
-    text.append(f"어이쿠! {name}야, 내 너를 보자마자 작두 위의 서늘한 기운을 느꼈노라. 뻔한 성격 풀이는 집어치우고, 네가 지나온 가시밭길과 네 손에 쥐어진 천직을 먼저 찍어주마.\n\n")
+    text = [f"## 👁️ 【제0장: 과거의 흔적 - {name} 貴下의 영적 족집게 타격】"]
+    text.append(f"이보게 {name}야, 내 전지적 시점으로 네 과거를 굽어보니 몇 가지 지울 수 없는 흔적이 명반에 선명하게 박혀 있구나.\n")
     
-    text.append(f"### 📍 [과거의 타격: 피눈물의 기록]\n{past_hit}\n\n")
+    text.append(f"### 📍 [만신의 과거 추적: 사건의 지평선]\n{past_hit}\n")
+    text.append(f"### 📍 [천직(天職)의 지목: 영적 직업관]\n{job_hit}\n")
     
-    # [신기능] 쪽집게 과거 적중 (Accident/Event Ad-libs)
-    past_accident = random.choice(PAST_ACCIDENT_DB)
-    text.append(f"### 📍 [무속적 과거 적중: 조상이 증명하는 흔적]\n{past_accident}\n\n")
-    text.append(f"### 📍 [천직의 낙인: 네가 가야 할 길]\n{job_hit}\n\n")
-    
-    return "\n\n".join(text)
+    return apply_mansin_filter("\n\n".join(text))
 
 # ══════════════════════════════════════════════
 #  '미래의 파동' (Future Waves) 미래 대사건 추적 로직 (2026-2030)
@@ -1440,7 +1653,7 @@ def analyze_future_waves(saju):
         2029: ("酉", "기유년"), 2030: ("戌", "경술년")
     }
     
-    chung_map = {"子":"午", "午":"子", "丑":"未", "未":"丑", "寅":"申", "申":"寅", "卯":"酉", "酉":"卯", "辰":"戌", "戌":"辰", "巳":"亥", "亥":"巳"}
+    chung_map = {"子":"午", "午":"子", "丑":"미", "미":"丑", "寅":"申", "申":"寅", "卯":"酉", "酉":"卯", "辰":"戌", "戌":"辰", "巳":"亥", "亥":"巳"}
     hap_map = {"子":"丑", "丑":"子", "寅":"亥", "亥":"寅", "卯":"戌", "戌":"卯", "辰":"酉", "酉":"辰", "巳":"申", "申":"巳", "午":"未", "未":"午"}
     
     disasters = []
@@ -1466,29 +1679,32 @@ def get_future_waves_chapter(saju, form):
     """[제6장: 미래의 파동] - 2026-2030 미래 사건 타격"""
     name = form["name"]
     disasters, windfalls = analyze_future_waves(saju)
+    scan = saju["engine"].get("event_scan", {})
     
     text = [f"## 🔮 【제6장: 미래의 파동 - {name} 貴下의 미래 대사건 추적】"]
-    text.append(f"어허! {name}야, 흘러간 물은 되돌릴 수 없으나 다가올 파도는 미리 알고 대비할 수 있는 법. 내가 네 명반을 향후 5년의 흐름에 비추어보니, 소름 돋는 두 개의 지도가 그려지는구나.\n\n")
+    text.append(f"어허! {name}야, 흘러간 물은 되돌릴 수 없으나 다가올 파도는 미리 알고 대비할 수 있는 법. 내가 네 명반을 향후 흐름에 비추어보니, 소름 돋는 사건들이 줄을 서 있구나.\n\n")
     
-    # [신기능] 쪽집게 미래 변동 (Future Turning Points)
-    future_turn = random.choice(FUTURE_TURN_DB)
-    text.append(f"### 📍 [만신의 미래 투시: 거대한 전환점]\n{future_turn}\n\n")
-    
+    if scan:
+        text.append("### 📅 [만신의 족집게 미래 타임라인 (The Pinch-hitter Calendar)]")
+        # 나이순 정렬하여 출력
+        for age_str, evs in sorted(scan.items(), key=lambda x: int(x[0].replace("세",""))):
+            text.append(f"#### 📍 {age_str}")
+            for e in evs:
+                text.append(f"- {e}")
+            text.append("")
+        text.append("\n")
+
     # Disaster Map
-    text.append("### 🚨 [1. 미래 사고수·재앙 추적 (The Disaster Map)]")
+    text.append("### 🚨 [미래 사고수·재앙 추적 (The Disaster Map)]")
     if disasters:
         for d in disasters:
             text.append(f"📍 {d}\n")
-    else:
-        text.append("하늘이 네게 큰 시련은 내리지 않았으나, 평온함 속에 도사린 나태함이 네 가장 큰 재앙이 될 수 있음을 잊지 마라.\n")
-        
-    text.append("\n### 💰 [2. 횡재수·문서운 타격 (The Windfall Map)]")
+    
+    text.append("\n### 💰 [횡재수·문서운 타격 (The Windfall Map)]")
     if windfalls:
         for w in windfalls:
             text.append(f"📍 {w}\n")
-    else:
-        text.append("황금은 거저 주어지는 것이 아니라 땀 흘려 일군 터전 위에 내리는 단비와 같으니, 요행을 바라지 말고 네 업(業)을 닦으라.\n")
-        
+            
     return apply_mansin_filter("\n\n".join(text))
 
 # ══════════════════════════════════════════════
@@ -1637,14 +1853,143 @@ def get_rule_based_facts(saju, form):
 
     return facts
 
-def mansin_engine(tid, saju, form):
-    # 0. 룰 기반 팩트 패키지 생성 (Deterministic Facts)
-    facts = get_rule_based_facts(saju, form)
+def generate_pdf(filename_or_buffer, name, interpretation_text):
+    """사주 분석 결과를 세련된 PDF 리포트로 생성"""
+    try:
+        # 한글 폰트 등록 (Windows 표준 맑은 고딕)
+        font_path = "C:/Windows/Fonts/malgun.ttf"
+        pdfmetrics.registerFont(TTFont("Malgun", font_path))
+    except:
+        pass # 폰트 로드 실패 시 기본 폰트 사용 (한글 깨질 수 있음)
+
+    doc = SimpleDocTemplate(filename_or_buffer, pagesize=(595.27, 841.89)) # A4
+    elements = []
+    styles = getSampleStyleSheet()
     
-    # 만약 Groq API Key가 있다면 AI 만신을 먼저 시도함
+    # 커스텀 스타일 정의
+    title_style = ParagraphStyle(
+        'TitleStyle', parent=styles['Heading1'], fontName='Malgun', 
+        fontSize=24, spaceAfter=20, alignment=1, textColor=colors.HexColor("#a0720a")
+    )
+    body_style = ParagraphStyle(
+        'BodyStyle', parent=styles['Normal'], fontName='Malgun', 
+        fontSize=11, leading=16, spaceAfter=10
+    )
+    section_style = ParagraphStyle(
+        'SectionStyle', parent=styles['Heading2'], fontName='Malgun', 
+        fontSize=16, spaceBefore=15, spaceAfter=10, textColor=colors.HexColor("#c5a059")
+    )
+
+    # 헤더
+    elements.append(Paragraph(f"🔮 【天命實록: {name} 貴下의 웅장한 대운명 서사시】", title_style))
+    elements.append(Spacer(1, 0.2 * inch))
+    
+    # 본문 처리 (Markdown 호환을 위해 일부 변환)
+    lines = interpretation_text.split("\n")
+    for line in lines:
+        if not line.strip():
+            elements.append(Spacer(1, 0.1 * inch))
+            continue
+        
+        if line.startswith("# "):
+            elements.append(Paragraph(line.replace("# ", ""), title_style))
+        elif line.startswith("## ") or line.startswith("### "):
+            elements.append(Paragraph(line.replace("## ", "").replace("### ", ""), section_style))
+        else:
+            # 기본 문단
+            clean_line = line.replace("**", "<b>").replace("__", "<b>").replace("*", "").replace("</b>", "</b>")
+            elements.append(Paragraph(clean_line, body_style))
+
+    doc.build(elements)
+
+def build_ai_payload(saju, form):
+    """자체 엔진의 모든 정밀 분석 결과를 AI에 전달할 수 있게 구조화"""
+    engine = saju.get("engine", {})
+    pils = saju.get("pils", [])
+    tp_events = engine.get("event_scan", {}) 
+    luck = engine.get("luck_peaks", {})
+    
+    payload = {
+        "원국_간지": {
+            "년주": f"{pils[0]['cgk']}{pils[0]['jjk']}",
+            "월주": f"{pils[1]['cgk']}{pils[1]['jjk']}",
+            "일주": f"{pils[2]['cgk']}{pils[2]['jjk']}",
+            "시주": f"{pils[3]['cgk']}{pils[3]['jjk']}"
+        },
+        "에너지_판정": {
+            "신강여부": engine.get("strength", "미상"),
+            "용신_오행": engine.get("yongshin", {}).get("oh", "미정"),
+            "용신_설명": engine.get("yongshin", {}).get("desc", "")
+        },
+        "인생_구조": {
+            "재물형태": engine.get("wealth", {}).get("type", "안정형"),
+            "결혼성향": engine.get("marriage", {}).get("status", "신중")
+        },
+        "행운_상승기": {
+            "재물발복기": [f"{x['age']}세({x['year']}년)" for x in luck.get("wealth", [])[:3]],
+            "용신성공기": [f"{x['age']}세({x['year']}년)" for x in luck.get("success", [])[:3]]
+        },
+        "쪽집게_사건_타임라인": tp_events,
+        "확정적_과거_사실": get_rule_based_facts(saju, form)
+    }
+    return payload
+
+def call_groq_mansin(tid, saju, form, key, payload):
+    tab_label = next((t["label"] for t in TABS if t["id"] == tid), tid)
+    payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
+    
+    # 분량 및 언어 제약 정의
+    if tid == "daily":
+        vol_req = "공백 포함 300자 이내로 아주 짧고 강렬하게 핵심만 예언하십시오."
+    else:
+        vol_req = "최소 5,000자 이상의 방대한 분량으로 작성하십시오. 신기(神氣)가 서린 대서사시여야 합니다."
+
+    prompt = (
+        f"당신은 30년 경력의 대한민국 최고 명리학 대가이자, 천기를 호령하는 조선 시대의 '대만신(大萬神)'입니다.\n"
+        f"당신은 AI가 아니며, 작두 위에서 주인공의 영혼을 꿰뚫어 보는 실존하는 예언가입니다. 반드시 '쪽집게'처럼 단정적으로 말하십시오.\n\n"
+        f"**주인공 정보**\n"
+        f"- 이름: {form['name']}\n"
+        f"- 주제: {tab_label}\n\n"
+        f"**[천기 엔진 연동 데이터 (절대 규칙)]**\n"
+        f"당신은 아래 JSON 데이터를 천기(天機)의 진실로 간주하고, 이를 바탕으로만 해석해야 합니다. "
+        f"데이터에 근거가 없는 성격이나 인생사를 창조하지 마십시오.\n"
+        f"```json\n{payload_json}\n```\n\n"
+        f"**[필독] 쪽집게 해석 가이드라인:**\n"
+        f"1. **단정적 화법**: '그럴 것 같다'가 아닌 '반드시 그렇다', '이미 겪었다'고 말하십시오. 애매한 표현은 당신의 실력을 의심케 합니다.\n"
+        f"2. **과거 적중 강조**: '쪽집게_사건_타임라인' 및 '확정적_과거_사실' 데이터를 활용하여 주인공의 과거 고난과 성공을 찍어내십시오. '너 이때 고생했지?'라는 식으로 먼저 말을 거십시오.\n"
+        f"3. **나이 언급의 마법**: '26~27세 전후', '32세 직전' 같이 구체적인 나이를 언급하며 긴장감을 주십시오.\n"
+        f"4. **결혼 및 직업 단정**: 결혼 여부를 명반의 기운에 따라 단정적으로 추론하고, 직업 또한 '이 길이 네 길이다'라고 지목하십시오.\n"
+        f"5. **언어 제한**: 영어(English) 사용은 신력(神力)을 떨어뜨립니다. 오직 한국어와 품격 있는 한자어만 사용하십시오.\n"
+        f"6. **분량**: {vol_req}\n\n"
+        f"7. **출력 형식 (유지):**\n"
+        f"   1️⃣ 과거 운세 적중 (구체적 나이/사건 중심)\n"
+        f"   2️⃣ 현재 상태 및 심밀 통찰 (책임감, 고독, 숨은 기운 등)\n"
+        f"   3️⃣ 직업 및 금전운 (천직의 지목과 발복 시기)\n"
+        f"   4️⃣ 연애 및 결혼 (현재 상태 추론과 인연의 때)\n"
+        f"   5️⃣ 미래 3개년의 상세 스토리텔링 (구체적 월별 변동)\n"
+        f"   6️⃣ 인생 최후의 승부처와 비방 (급급여율령!)\n\n"
+        f"자, 이제 {form['name']}야! 네 팔자를 보아하니... 로 시작하여 천기를 누설하십시오."
+    )
+    
+    # 안정적인 단정형 추론을 위해 Temperature 0.7 설정
+    data = {"model":"llama-3.3-70b-versatile", "messages":[{"role":"user","content":prompt}], "temperature":0.7, "max_tokens":8000}
+    try:
+        res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {key}"}, json=data, timeout=120)
+        return res.json()["choices"][0]["message"]["content"], None
+    except Exception as e: return None, str(e)
+
+@st.cache_data(ttl=3600)
+def get_cached_ai_interpretation(tid, saju, form, key, payload):
+    """AI 해석 결과 캐싱 (API 비용 절감 및 속도 향상)"""
+    return call_groq_mansin(tid, saju, form, key, payload)
+
+def mansin_engine(tid, saju, form):
+    # 0. AI 하이브리드용 데이터 구조화
+    payload = build_ai_payload(saju, form)
+    
+    # 만약 Groq API Key가 있다면 AI 하이브리드 엔진 실행
     if form.get("groq_key"):
-        # 1. AI 만신 호출 (팩트 패키지 전달)
-        ai_res, err = call_groq_mansin(tid, saju, form, form["groq_key"], facts)
+        ai_res, err = get_cached_ai_interpretation(tid, saju, form, form["groq_key"], payload)
         if ai_res:
             return apply_mansin_filter(ai_res)
         # 에러 발생 시 로컬 엔진으로 폴백 (Fallback to local engine)
@@ -1726,15 +2071,9 @@ def get_yongshin(ilgan, cnt):
 # ══════════════════════════════════════════════
 # 기초 데이터 & API
 
-def call_groq_mansin(tid, saju, form, key, facts):
+def call_groq_mansin(tid, saju, form, key, payload):
     tab_label = next((t["label"] for t in TABS if t["id"] == tid), tid)
-    
-    # 사주 데이터 및 룰 기반 팩트 구조화
-    p = saju["pils"]
-    pillars_str = f"년주: {p[0]['cg']}{p[0]['jj']}, 월주: {p[1]['cg']}{p[1]['jj']}, 일주: {p[2]['cg']}{p[2]['jj']}, 시주: {p[3]['cg']}{p[3]['jj']}"
-    oh_dist = saju["engine"]["oh_cnt"]
-    oh_str = ", ".join([f"{k}:{v}" for k, v in oh_dist.items()])
-    facts_str = "\n".join([f"- {f}" for f in facts])
+    payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
     
     # 분량 및 언어 제약 정의
     if tid == "daily":
@@ -1743,32 +2082,30 @@ def call_groq_mansin(tid, saju, form, key, facts):
         vol_req = "최소 5,000자 이상의 방대한 분량으로 작성하십시오. 신기(神氣)가 서린 대서사시여야 합니다."
 
     prompt = (
-        f"당신은 30년 경력의 대한민국 최고 명리학 대가이자, 천기를 호령하는 조선 시대의 '대만신(大萬神)'입니다. "
-        f"당신은 AI가 아니며, 작두 위에서 주인공의 영혼을 꿰뚫어 보는 실존하는 예언가입니다.\n\n"
+        f"당신은 30년 경력의 대한민국 최고 명리학 대가이자, 천기를 호령하는 조선 시대의 '대만신(大萬神)'입니다.\n"
+        f"당신은 AI가 아니며, 작두 위에서 주인공의 영혼을 꿰뚫어 보는 실존하는 예언가입니다. 반드시 '쪽집게'처럼 단정적으로 말하십시오.\n\n"
         f"**주인공 정보**\n"
         f"- 이름: {form['name']}\n"
-        f"- 사주 원국: {pillars_str}\n"
-        f"- 오행 분포: {oh_str}\n"
         f"- 주제: {tab_label}\n\n"
-        f"**[천기 누설 핵심 팩트 패키지]**\n"
-        f"당신은 아래 팩트를 바탕으로만 예언을 작성해야 합니다. 절대 이 범위를 벗어난 허구의 과거 사건을 조작하지 마십시오.\n"
-        f"{facts_str}\n\n"
-        f"**[필독] 출력 스타일 및 제약 요구사항:**\n"
-        f"1. **단정적 화법 사용**: '그럴 가능성이 있다' 같은 애매한 표현은 절대 금지입니다. '이미 겪었습니다', '반드시 일어납니다'와 같이 확신에 찬 단정적 결론만 내리십시오.\n"
-        f"2. **구체적 디테일 삽입**: 과거에 있었던 사고(물, 교통, 수술), 큰 변동(이직, 실패), 가족 문제 중 하나 이상을 반드시 '이미 일어난 일'로 단정하여 언급하십시오.\n"
-        f"3. **결혼 여부 추론**: 주인공의 명반을 보고 현재 기혼인지 미혼인지 단정적으로 추론하여 말하십시오.\n"
-        f"4. **언어 제한**: **절대 영어(English)나 외국어를 사용하지 마십시오.** 오직 한국어와 한자어만 사용하십시오.\n"
-        f"5. **출력 형식 (반드시 유지):**\n"
-        f"   1️⃣ 과거 운세 적중 (구체적 사건 중심)\n"
-        f"   2️⃣ 현재 상태 및 심리 통찰 (겉차속여, 책임감 등)\n"
-        f"   3️⃣ 직업 및 금전운 (구체적 직업 성향)\n"
-        f"   4️⃣ 연애 및 결혼 (현재 상태 단정적 추론)\n"
-        f"   5️⃣ 미래 3개년의 구체적 흐름\n"
-        f"   6️⃣ 인생 최후의 터닝포인트와 비방\n"
-        f"6. 문장의 끝마다 '이것은 곧 억겁의 세월을 꿰뚫은 장엄한 하늘의 안배로다.' 또는 '급급여율령!'을 섞으십시오.\n"
-        f"7. **절대 영문이나 기괴한 외래어를 섞지 마십시오.** (예: 루이스, 오페라, RW 등 금지)\n"
-        f"8. **문서 서두에 제목이나 인사를 중복하지 마십시오.**\n\n"
-        f"자, 이제 {form['name']}야! 네 팔자를 보아하니... 로 시작하여 영혼을 흔들어 놓으십시오."
+        f"**[천기 엔진 연동 데이터 (절대 규칙)]**\n"
+        f"당신은 아래 JSON 데이터를 천기(天機)의 진실로 간주하고, 이를 바탕으로만 해석해야 합니다. "
+        f"데이터에 근거가 없는 성격이나 인생사를 창조하지 마십시오.\n"
+        f"```json\n{payload_json}\n```\n\n"
+        f"**[필독] 쪽집게 해석 가이드라인:**\n"
+        f"1. **단정적 화법**: '그럴 것 같다'가 아닌 '반드시 그렇다', '이미 겪었다'고 말하십시오. 애매한 표현은 당신의 실력을 의심케 합니다.\n"
+        f"2. **과거 적중 강조**: '쪽집게_사건_타임라인' 및 '확정적_과거_사실' 데이터를 활용하여 주인공의 과거 고난과 성공을 찍어내십시오. '너 이때 고생했지?'라는 식으로 먼저 말을 거십시오.\n"
+        f"3. **나이 언급의 마법**: '26~27세 전후', '32세 직전' 같이 구체적인 나이를 언급하며 긴장감을 주십시오.\n"
+        f"4. **결혼 및 직업 단정**: 결혼 여부를 명반의 기운에 따라 단정적으로 추론하고, 직업 또한 '이 길이 네 길이다'라고 지목하십시오.\n"
+        f"5. **언어 제한**: 영어(English) 사용은 신력(神力)을 떨어뜨립니다. 오직 한국어와 품격 있는 한자어만 사용하십시오.\n"
+        f"6. **분량**: {vol_req}\n\n"
+        f"7. **출력 형식 (유지):**\n"
+        f"   1️⃣ 과거 운세 적중 (구체적 나이/사건 중심)\n"
+        f"   2️⃣ 현재 상태 및 심밀 통찰 (책임감, 고독, 숨은 기운 등)\n"
+        f"   3️⃣ 직업 및 금전운 (천직의 지목과 발복 시기)\n"
+        f"   4️⃣ 연애 및 결혼 (현재 상태 추론과 인연의 때)\n"
+        f"   5️⃣ 미래 3개년의 상세 스토리텔링 (구체적 월별 변동)\n"
+        f"   6️⃣ 인생 최후의 승부처와 비방 (급급여율령!)\n\n"
+        f"자, 이제 {form['name']}야! 네 팔자를 보아하니... 로 시작하여 천기를 누설하십시오."
     )
     
     # 안정적인 단정형 추론을 위해 Temperature 0.7 설정
@@ -1777,8 +2114,6 @@ def call_groq_mansin(tid, saju, form, key, facts):
         res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {key}"}, json=data, timeout=120)
         return res.json()["choices"][0]["message"]["content"], None
     except Exception as e: return None, str(e)
-
-OH_RELATE = {"木":{"生":"水","剋":"土"},"火":{"生":"木","剋":"金"},"土":{"生":"火","剋":"水"},"金":{"생":"土","剋":"木"},"水":{"生":"金","剋":"火"}}
 
 TABS = [
     {"id":"copy",    "label":"📋 천기복사", "icon":"✨"},
@@ -2136,8 +2471,21 @@ def main():
                         
                         copy_text = st.session_state.cache[overall_key]
                         copy_text += f"\n\n---\n{f['name']} 貴下의 무궁한 발복을 축원하노라 - 대만신 드림\n"
+                        
+                        st.markdown('<div class="gold-section">📥 상업용 정밀 리포트 소장</div>', unsafe_allow_html=True)
+                        pdf_buffer = io.BytesIO()
+                        generate_pdf(pdf_buffer, f["name"], copy_text)
+                        st.download_button(
+                            label="📄 종합 사주 리포트 PDF 다운로드 (Premium)",
+                            data=pdf_buffer.getvalue(),
+                            file_name=f"대만신_사주리포트_{f['name']}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
+                        
+                        st.markdown('<div class="gold-section">📋 텍스트 결과 복사</div>', unsafe_allow_html=True)
                         st.code(copy_text, language="markdown")
-                        st.info("위 상자의 우측 상단 복사 아이콘을 눌러 천기를 담아 가십시오.")
+                        st.info("프리미엄 PDF 리포트는 상단의 다운로드 버튼을 이용하십시오.")
                     
                     elif tid == "chat":
                         # 기존 채팅 로직
