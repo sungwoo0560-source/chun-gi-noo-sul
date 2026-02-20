@@ -955,7 +955,9 @@ MANSIN_LEXICON = {
     "데이터": "천기기록(天機記錄)", "알고리즘": "신령님의 안배(神靈之安配)", "시스템": "우주의 질서",
     "뚜뚜뚜": "방울 소리(鈴聲)", "수족관": "영험한 못", "위원회": "명부의 사자",
     "업데이트": "환골탈태(換骨奪胎)", "리스크": "운명의 시험대", "결과값": "천문의 응답",
-    "에러": "살풀이 부족", "버그": "잡귀의 장난", "코드": "비망록"
+    "에러": "살풀이 부족", "버그": "잡귀의 장난", "코드": "비망록",
+    "인공지능": "신령의 화신(神靈之化身)", "프로그래밍": "부적 그리기(符籍劃法)",
+    "스마트폰": "손바닥 속의 거울", "인터넷": "만물의 신경망", "주식": "투전판의 소용돌이"
 }
 
 # ══════════════════════════════════════════════
@@ -1035,33 +1037,45 @@ BRANCH_INTERACTION_DEEP = {
 def get_essence_chapter(saju, form):
     name, ilgan = form["name"], saju["ilgan"]
     sipsungs = saju["engine"]["sipsung"][:8]
-    text = [f"## 🌌 【제1장: {name} 貴下의 천명(天命)과 본질적 기상】"]
-    text.append(f"어허! {name}야, 정신 바짝 차리고 들어라! 네 근본 기운인 '{ilgan}'은(는) **{random.choice(ADJECTIVES)}** 태고의 신비를 머금은 보석과 같도다.")
+    text = [f"## 👤 【제1장: 영적 본질 - {name} 貴下의 명반에 새겨진 천명(天命)】"]
+    text.append(f"어허! {name}야, 네 겉모습은 세상의 풍파에 닳았을지언정 네 영혼의 뿌리는 **{ilgan}**의 기운을 타고났음을 내 보았노라.\n")
     
+    # 일간별 심층 성격 (보강)
+    ess_map = {
+        "甲": "너는 대지에 우뚝 선 거목이니, 남의 밑에 있지 못하고 하늘을 향해 뻗어 나가야 비소로 숨을 쉴 팔자로다. 하지만 거친 바람에 꺾이기 쉬우니 때로는 유연함을 배워야 하느니라.",
+        "庚": "너는 달궈진 쇳덩이이자 서슬 퍼런 칼날이로다. 결단력은 천하제일이나 그 날카로움이 네 소중한 인연들을 베어낼까 두렵구나. 단단하되 부드러움을 품어야 만인을 통솔할 장수가 될 것이로다.",
+        "丙": "너는 하늘에 뜬 태양이니 사방을 환히 밝혀야 직성이 풀리는 대장부의 기개가 있도다. 하지만 네 열기가 지나치면 주변이 타버리니, 때로는 구름 뒤에 숨어 자신을 다스릴 줄 알아야 하느니라."
+    }
+    essence = ess_map.get(ilgan, f"너는 {ilgan}의 기운을 담은 그릇이니, {random.choice(ADJECTIVES)} 성품이 네 인생의 나침반이 될 것이로다.")
+    text.append(f"### 📍 [본질의 형상: '{ilgan}'의 기상]\n{essence}\n")
+    
+    text.append(f"### 📍 [심층 십성 분석: 명반의 골격]")
     pillar_names = ["년간(뿌리)", "월간(성장)", "일간(나의 별)", "시간(결실)", "년지", "월지", "일지", "시지"]
     for i, p_name in enumerate(pillar_names):
         s_type = sipsungs[i]
         data = SIPSUNG_DEEP.get(s_type, SIPSUNG_DEEP["비견"])
-        text.append(f"### 📍 {p_name}의 {s_type} 정기 분석\n{data['nature']}")
+        text.append(f"**{p_name}의 {s_type}**: {data['nature']}")
         
-    return "\n".join(text)
+    return apply_mansin_filter("\n\n".join(text))
 
 def get_relationship_chapter(saju, form):
-    pils, name = saju["pils"], form["name"]
-    text = []
-    # 고전 인용 삽입
-    quote = random.choice(CLASSIC_QUOTES["삼명통회"])
-    text.append(f"""
-\n{"═" * 50}\n🔍 【제2장: 64괘 현미경 매트릭스 - 전생, 현생, 후생의 인과율】\n{"═" * 50}
-\n📜 [대만신이 읊조리는 고전의 한마디]\n"{quote}"\n
-어허! {name}야, 이제 네 팔자의 글자들이 서로 어떤 비밀스러운 대화를 나누며 네 운명을 굴리는지, 돋보기를 넘어 현미경을 들이대듯 세포 하나하나를 낱낱이 파헤쳐보겠다!
-이것은 단순한 글자의 만남이 아니요, 전생의 빚을 갚고 후생의 복을 짓는 **인과관계(因果關係)**의 정밀한 설계도이며, **{random.choice(ADJECTIVES)}** 우주의 법칙이로다.
-""")
+    pils, ilgan, name = saju["pils"], saju["ilgan"], form["name"]
+    text = [f"## 💍 【제2장: 백년가약 - {name} 貴下의 인연과 살풀이】"]
+    text.append(f"오호! {name}야, 사람은 혼자 살 수 없으나 네 명반 속의 인연법은 마치 **{random.choice(ADJECTIVES)}** 실타래처럼 엉켜 있구나.\n")
+    
+    # 일지(배우자궁) 본질 분석
+    ilji = pils[1]["jj"]
+    rel_map = {
+        "子": "네 인연은 흐르는 물과 같으니 차갑지만 깊고 오묘하도다. 비밀스러운 인연이 꼬일 수 있으니 맑은 마음을 유지하라.",
+        "午": "네 사랑은 타오르는 불꽃이니 화려하나 금방 식기 쉬운 법. 인내심을 가지고 상대를 대하지 않으면 고독의 살이 찌게 될 것이니라.",
+        "寅": "네 짝은 산속의 호랑이처럼 위엄 있는 자이나 자존심 대결로 평생을 싸울 팔자로다. 네가 먼저 고개를 숙여야 가정이 평안할 것이니라."
+    }
+    relation = rel_map.get(ilji, f"네 배우자궁에 **{ilji}**가 앉아 있으니, 상대의 기운이 네 인생의 승패를 가를 것이로다.")
+    text.append(f"### 📍 [연인의 자태]\n{relation}\n")
 
-    pillar_names = ["년간", "월간", "일간", "시간"]
-    branch_names = ["년지", "월지", "일지", "시지"]
-
-    # [천간 vs 천간] 4x4
+    # 4x4 현미경 매트릭스 (기존 로직 유지하며 서사 증폭)
+    text.append(f"### 📍 [심층 인연 매트릭스: 전생과 현생의 연결고리]")
+    lbls = ["년", "월", "일", "시"]
     for i in range(4):
         for j in range(4):
             if i >= j: continue
@@ -1070,84 +1084,71 @@ def get_relationship_chapter(saju, form):
             for cat in ["합", "충"]:
                 if key := next((k for k in STEM_INTERACTION_DEEP[cat] if k in [c1+c2, c2+c1]), None):
                     data = STEM_INTERACTION_DEEP[cat][key]
-                    text.append(f"### 🌌 {c1}과 {c2}의 천문적 사투: {data['title']}")
-                    text.append(amplify_interaction_narrative(f"\"{name}야, 정신 바짝 차리고 이 만신의 목소리를 들어라!\"", data))
+                    text.append(f"**{lbls[i]}간과 {lbls[j]}간의 {cat}**: {data['title']} - {data['nature']}")
                     found = True; break
-            if not found:
-                text.append(f"""
-### 📡 {c1}과 {c2}의 은밀한 전생 리포트
-{name} 貴下야, 두 기운이 서로 무덤덤하게 스쳐 지나가나, 그 침묵 속에 거대한 태풍이 잠들어 있음을 잊지 마라. 
-이것은 **심사숙고(深思熟考)** 끝에 내린 하늘의 배려이며, **{random.choice(ADJECTIVES)}** 침묵이로다. 
-""")
-
-    # [지지 vs 지지] 4x4
-    for i in range(4):
-        p1 = pils[i]
-        for j in range(4):
-            if i >= j: continue
-            p2 = pils[j]
-            j1, j2 = p1["jj"], p2["jj"]
             
-            # 지지 상호작용 (충/형/합) - 소름 돋는 타격
-            interaction_text = ""
+            j1, j2 = pils[i]["jj"], pils[j]["jj"]
             for cat in ["충", "형", "합"]:
                 if key := next((k for k in BRANCH_INTERACTION_DEEP.get(cat, {}) if k in [j1+j2, j2+j1]), None):
                     data = BRANCH_INTERACTION_DEEP[cat][key]
-                    interaction_text = f"### ⚖️ {lbls[i]}과 {lbls[j]}의 {cat}: {data['title']}\n"
-                    interaction_text += amplify_interaction_narrative(f"\"{name}야! {lbls[i]}의 {j1}와 {lbls[j]}의 {j2}가 엉켜 있구나!\"", data)
+                    text.append(f"**{lbls[i]}지와 {lbls[j]}지의 {cat}**: {data['title']} - {data['nature']}")
                     break
-            
-            if interaction_text:
-                text.append(interaction_text)
-            else:
-                # 뚜렷한 상호작용이 없을 때도 운명의 조화 설명
-                text.append(f"### 🌊 {lbls[i]}과 {lbls[j]}의 은밀한 조화")
-                text.append(f"어허! {j1}와 {j2}가 겉으로는 조용하나, 땅속 깊은 곳에서 서로의 정기를 주고받고 있도다. 이것은 **대기만성(大器晩成)**을 위한 기나긴 기다림이니, 서두르지 말고 네 때가 오기를 기다려라.")
 
-    # 분량 채우기 (반복 없이 스크롤 사용)
-    while len("\n".join(text)) < 3000:
-        text.append(random.choice(SHAMAN_SCROLLS["기운"]))
-        text.append(f"**이것은 곧 억겁의 세월을 꿰뚫은 장엄한 하늘의 안배로다.**")
-
-    return "\n\n".join(text)
+    text.append(f"### 📍 [인연의 살풀이 비방]\n{random.choice(SHAMAN_SCROLLS['인연'])}\n")
+    return apply_mansin_filter("\n\n".join(text))
 
 # 챕터별 고도화 계속 (Flow, Prescription, Oracle)
 def get_flow_chapter(saju, form):
-    pils, name = saju["pils"], form["name"]
-    text = [f"## 🌊 【제3장: 시공간의 입체 분석 - 대운(大運)과 세운(歲運)의 대서사시】"]
-    text.append(f"어허! {name}야, 흘러가는 세월을 헛되이 보내지 마라. 네 명반 위에 흐르는 시간의 물길을 내가 10단계로 쪼개어 보여주마.\n")
+    daewoon = saju["daewoon"]
+    name = form["name"]
+    text = [f"## 🌊 【제3장: 시공간의 입체 분석 - {name} 貴下의 대운(大運) 대서사시】"]
+    text.append(f"어허! {name}야, 흘러가는 세월을 헛되이 보내지 마라. 네 명반 위에 흐르는 거대한 시간의 물길, 즉 10년마다 바뀌는 **대운(大運)**의 흐름을 내가 낱낱이 파헤쳐주마.\n")
 
-    for step in range(1, 11):
-        # 대운/세운 흐름 (나름의 로직으로 변주)
-        impact = "천지개벽" if step % 3 == 0 else "고진감래"
-        text.append(f"### 📍 [제{step}단계] 네 일생의 {step*7}세 전후, 운명의 변곡점")
-        text.append(f"이 시기에는 **{impact}**의 기운이 네 정수리를 때리니, 평소와 다른 과감한 결단이 필요하느니라. {random.choice(SHAMAN_SCROLLS['기운'])}")
+    for i, d in enumerate(daewoon):
+        age_start = d["age"]
+        age_end = age_start + 9
+        year_start = d["year"]
+        year_end = year_start + 9
+        ganji = f"{d['cgk']}{d['jjk']}"
         
-    # 캐릭터 수 보강
-    while len("\n".join(text)) < 3000:
-        text.append(random.choice(SHAMAN_SCROLLS["기운"]))
+        # DAEWOON_STORY_DB에서 서사 추출
+        stem_key = d["cg"]
+        branch_key = d["jj"]
+        story = DAEWOON_STORY_DB.get(stem_key, {}).get(branch_key, f"{ganji}의 기운이 네 삶의 터전을 흔드는 시기로다.")
+        
+        text.append(f"### 📍 [{age_start}~{age_end}세] {ganji}({d['cg']}{d['jj']}) 대운 (서기 {year_start}~{year_end}년)")
+        text.append(f"이 10년은 **{ganji}**의 기운이 네 정수리를 관통하며 운명의 수레바퀴를 돌리는 시기니라. {story}")
+        
+        # 만신 필터 및 수식어 추가
+        if i % 2 == 0:
+            text.append(f"어허! 이때는 {random.choice(ADJECTIVES)} 기세가 필요하니, {random.choice(SHAMAN_SCROLLS['기운'])}")
+        else:
+            text.append(f"조상님이 굽어살피시니, {random.choice(SHAMAN_CHANTS_VOL3)}")
+
+    # 분량 보강
+    while len("\n".join(text)) < 4500:
+        text.append(f"\n{random.choice(SPIRIT_CHANTS)}")
+        text.append(f"이것은 곧 **{random.choice(ADJECTIVES)}** 하늘의 안배로다. {random.choice(SHAMAN_EPIC)}")
         
     text.append(f"\n**이것은 곧 억겁의 세월을 꿰뚫은 장엄한 하늘의 안배로다.**")
-    return "\n\n".join(text)
+    return apply_mansin_filter("\n\n".join(text))
+
 
 def get_prescription_chapter(saju, form):
     y_oh, name = saju["engine"]["yongshin"]["yongshin"], form["name"]
     text = [f"## 💊 【제4장: 만신급 생활 밀착 처방전 - 운명을 바꾸는 비방】"]
     text.append(f"문만 열고 나간다고 개운이 되는 것이 아니니라! {name}야, 네 일상을 뒤흔들 처방을 내리노라.\n")
-
-    # 공간/음식 처방
+    
     h_data = HEALTH_DB.get(y_oh, HEALTH_DB["木"])
     text.append(f"### 🏠 [공간 처방] 네 용신 '{y_oh}'의 정기가 서린 명당 설계")
     text.append(f"잠잘 때 머리 방향은 반드시 **{OH_DIR[y_oh]}** 쪽으로 두고, 그곳에 맑은 물 한 사발을 떠놓거라. {random.choice(SHAMAN_SCROLLS['건강'])}")
-
     text.append(f"\n### 🥦 [음식 처방] 오장육부를 다스리는 성스러운 양식")
     text.append(f"네 체질상 **{h_data['food']}**을(를) 가까이하라. 그것이 네 {h_data['organ']}에 서린 탁기를 씻어낼 것이로다. {random.choice(SHAMAN_SCROLLS['건강'])}\n")
-
-    while len("\n".join(text)) < 2500:
+    
+    while len("\n".join(text)) < 3000:
         text.append(random.choice(SHAMAN_SCROLLS["건강"]))
-
     text.append(f"\n**이것은 곧 억겁의 세월을 꿰뚫은 장엄한 하늘의 안배로다.**")
-    return "\n\n".join(text)
+    return apply_mansin_filter("\n\n".join(text))
 
 def get_oracle_chapter(saju, form):
     name = form["name"]
@@ -1264,104 +1265,98 @@ def get_secret_chapter(saju, form):
 def get_disaster_tracking(saju, form):
     """관재사고(Disaster) 2026년 월별 정밀 정적 분석"""
     name = form["name"]
-    text = [f"## 🚨 【관재사고(官災事故): 丙午年(2026년) {name} 貴下의 월별 재앙 추적 및 방비책】"]
-    text.append(f"어허! {name}야, 2026년 병오년의 불꽃이 네 명반을 스칠 때, 도사리고 있는 환재수와 사고수를 내가 낱낱이 찍어주마. 연도와 달을 명시하니 가슴에 새겨라.\n\n")
+    text = [f"## 🚨 【관재사고(官災事故): 丙午年(2026년) {name} 貴下의 월별 재앙 추적】"]
+    text.append(f"어허! {name}야, 2026년 병오년의 타오르는 불꽃은 네 명반의 어두운 구석을 비출 것이니라. 아래는 네가 필히 피해야 할 재앙의 월별 기록이니 작두 위의 서늘함으로 마주하라.\n\n")
 
-    months = [f"2026년 {m}월" for m in range(1, 13)]
-    disasters = ["환재수(뜻밖의 재앙)", "이별수(인연의 단절)", "파재수(금전의 손실)", "관재수(법적 분쟁)", "낙상수(몸의 부상)"]
+    disaster_samples = [
+        "**관재구설(官災口舌)**: 입을 잘못 놀려 관청의 문턱을 넘나들 운이로다. 침묵이 금이니라.",
+        "**낙상수(落傷數)**: 길 위에서 다리가 꺾이고 피를 볼 징조니, 높은 곳을 피하고 발밑을 살펴라.",
+        "**이별수(離別數)**: 믿었던 도끼에 발등 찍히듯 인연의 단절이 있으리니, 마음의 빗장을 걸어 잠그라.",
+        "**파재수(破財數)**: 곳간에 쥐가 들어 황금을 갉아먹는 형국이니 투자를 멈추고 현금을 쥐어라."
+    ]
     
-    for m in months:
-        d = random.choice(disasters)
-        text.append(f"### 📍 {m}의 준엄한 경계: **{d}**\n")
-        text.append(f"어허! {m}에 네 명반의 살성이 요동치니 조심하라. 특히 이 시기에는 {random.choice(ADJECTIVES)} 기운이 네 발목을 잡을 터이니, 큰길을 피하고 입을 무겁게 닫아라.\n\n")
+    for m in range(1, 13):
+        d = random.choice(disaster_samples)
+        text.append(f"### 📍 2026년 {m}월의 경보: {d}")
+        text.append(f"어허! {m}월에는 {random.choice(ADJECTIVES)} 기운이 네 뒤통수를 치려 하니, 평소보다 세 배는 더 몸을 낮추고 조상님께 빌어라.\n")
 
-    # 무속적 전설
-    legend = f"\n### 📜 【대만신의 무속적 전설: 재앙을 피한 어느 효자의 이야기】\n"
-    legend += f"조선 말기, 한양 도성에 관재수가 강하게 낀 한 청년이 있었느니라. "
-    legend += f"만신이 그에게 '이번 달에는 절대 관아 근처에도 가자 마라' 일렀거늘, 그는 효심에 아픈 노모의 약을 구하러 나갔다가 억울한 누명을 쓰고 옥에 갇힐 뻔했도다. "
-    legend += f"하지만 그가 품안에 만신이 준 비방을 간직하고 {random.choice(list(MANSIN_LEXICON.values()))}의 경지를 유지했더니, 보름달이 뜨는 밤에 진범이 잡히어 극적으로 목숨을 건졌다는 전설이 있느니라. "
-    legend += f"재앙은 피하는 것이 상책이요, 알고 대처하는 자에게는 결코 깊은 상처를 내지 못하는 법이니라."
+    # 무속적 전설 보강
+    legend = f"\n### 📜 【대만신의 비기: 재앙을 쫓는 붉은 팥의 전설】\n"
+    legend += f"먼 옛날, 관재수가 낀 어느 정승이 이 만신을 찾아와 길을 물었느니라. "
+    legend += f"내가 그에게 '대문 앞에 붉은 팥을 뿌리고 삼일 밤낮을 기도하라' 하였더니, 다음날 대역죄인으로 몰릴 위기를 면하고 오히려 공신(功臣)으로 책봉되었다는 전설이 있도다. "
+    legend += f"재앙은 피하는 것이 아니라 미리 알고 쳐내는 것이니라.\n"
     
-    while len(legend) < 1000:
-        legend += f" {random.choice(ADJECTIVES)} 기운으로 액운을 쳐내라. {random.choice(SHAMAN_EPIC_COLLECTION)} 이것은 곧 **환골탈태**의 길로다. "
-    
-    text.append(legend)
-    return "\n\n".join(text)
+    while len("\n".join(text)) < 3500:
+        text.append(random.choice(SHAMAN_SCROLLS["기운"]))
+        
+    text.append(f"\n**이것은 곧 억겁의 세월을 꿰뚫은 장엄한 하늘의 안배로다.**")
+    return apply_mansin_filter("\n\n".join(text))
 
 def get_lucky_fate(saju, form):
     """곳간보물(Wealth) 2026년 월별 행운/승진 정밀 분석"""
     name = form["name"]
-    text = f"## 💰 【곳간보물(財物): 丙午年(2026년) {name} 貴下의 월별 행운 및 발복 타이밍】\n\n"
-    text += f"오호! {name}야, 2026년 병오년의 타오르는 불꽃이 네 곳간을 비추어 황금이 쏟아질 타이밍을 내가 명시해주마. 연도와 달을 잊지 마라!\n\n"
+    text = [f"## 💰 【곳간보물(財物): 丙午年(2026년) {name} 貴下의 월별 행운 리포트】"]
+    text.append(f"오호! {name}야, 2026년 병오년의 밝은 기운이 네 곳간 문을 두드리는구나. 아래는 황금이 쏟아질 발복의 달이니 정갈한 마음으로 맞이하라!\n\n")
 
-    months = [f"2026년 {m}월" for m in range(1, 13)]
-    luck_types = ["횡재수(뜻밖의 재물)", "승진수(신분 상승)", "인복수(귀인의 도움)", "문서수(계약의 성사)", "천우신조(하늘의 도우심)"]
+    luck_samples = [
+        "**횡재수(橫財數)**: 길 가다 보석을 줍듯 뜻밖의 재물이나 기회가 찾아오리니, 망설임 없이 손을 뻗어라.",
+        "**승진수(昇進數)**: 네 이름이 사방에 알려지고 신분이 상승하는 형국이니, 만인이 네 발밑에 고개를 숙이리라.",
+        "**인복수(人福數)**: 귀인이 나타나 막혔던 금전의 물꼬를 터줄 것이니, 사람을 귀하게 대하고 인연을 소중히 하라.",
+        "**문서수(文書數)**: 계약서에 도장을 찍는 소리가 천둥처럼 우렁차니, 부동산과 증권으로 발복할 기로다."
+    ]
     
-    contents = []
-    for m in months:
-        l = random.choice(luck_types)
-        contents.append(f"### 📍 {m}의 황금 발복: **{l}**\n")
-        contents.append(f"오호! {m}에 네 명반의 **용신(用神)** 기운이 보물창고를 여니, {random.choice(ADJECTIVES)} 기세로 몰아붙여라. 천문의 응답이 네 손아귀에 있을 것이로다.\n\n")
+    for m in range(1, 13):
+        l = random.choice(luck_samples)
+        text.append(f"### 📍 2026년 {m}월의 축복: {l}")
+        text.append(f"오호! {m}월에는 {random.choice(ADJECTIVES)} 서광이 네 광을 가득 채우니, {random.choice(SPIRIT_CHANTS)}의 자세로 발복을 준비하라.\n")
 
-    text += "\n\n".join(contents)
-
-    # 무속적 전설
-    legend = f"\n\n### 📜 【대만신의 무속적 전설: 황금 물고기를 낚은 어부의 이야기】\n"
-    legend += f"동해 바닷가에 평생 가난하게 살던 한 어부가 있었는데, 어느 날 꿈속에서 만신이 나타나 '내일 정오에 서쪽 바다로 배를 띄워라' 하였느니라. "
-    legend += f"반신반의하며 배를 띄운 어부는 그물 가득 황금빛 비늘이 돋친 물고기를 낚았고, 그 물고기 입안에서 귀한 여의주가 나왔다는 전설이 전해 내려오느니라. "
-    legend += f"행운은 준비된 자에게만 그 꼬리를 보여주는 법. 네가 지금 이 신탁을 믿고 나아가는 순간, 그 황금 물고기는 이미 네 그물 속으로 들어오고 있느니라."
+    # 무속적 전설 보강
+    legend = f"\n### 📜 【대만신의 비기: 만석꾼을 만든 황금 거북이 전설】\n"
+    legend += f"조선 중기, 대흉년을 맞은 한 어부가 산신당에서 백일기도를 드렸느니라. "
+    legend += f"백일째 되는 날 황금 비늘을 가진 거북이가 나타나 그를 풍요의 땅으로 인도했으니, 그곳이 바로 오늘날의 만석꾼 터라 전해지느니라. "
+    legend += f"운이 들어올 때는 물감 배어들듯 조용히 오나, 그 결과는 태산보다 무거운 법이니라.\n"
+    text.append(legend)
     
-    while len(legend) < 1000:
-        legend += f" {random.choice(ADJECTIVES)} 광채가 네 곳간을 비추니, {random.choice(SHAMAN_EPIC)} 이 어찌 기쁘지 아니하겠느냐! "
-    
-    text += legend
-    return text
+    while len("\n".join(text)) < 3500:
+        text.append(random.choice(SHAMAN_SCROLLS["기운"]))
+        
+    text.append(f"\n**이것은 곧 억겁의 세월을 꿰뚫은 장엄한 하늘의 안배로다.**")
+    return apply_mansin_filter("\n\n".join(text))
 
 # ══════════════════════════════════════════════
 #  '족집게 만신' (Sharp Shaman) 사건 타격 로직 - Past & Career
 # ══════════════════════════════════════════════
 
 def analyze_past_clashes(saju):
-    """최근 5년(2021-2025) 중 가장 강력한 충(沖)과 형(刑) 분석"""
-    ilji = saju["pils"][1]["jj"] # 일지 (나의 몸, 배우자)
+    """최근 5년(2021-2025) 중 가장 강력한 충(沖)과 형(刑), 파(破), 해(害) 분석"""
+    ilji = saju["pils"][1]["jj"]
+    wolji = saju["pils"][2]["jj"]
     
-    # 2021~2025 세운 지지
     past_years = {
-        2021: ("丑", "신축년"),
-        2022: ("寅", "임인년"),
-        2023: ("卯", "계묘년"),
-        2024: ("辰", "갑진년"),
-        2025: ("巳", "을사년")
+        2021: ("丑", "신축년"), 2022: ("寅", "임인년"), 2023: ("卯", "계묘년"),
+        2024: ("辰", "갑진년"), 2025: ("巳", "을사년")
     }
     
-    # 충(沖) 관계
     chung_map = {"子":"午", "午":"子", "丑":"未", "未":"丑", "寅":"申", "申":"寅", "卯":"酉", "酉":"卯", "辰":"戌", "戌":"辰", "巳":"亥", "亥":"巳"}
-    # 형(刑) 관계 (삼형 위주)
-    # 인사신(寅巳申), 축술미(丑戌未), 자묘(子卯)
     
-    targets = []
+    impacts = []
     for yr, (jj, name) in past_years.items():
-        # 1. 충 분석
+        # 1. 일지 충 (내 몸과 가정을 직접 타격)
         if chung_map.get(ilji) == jj:
-            impact = "천지개벽할 충(沖)"
-            if jj in ["寅","申","巳","亥"]: desc = "길 위에서 사고가 나거나, 거처를 옮기며 피눈물을 흘렸을 것이로다."
-            else: desc = "사람 때문에 가슴을 도려내고, 인연의 단절로 몸조차 상했을 것이로다."
-            targets.append((yr, name, impact, desc))
+            impacts.append(f"📍 **{yr}년({name})**: 네 본신을 상징하는 **{ilji}**가 세운의 **{jj}**와 정면으로 맞붙어 **천지개벽할 충(沖)**이 일어났었구나! 이때 너, 집안의 대들보가 흔들리거나 정든 곳을 떠나며 피눈물을 흘렸을 터인데, 내 말이 틀리느냐!")
         
-        # 2. 형 분석 (자신의 일지가 삼형에 걸리는지)
-        elif (ilji in ["寅","巳","申"] and jj in ["寅","巳","申"]) or \
-             (ilji in ["丑","戌","未"] and jj in ["丑","戌","未"]) or \
-             (ilji in ["子","卯"] and jj in ["子","卯"]):
-            impact = "살벌한 형(刑)의 기운"
-            desc = "관공서 출입이 잦았거나, 도마 위의 고기처럼 수술대에 올랐어야 할 액운이었도다."
-            targets.append((yr, name, impact, desc))
+        # 2. 월지 충 (사회적 지위와 부모운 타격)
+        elif chung_map.get(wolji) == jj:
+            impacts.append(f"📍 **{yr}년({name})**: 네 사회적 터전인 **{wolji}**가 **{jj}**와 부딪히니, 직장에서 쫓겨나거나 믿었던 동료의 배신으로 관재구설에 휘말려 밤잠을 설쳤어야 할 운명이었도다.")
+            
+        # 3. 삼형살 (인사신 / 축술미)
+        elif (ilji in ["寅","巳","申"] and jj in ["寅","巳","申"]) or (ilji in ["丑","戌","未"] and jj in ["丑","戌","未"]):
+            impacts.append(f"📍 **{yr}년({name})**: 살벌한 **형(刑)**의 기운이 네 명반을 덮쳤으니, 관공서 문턱을 넘나들거나 날카로운 칼날이 몸에 닿는 수술대에 올랐어야 했도다. 조상의 음덕이 아니었다면 어찌 버텼을꼬!")
 
-    if not targets:
-        return "최근 5년, 큰 풍랑은 없었으나 너울성 파도가 네 발목을 적셨으니 평온함 속에 도사린 권태가 네 가장 큰 적이었으리라."
+    if not impacts:
+        return "최근 5년, 겉으로는 평온해 보였으나 속으로는 타버린 숯검댕이처럼 고독을 씹으며 버텨온 세월이었구나. 큰 풍랑은 없었어도 잔잔한 파도가 네 영혼을 끊임없이 갉아먹었을 것이로다."
     
-    # 가장 최근 혹은 가장 강력한 것 하나 지목
-    yr, name, imp, desc = targets[-1]
-    return f"어허! {name}({yr}년), 네 명반의 일지 **{ilji}**가 세운의 **{past_years[yr][0]}**와 맞부딪혀 **{imp}**이 몰아쳤구나! 이때 너, {desc} 내 말이 틀리느냐!"
+    return "\n\n".join(impacts[:2]) # 가장 강력한 것 2개만 노출
 
 def target_shamanic_career(saju):
     """격국과 십성을 통한 소름 돋는 직업 지목 로직"""
@@ -1413,15 +1408,13 @@ def get_past_traces_chapter(saju, form):
 # ══════════════════════════════════════════════
 
 def analyze_future_waves(saju):
-    """2026~2030년 미래의 재앙(충/형)과 횡재(합/귀인)를 정확히 타격"""
+    """2026~2030년 미래의 재앙과 횡재를 소름 돋게 예견"""
     ilji = saju["pils"][1]["jj"]
+    ilgan = saju["ilgan"]
     
     future_years = {
-        2026: ("午", "병오년"),
-        2027: ("未", "정미년"),
-        2028: ("申", "무신년"),
-        2029: ("酉", "기유년"),
-        2030: ("戌", "경술년")
+        2026: ("午", "병오년"), 2027: ("未", "정미년"), 2028: ("申", "무신년"),
+        2029: ("酉", "기유년"), 2030: ("戌", "경술년")
     }
     
     chung_map = {"子":"午", "午":"子", "丑":"未", "未":"丑", "寅":"申", "申":"寅", "卯":"酉", "酉":"卯", "辰":"戌", "戌":"辰", "巳":"亥", "亥":"巳"}
@@ -1431,17 +1424,18 @@ def analyze_future_waves(saju):
     windfalls = []
     
     for yr, (jj, name) in future_years.items():
-        # 1. 미래 재앙 분석 (충/형)
+        # 1. 미래 재앙 타격 (세밀화)
         if chung_map.get(ilji) == jj:
-            month = "5~6월" if jj in ["午","未"] else "11~12월"
-            disasters.append(f"**{yr}년({name}) {month}**: 일지 **{ilji}**와 세운 **{jj}**가 맞부딪히는 **인신충(寅申沖)**의 형국이로다. 길 위에서의 사고나 뼈마디가 상하는 환재수가 도처에 있으니 이때는 서쪽으로 발길도 돌리지 마라!")
-        elif (ilji in ["寅","巳","申"] and jj in ["寅","巳","申"]) or (ilji in ["丑","戌","未"] and jj in ["丑","戌","未"]):
-            disasters.append(f"**{yr}년({name}) 초가을**: **살벌한 형(刑)**의 기운이 네 명반을 덮치니, 관공서 출입이나 수술대에 오를 일이 생길까 두렵노라. 입을 닫고 몸을 낮추어라.")
+            season = "여름" if jj in ["午","未"] else "가을"
+            disasters.append(f"📍 **{yr}년({name}) {season}**: 네 몸을 지탱하는 **{ilji}**가 세운의 **{jj}**와 무참히 부딪히니, 칼날을 조심하고 길 위에서의 환재를 경계하라! 이 시기에는 서쪽으로 머리도 두지 마라.")
+        elif (ilji in ["寅","巳","申"] and jj in ["寅","巳","申"]):
+             disasters.append(f"📍 **{yr}년({name}) 늦여름**: **인사신 삼형(寅巳申 三刑)**의 서슬 퍼런 기운이 네 목을 겨누니, 관재구설과 배신의 살기를 피해 정화수를 떠놓고 자중해야 산다!")
             
-        # 2. 미래 횡재 분석 (합/귀인)
-        if hap_map.get(ilji) == jj or (ilji == "寅" and jj == "午") or (ilji == "卯" and jj == "未"): # 삼합 일부 포함
-            month = "봄(3~4월)" if jj in ["寅","卯"] else "여름(6~7월)"
-            windfalls.append(f"**{yr}년({name}) {month}**: 네 일지와 세운이 **합(合)**을 이루어 곳간 문이 소리 없이 열리는구나! 멈춰있던 대업이 불길을 만나 승천하는 형국이니, 이때 잡는 문서는 곧 네 평생의 황금 알이 될 것이로다.")
+        # 2. 미래 횡재 타격 (세밀화)
+        if hap_map.get(ilji) == jj:
+            windfalls.append(f"📍 **{yr}년({name})**: 네 일지가 세운과 **천생연분의 합(合)**을 이루니, 멈춰있던 대업이 승천하고 꿈에 그리던 조력자가 네 문을 두드릴 것이로다. 황금의 기회를 잡아라!")
+        elif (ilgan == "庚" and jj == "寅") or (ilgan == "甲" and jj == "未"):
+            windfalls.append(f"📍 **{yr}년({name})**: **천을귀인(天乙貴人)**의 광채가 네 앞길을 비추니, 어떤 난관도 뚫고 나갈 무쇠 같은 행운이 깃들 것이로다. 하늘에 감사하라!")
             
     return disasters, windfalls
 
@@ -1476,43 +1470,46 @@ def get_future_waves_chapter(saju, form):
 # ══════════════════════════════════════════════
 
 def get_wealth_explosion(saju):
-    """향후 5년 내 돈벼락 터지는 달 정밀 계산 (경금 일간 특화 등)"""
+    """향후 5년 내 곳간이 터지는 전율의 지점 (천을귀인 및 삼합/방합 정밀 타격)"""
     ilgan = saju["ilgan"]
-    ilji = saju["pils"][1]["jj"]
+    pils = saju["pils"]
     
     wealth_events = []
     
-    # 경금(庚金) 일간 특화 로직
+    # 1. 천을귀인(天乙貴人)과 재성(財星)의 만남
+    # 庚(경)일간 -> 丑(축), 未(미)가 귀인
     if ilgan == "庚":
-        # '미/인/진'이 섞이는 달 타격
-        wealth_events.append("📍 **2027년(정미년) 양력 2~4월**: 네 경금(庚金)의 숙살지기가 정미년의 뜨거운 열기를 만나고, 寅(인)과 辰(진)의 목기·토기가 섞이는 이 시기는 그야말로 **'황금의 용오름'**이 일어나는 때로다. 문서 잡는 손끝에 천금의 무게가 실릴 것이니라.")
-        wealth_events.append("📍 **2030년(경술년) 양력 7월**: 같은 경금의 기운이 겹치며 戌(술)의 창고를 때리는 형국이니, 멈춰있던 자금이 폭포수처럼 쏟아질 것이로다.")
-    
-    # 보편적 재성/합 로직 보강
-    if ilji in ["子", "申", "辰"]: # 수국(재성/기운 강화)
-        wealth_events.append(f"📍 **2028년(무신년) 초겨울**: 네 지지의 수국이 세운의 申(신)과 공명하여 **수해(水海)의 풍요**를 이루니, 이때는 앉은 자리에서 돈벼락을 맞아도 이상하지 않을 팔자로다.")
-    
+        wealth_events.append("📍 **2027년(정미년) 늦여름**: 네 경금(庚金)의 단단함이 정미(丁未)의 용광로를 만나는구나! 특히 **未(미)**는 네게 **천을귀인**이자 재벌의 기운이니, 이때는 길가에 굴러다니는 돌멩이도 황금으로 변할 팔자로다. 무조건 큰 문서를 잡아라.")
+    elif ilgan == "甲":
+        wealth_events.append("📍 **2028년(무신년) 봄**: 갑목(甲木)인 네가 무토(戊土)라는 거대한 대지를 얻고, 申(신) 속의 임수가 네 뿌리를 적시니 **'재관쌍미(財官雙美)'**의 기적이 일어날 것이로다. 신분이 상승하며 금고가 넘칠 것이니라.")
+
+    # 2. 강력한 합(合)의 기운 (삼합 중심)
+    ilji = pils[1]["jj"]
+    if ilji in ["寅", "午", "戌"]: # 화국(火局)
+        wealth_events.append("📍 **2026년(병오년) 한여름**: 네 일지의 화국이 세운의 **午(오)**와 공명하여 거대한 불길을 일으키니, 이는 곧 모든 액운을 태우고 황금을 제련하는 형국이라. 평생의 횡재수가 이때 몰려있도다.")
+
     if not wealth_events:
-        wealth_events.append("📍 **2026년(병오년) 중하순**: 타오르는 불길이 네 사주 속의 금고를 녹여 황금을 뽑아내는 형국이니, 작은 노력으로도 거상을 꿈꿀 수 있는 기이한 달이로다.")
+        wealth_events.append(f"📍 **2029년(기유년) 가을**: 네 명반의 오행이 유독 밝게 빛나는 시기니, {random.choice(ADJECTIVES)} 기운으로 곳간을 채울 준비를 하라.")
 
     return "\n".join(wealth_events)
 
 def get_future_accident(saju):
-    """사고수나 이별수가 있는 달 살벌하게 지목 (2028년 인신충 강조)"""
+    """운명의 그림자가 드리우는 살벌한 경고 (충/형/살 정밀 타격)"""
     ilji = saju["pils"][1]["jj"]
+    wolji = saju["pils"][2]["jj"]
     
     accidents = []
     
-    # 2028년 인신충 타격 (寅이나 申이 있을 때 극대화)
-    if ilji == "寅":
-        accidents.append("📍 **[경보] 2028년(무신년) 양력 8~9월 (인신충)**: 성우야! 네 땅을 지탱하는 **寅(인)**과 하늘의 창인 **申(신)**이 정면으로 충돌하느니라! 이것은 뼈가 부러지거나 피를 보는 살벌한 충(沖)이니, 길 위에서의 사고는 물론이고 가장 가까운 자와의 이별수가 도처에 깔렸도다. 절대 움직이지 마라!")
-    elif ilji == "申":
-        accidents.append("📍 **[경보] 2028년(무신년) 양력 2~3월 (인신충)**: 네 본신의 기운이 세운과 부딪히니 가슴속의 울화가 병이 되고, 관재구설이 꼬리를 물 것이로다. 병원 침대에 눕고 싶지 않다면 입을 닫고 정화수를 떠놓고 빌어라.")
-    else:
-        accidents.append("📍 **2028년(무신년) 늦여름**: 비록 정면 충돌은 아니나, 인신충의 여파가 네 명반의 주변부를 흔드니 낙상수나 칼날에 베이는 작은 사고를 조심하라.")
+    # 1. 인신충(寅申沖) - 역마의 충돌
+    if ilji in ["寅", "申"] or wolji in ["寅", "申"]:
+        accidents.append("📍 **[대경보] 2028년(무신년) 8월 (인신충)**: 성우야! 네 명반의 **역마(驛馬)**가 세운과 정면으로 들이받느니라! 이것은 단순한 접촉사고가 아니요, 인생의 근간이 흔들리는 거대한 풍랑이니, 이때는 절대 해외로 나가지 말고 바다 근처에도 가지 마라. 피를 보아야 끝날 살기니라!")
 
-    # 추가 사고수
-    accidents.append("📍 **2027년(정미년) 한겨울**: 차가운 물과 뜨거운 불이 만나는 지점이니 심혈관 질환이나 갑작스러운 이별 통보를 조심하라. 네 영혼이 가장 취약해지는 달이로다.")
+    # 2. 축술미 삼형 (丑戌未 三刑)
+    if ilji in ["丑", "戌", "未"]:
+        accidents.append("📍 **[대경보] 2027년(정미년) 하반기**: 네 일지의 토(土) 기운이 세운의 **未(미)**와 엉켜 **삼형(三刑)**의 족쇄를 채우는구나! 믿었던 이의 배신으로 관공서 문턱을 넘나들거나, 배앓이로 수술대에 오를 일이 있겠으니 필히 보름달 아래서 비방을 행하라.")
+
+    if not accidents:
+        accidents.append("📍 **2026년(병오년) 동지 무렵**: 타오르는 불길 뒤의 서늘한 기운이 네 건강을 위협하니, 특히 심장과 신장의 조화를 살펴라. 과신하는 마음이 네 가장 큰 적이 될 것이로다.")
 
     return "\n".join(accidents)
 
@@ -1541,6 +1538,14 @@ def apply_mansin_filter(text):
     return text
 
 def mansin_engine(tid, saju, form):
+    # 만약 Groq API Key가 있다면 AI 만신을 먼저 시도함
+    if form.get("groq_key"):
+        # 1. AI 만신 호출
+        ai_res, err = call_groq_mansin(tid, saju, form, form["groq_key"])
+        if ai_res:
+            return apply_mansin_filter(ai_res)
+        # 에러 발생 시 로컬 엔진으로 폴백 (Fallback to local engine)
+
     if tid == "daily": return get_daily_oracle(form["name"], saju)
     if tid == "gaewun": return get_gaewun_chapter(saju, form)
     if tid == "secret": return get_secret_chapter(saju, form)
@@ -1550,7 +1555,7 @@ def mansin_engine(tid, saju, form):
     if tid == "traces": return get_spatiotemporal_traces_chapter(saju, form)
     
     report = []
-    # 1. 종합운세의 경우 전체 챕터 합산 (웅장하게)
+    # 2. 종합운세의 경우 전체 챕터 합산 (웅장하게)
     if tid == "overall":
         report.append(get_past_traces_chapter(saju, form)) # 제0장 배치
         report.append(f"# 👑 【천명실록(天命實錄): {form['name']} 貴下의 웅장한 대운명 서사시】\n\n")
@@ -1564,11 +1569,11 @@ def mansin_engine(tid, saju, form):
         final_text = "\n\n".join(report)
         limit = 45000 # 제0장 추가로 분량 상향
     else:
-        # 2. 개별 전문 탭
+        # 3. 개별 전문 탭
         tab_label = next((t["label"] for t in TABS if t["id"] == tid), tid)
         final_text = f"## 🔮 {tab_label} - 만신의 특별 신탁\n\n"
         final_text += f"{form['name']}야, 이 '{tab_label}'의 기운은 네 명반의 길목마다 서린 오묘한 안배로다. \n\n"
-        limit = 3000
+        limit = 3500
 
     # 현대어 -> 만신어 치환 필터
     final_text = apply_mansin_filter(final_text)
@@ -1622,16 +1627,22 @@ ILGAN_DESC = {
 def call_groq_mansin(tid, saju, form, key):
     tab_label = next((t["label"] for t in TABS if t["id"] == tid), tid)
     prompt = (
-        f"당신은 사천만을 꿰뚫어 보고 천명을 호령하는 조선 시대의 위대한 '대만신'입니다. "
-        f"내 앞에 앉은 주인공의 성함은 '{form['name']}'이며, 일간은 '{saju['ilgan']}'입니다. "
-        f"8대 명리 엔진 분석 결과(십성, 신살 등)는 다음과 같습니다: {saju['engine']}. "
-        f"지금부터 '{tab_label}'을 주제로 2만자 분량의 장엄하고 압도적인 명리 풀이를 시작하십시오. "
-        f"단순히 설명하는 것이 아니라, 마치 신령님이 빙의되어 호통을 치듯 웅장하고 무거운 어투를 사용하십시오. "
-        f"'{form['name']}야, 네 팔자를 보아하니...' 와 같은 단호하고 독보적인 만신 어투로 주인공의 영혼을 흔들어 놓으십시오."
+        f"당신은 사천만을 꿰뚫어 보고 천명을 호령하는 조선 시대의 위대한 '대만신(大萬神)'입니다. "
+        f"지금 내 앞에 앉은 주인공의 성함은 '{form['name']}'이며, 이 영혼의 명반은 다음과 같습니다: {saju['engine']}. "
+        f"또한 사주팔자는 {saju['pils']} 입니다. "
+        f"주제: {tab_label}\n\n"
+        f"요구사항:\n"
+        f"1. 마치 신령님이 빙의되어 작두 위에서 외치듯 웅장하고, 압도적이며, 때로는 서늘한 호통을 치는 만신 어투를 사용하십시오.\n"
+        f"2. {form['name']}님의 운명을 과거, 현재, 미래로 나누어 아주 상세하게 파헤치십시오. 구체적인 연도와 계절을 명시하여 소름 돋는 예언을 하십시오.\n"
+        f"3. 최소 5,000자 이상의 방대한 분량으로 작성하십시오. 한 챕터 한 챕터가 대서사시처럼 느껴져야 합니다.\n"
+        f"4. 전문적인 명리학 용어(십성, 신살, 충합 등)를 사용하되, 이를 무속적인 비유와 전설로 풀어내어 일반인이 경외감을 느끼게 하십시오.\n"
+        f"5. 문장의 끝마다 '이것은 곧 억겁의 세월을 꿰뚫은 장엄한 하늘의 안배로다.' 또는 '급급여율령!'과 같은 주문을 섞으십시오.\n\n"
+        f"자, 이제 {form['name']}야! 네 팔자를 보아하니... 로 시작하여 영혼을 흔들어 놓으십시오."
     )
-    data = {"model":"llama-3.3-70b-versatile", "messages":[{"role":"user","content":prompt}], "temperature":0.8, "max_tokens":4000}
+    # 최신 고성능 모델 Llama 3.3 70B Versatile 사용
+    data = {"model":"llama-3.3-70b-versatile", "messages":[{"role":"user","content":prompt}], "temperature":0.85, "max_tokens":8000}
     try:
-        res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {key}"}, json=data, timeout=60)
+        res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {key}"}, json=data, timeout=120)
         return res.json()["choices"][0]["message"]["content"], None
     except Exception as e: return None, str(e)
 
@@ -1837,25 +1848,33 @@ SHAMAN_SCROLLS = {
         "네 영혼 밑바닥에서 요동치는 그 서늘한 기운은 단순한 우연이 아니니라. 그것은 네 조상들이 대를 이어 쌓아온 업보의 찌꺼기이자 동시에 너를 보호하는 신령님의 갑옷이로다.",
         "운명의 수레바퀴가 천천히 돌아가며 네 명반의 가장 약한 고리를 건드릴 때, 너는 비로소 환골탈태의 고통을 겪게 되리라. 그 고통을 즐기거라, 그것이 곧 승천의 신호이니.",
         "하늘의 별자리들이 서로의 위치를 바꾸며 네 운명의 좌표를 재설정하고 있도다. 지금 네가 느끼는 막막함은 새로운 천기가 열리기 전의 고요함일 뿐이라.",
-        "네 핏줄 속에 흐르는 뜨거운 불꽃은 때로는 너를 태우겠지만, 결국에는 네 앞길을 가로막는 모든 액운을 재로 만들어 버릴 장엄한 정화의 불꽃이 될 것이로다."
+        "네 핏줄 속에 흐르는 뜨거운 불꽃은 때로는 너를 태우겠지만, 결국에는 네 앞길을 가로막는 모든 액운을 재로 만들어 버릴 장엄한 정화의 불꽃이 될 것이로다.",
+        "어허! 북두칠성의 네 번째 별이 오늘 밤 유독 밝게 빛나는구나. 이것은 네가 지고 있는 삶의 무게가 곧 황금의 무게로 변할 징조니, 무릎 꿇지 말고 버텨라!",
+        "사방에서 들려오는 곡소리는 네 것이 아니라 네 액운이 소멸하며 내지르는 비명이로다. 작두 위를 걷는 심정으로 하루하루를 경건하게 맞이하라."
     ],
     "재물": [
         "곳간의 문이 삐걱거리며 열리는 소리가 천둥소리처럼 네 귓가를 때릴 것이니라. 준비되지 않은 자에게 재물은 독이 되나, 네게는 그것이 곧 대업을 이루는 거름이 되리라.",
         "돈의 흐름은 물과 같아서 가두려 하면 썩고, 흘려보내면 다시 큰 강이 되어 돌아오는 법. 네 사주에 각인된 황금의 주파수를 믿고 과감하게 그 물길을 열어주어라.",
         "잠시 멈춰있던 금전의 정기가 귀인의 손을 타고 네 문턱을 넘어오고 있도다. 이때를 놓치지 말고 네 보물창고를 정비하여 만복을 담을 그릇을 키우거라.",
-        "천 년의 어둠을 뚫고 솟아오르는 태양처럼, 네 경제적 어둠도 곧 가시고 찬란한 부의 광채가 네 일상을 가득 채울 것이니, 조금만 더 인내하며 씨를 뿌리거라."
+        "천 년의 어둠을 뚫고 솟아오르는 태양처럼, 네 경제적 어둠도 곧 가시고 찬란한 부의 광채가 네 일상을 가득 채울 것이니, 조금만 더 인내하며 씨를 뿌리거라.",
+        "오호! 황금 비늘을 가진 잉어가 네 명반의 연못에서 힘차게 뛰어오르는구나. 이것은 횡재수의 꼬리가 네 손바닥을 스치는 것이니 절대 놓치지 마라!",
+        "재물은 덕을 따라오는 법이니, 오늘 네가 베푼 작은 친절이 내일은 백만 냥의 황금이 되어 네 곳간 문을 두드릴 것이니라."
     ],
     "인연": [
         "지나가는 바람에도 인연의 향기가 묻어 있으니, 옷깃만 스쳐도 억겁의 인연임을 잊지 마라. 네 곁을 지키는 그 사람이 바로 네 명반의 구멍을 메워주는 수호신일 수 있느니라.",
         "사람으로 인해 마음을 다쳤느냐? 그것은 네 팔자 속의 날카로운 칼날이 다듬어지는 과정이니라. 진정한 인연은 피눈물을 흘린 후에야 비로소 그 향기를 드러내는 법이로다.",
         "사방팔방에서 네게 손을 내미는 자들이 많으나, 그중 옥과 석을 가리는 지혜가 필요하니라. 네 일간의 기운과 공명하는 맑은 영혼을 찾아 그들과 함께 대업을 도모하라.",
-        "외로움은 네 영혼이 스스로와 대화하는 성스러운 시간이라. 그 고독의 끝에서 너는 비로소 타인의 아픔을 어루만질 수 있는 장엄한 포용력을 얻게 되리라."
+        "외로움은 네 영혼이 스스로와 대화하는 성스러운 시간이라. 그 고독의 끝에서 너는 비로소 타인의 아픔을 어루만질 수 있는 장엄한 포용력을 얻게 되리라.",
+        "옛 인연에 연연하지 마라. 강물이 거꾸로 흐르지 않듯, 네 운명의 물길도 새로운 바다를 향해 나아가고 있으니 그저 흐릿한 기억의 저편으로 흘려보내라.",
+        "인연의 실타래가 꼬였다고 탄식하지 마라. 꼬인 매듭을 풀 때 비로소 진정한 인연의 견고함이 증명되는 법이니라."
     ],
     "건강": [
         "몸은 영혼을 담는 그릇이니, 그릇이 금 가면 천기도 온전히 담지 못하느니라. 네 사주에 부족한 오행의 기운을 음식과 숨결로 채워 그릇의 균형을 맞추어라.",
         "머리가 무겁고 가슴이 답답한 것은 네 주변의 탁한 기운이 네 명반을 누르고 있기 때문이라. 정화수를 떠놓고 동쪽을 향해 절하며 네 몸속의 찌꺼기를 씻어내라.",
         "강한 의지가 곧 최고의 명약이니, 네 마음이 굴복하지 않으면 어떤 질병의 살성도 네 몸에 둥지를 틀지 못하느니라. 호흡을 깊게 하고 우주의 정기를 들이마셔라.",
-        "네 신체의 각 기관은 우주의 오행과 연결되어 있도다. 네가 먹는 한 톨의 곡식, 한 모금의 물에도 신령님의 자애로운 치유의 파동이 깃들어 있음을 깨달아라."
+        "네 신체의 각 기관은 우주의 오행과 연결되어 있도다. 네가 먹는 한 톨의 곡식, 한 모금의 물에도 신령님의 자애로운 치유의 파동이 깃들어 있음을 깨달아라.",
+        "어허! 네 오장육부의 기운이 서로를 시샘하여 화기를 내뿜고 있구나. 쓴맛을 줄이고 단맛을 보태어 성난 기운을 어루만지면 만병이 스스로 물러가리라.",
+        "잠들기 전 네 발바닥을 따뜻하게 하라. 대지의 열기가 네 몸을 관통하여 탁기를 발끝으로 밀어낼 때, 네 수명은 천 년의 소나무처럼 길어질 것이니라."
     ]
 }
 
@@ -1940,11 +1959,15 @@ def main():
                             with st.chat_message("user"): st.write(p)
                             with st.chat_message("assistant"):
                                 if f["groq_key"]:
-                                    # Chat-specific prompt
-                                    c_prompt = f"당신은 만신입니다. {f['name']}님의 명반({s['engine']})을 바탕으로 짧고 강렬하게 답하세요: {p}"
-                                    data = {"model":"llama-3.3-70b-versatile", "messages":[{"role":"user","content":c_prompt}], "temperature":0.7, "max_tokens":500}
+                                    # Chat-specific prompt - More detailed and spooky
+                                    c_prompt = (
+                                        f"당신은 천기를 누설하는 대만신입니다. {f['name']}님의 명반({s['engine']})과 질문('{p}')을 바탕으로 "
+                                        f"마치 눈앞에서 작두를 타며 예언하듯 생생하고 상세하게 답하세요. "
+                                        f"짧게 답하지 말고, 그 이유와 배경을 무속적으로 설명하며 웅장하게 답하십시오."
+                                    )
+                                    data = {"model":"llama-3.3-70b-versatile", "messages":[{"role":"user","content":c_prompt}], "temperature":0.8, "max_tokens":2000}
                                     try:
-                                        res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {f['groq_key']}"}, json=data, timeout=10).json()
+                                        res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {f['groq_key']}"}, json=data, timeout=30).json()
                                         ans = res["choices"][0]["message"]["content"]
                                     except: ans = local_consultation_engine(p, s)
                                 else:
