@@ -903,7 +903,7 @@ def amplify_consultation_narrative(base_topic, user_name):
     expanded = f"어허! {user_name}야, 정신 바짝 차려라! 이 만신의 목소리는 곧 신령님의 준엄한 호통이자 축복이니라.\n" + "\n".join(perspectives.values())
     
     # 1200자 미만일 경우 영성 대서사시를 강제로 수혈
-    all_chants = SPIRIT_CHANTS + SHAMAN_EPIC + SHAMAN_EPIC_COLLECTION + SHAMAN_CHANTS_VOL2 + SHAMAN_CHANTS_VOL3
+    all_chants = SPIRIT_CHANTS + SHAMAN_EPIC + SHAMAN_CHANTS_VOL3 + SHAMAN_RECORDS_EXTENDED + SHAMAN_PROVERBS
     while len(expanded) < 1200:
         expanded += f"\n{random.choice(all_chants)} "
         expanded += f"이것은 곧 **{random.choice(ADJECTIVES)}** 하늘의 신비로다. "
@@ -1588,7 +1588,7 @@ def mansin_engine(tid, saju, form):
         final_text += random.choice(trackers) + "\n\n"
         
         final_text += f"## 📜 【부록: 대만신의 영성 대서사시 - {app_title}】\n\n"
-        epics = SPIRIT_CHANTS + SHAMAN_EPIC + SHAMAN_EPIC_COLLECTION + SHAMAN_CHANTS_VOL2 + SHAMAN_CHANTS_VOL3
+        epics = SPIRIT_CHANTS + SHAMAN_EPIC + SHAMAN_CHANTS_VOL3 + SHAMAN_RECORDS_EXTENDED + SHAMAN_PROVERBS
         while len(final_text) < limit:
             final_text += "\n\n" + random.choice(epics)
             final_text += f"\n\n이것은 곧 **{random.choice(ADJECTIVES)}** 하늘의 안배로다. "
