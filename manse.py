@@ -4,8 +4,9 @@ import json
 from datetime import date, datetime, timedelta
 import random
 import io
+import io
 import re
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import inch
@@ -1691,7 +1692,7 @@ def get_future_waves_chapter(saju, form):
     text.append(f"어허! {name}야, 흘러간 물은 되돌릴 수 없으나 다가올 파도는 미리 알고 대비할 수 있는 법. 내가 네 명반을 향후 흐름에 비추어보니, 소름 돋는 사건들이 줄을 서 있구나.\n\n")
     
     if scan:
-        text.append("### 📅 [만신의 족집게 미래 타임라인 (The Pinch-hitter Calendar)]")
+        text.append("### 📅 [만신의 쪽집게 미래 타임라인]")
         # 나이순 정렬하여 출력
         for age_str, evs in sorted(scan.items(), key=lambda x: int(x[0].replace("세",""))):
             text.append(f"#### 📍 {age_str}")
@@ -1701,12 +1702,12 @@ def get_future_waves_chapter(saju, form):
         text.append("\n")
 
     # Disaster Map
-    text.append("### 🚨 [미래 사고수·재앙 추적 (The Disaster Map)]")
+    text.append("### 🚨 [미래 사고수 및 재앙 추적]")
     if disasters:
         for d in disasters:
             text.append(f"📍 {d}\n")
     
-    text.append("\n### 💰 [횡재수·문서운 타격 (The Windfall Map)]")
+    text.append("\n### 💰 [횡재수 및 문서운 추적]")
     if windfalls:
         for w in windfalls:
             text.append(f"📍 {w}\n")
@@ -1859,6 +1860,15 @@ def get_rule_based_facts(saju, form):
 
     return facts
 
+def draw_page_footer(canvas, doc):
+    """페이지 하단에 페이지 번호 및 리포트 정보 추가"""
+    canvas.saveState()
+    canvas.setFont('Malgun', 9)
+    canvas.setFillAlpha(0.6)
+    page_num = f"Page {doc.page} | 【천명실록(天命實錄)】"
+    canvas.drawRightString(545.27, 30, page_num)
+    canvas.restoreState()
+
 def generate_pdf(filename_or_buffer, name, interpretation_text):
     """사주 분석 결과를 세련된 PDF 리포트로 생성"""
     try:
@@ -1866,58 +1876,84 @@ def generate_pdf(filename_or_buffer, name, interpretation_text):
         font_path = "C:/Windows/Fonts/malgun.ttf"
         pdfmetrics.registerFont(TTFont("Malgun", font_path))
     except:
-        pass # 폰트 로드 실패 시 기본 폰트 사용 (한글 깨질 수 있음)
+        pass # 폰트 로드 실패 시 기본 폰트 사용
 
-    doc = SimpleDocTemplate(filename_or_buffer, pagesize=(595.27, 841.89)) # A4
+    # 명시적 여백 설정 (A4 크기: 595.27 x 841.89)
+    doc = SimpleDocTemplate(
+        filename_or_buffer, 
+        pagesize=(595.27, 841.89),
+        rightMargin=50, leftMargin=50, topMargin=60, bottomMargin=60
+    )
     elements = []
     styles = getSampleStyleSheet()
     
     # 커스텀 스타일 정의
     title_style = ParagraphStyle(
         'TitleStyle', parent=styles['Heading1'], fontName='Malgun', 
-        fontSize=24, spaceAfter=20, alignment=1, textColor=colors.HexColor("#a0720a")
+        fontSize=24, spaceAfter=25, alignment=1, textColor=colors.HexColor("#a0720a")
     )
     body_style = ParagraphStyle(
         'BodyStyle', parent=styles['Normal'], fontName='Malgun', 
-        fontSize=11, leading=16, spaceAfter=10
+        fontSize=11, leading=17, spaceAfter=12
     )
     section_style = ParagraphStyle(
         'SectionStyle', parent=styles['Heading2'], fontName='Malgun', 
-        fontSize=16, spaceBefore=15, spaceAfter=10, textColor=colors.HexColor("#c5a059")
+        fontSize=17, spaceBefore=20, spaceAfter=12, textColor=colors.HexColor("#c5a059")
     )
 
     # 헤더
     elements.append(Paragraph(f"🔮 【天命實록: {name} 貴下의 웅장한 대운명 서사시】", title_style))
-    elements.append(Spacer(1, 0.2 * inch))
+    elements.append(Spacer(1, 0.3 * inch))
     
-    # 본문 처리 (Markdown 호환을 위해 일부 변환)
+    # 본문 처리 (Markdown 호환을 위해 변환)
     lines = interpretation_text.split("\n")
     for line in lines:
-        if not line.strip():
+        stripped = line.strip()
+        if not stripped:
             elements.append(Spacer(1, 0.1 * inch))
             continue
         
-        if line.startswith("# "):
-            elements.append(Paragraph(line.replace("# ", ""), title_style))
-        elif line.startswith("## ") or line.startswith("### "):
-            elements.append(Paragraph(line.replace("## ", "").replace("### ", ""), section_style))
+        # 주요 챕터 단위로 페이지 넘김 (가독성 향상)
+        if stripped.startswith("# ") or stripped.startswith("## ") or "제" in stripped and "장" in stripped:
+            elements.append(PageBreak())
+        
+        if stripped.startswith("# "):
+            elements.append(Paragraph(stripped.replace("# ", ""), title_style))
+        elif stripped.startswith("## ") or stripped.startswith("### "):
+            elements.append(Paragraph(stripped.replace("## ", "").replace("### ", ""), section_style))
         else:
             # 기본 문단 (Markdown Bold -> HTML <b></b> 변환 고도화)
-            clean_line = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            # **텍스트** 또는 __텍스트__ 를 <b>텍스트</b>로 변환
+            # 1. 특수문자 이스케이프 및 AI 특수 기호 정제
+            clean_line = stripped.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            clean_line = clean_line.replace("++", "").replace("--", "") # 강조 기호 정제
+            
+            # 2. **텍스트** 또는 __텍스트__ 를 <b>텍스트</b>로 변환 (Greedy 방지)
             clean_line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', clean_line)
             clean_line = re.sub(r'__(.*?)__', r'<b>\1</b>', clean_line)
-            # 나머지 단일 * 제거
+            
+            # 3. 단일 * 제거 및 닫히지 않은 태그 복구
             clean_line = clean_line.replace("*", "")
             
+            # 4. <a> 태그 등이 LLM에 의해 생성될 경우를 대비한 최소한의 보호
+            # (ReportLab Paragraph는 인식하지 못하는 태그가 있으면 에러 발생)
+            
             try:
+                # 닫히지 않은 <b> 태그 방어 (Tag Balancing)
+                open_tags = clean_line.count("<b>")
+                close_tags = clean_line.count("</b>")
+                if open_tags > close_tags:
+                    clean_line += "</b>" * (open_tags - close_tags)
+                elif close_tags > open_tags: # 드문 경우지만 닫기만 있는 경우 제거
+                    clean_line = clean_line.replace("</b>", "", close_tags - open_tags)
+                
                 elements.append(Paragraph(clean_line, body_style))
             except:
-                # 만약 태그 오류가 발생하면 텍스트만이라도 출력
-                safe_line = clean_line.replace("<b>", "").replace("</b>", "")
+                # 최종 방어: 에러 발생 시 태그를 수동으로 모두 제거하고 텍스트만 출력
+                safe_line = re.sub(r'<.*?>', '', clean_line)
                 elements.append(Paragraph(safe_line, body_style))
 
-    doc.build(elements)
+    # 푸터(페이지 번호)를 포함하여 PDF 빌드
+    doc.build(elements, onFirstPage=draw_page_footer, onLaterPages=draw_page_footer)
 
 def build_ai_payload(saju, form):
     """자체 엔진의 모든 정밀 분석 결과를 AI에 전달할 수 있게 구조화"""
@@ -1976,16 +2012,16 @@ def call_groq_mansin(tid, saju, form, key, payload):
         f"2. **과거 적중 강조**: '쪽집게_사건_타임라인' 및 '확정적_과거_사실' 데이터를 활용하여 주인공의 과거 고난과 성공을 찍어내십시오. '너 이때 고생했지?'라는 식으로 먼저 말을 거십시오.\n"
         f"3. **나이 언급의 마법**: '26~27세 전후', '32세 직전' 같이 구체적인 나이를 언급하며 긴장감을 주십시오.\n"
         f"4. **결혼 및 직업 단정**: 결혼 여부를 명반의 기운에 따라 단정적으로 추론하고, 직업 또한 '이 길이 네 길이다'라고 지목하십시오.\n"
-        f"5. **언어 제한**: 영어(English) 사용은 신력(神力)을 떨어뜨립니다. 오직 한국어와 품격 있는 한자어만 사용하십시오.\n"
+         f"5. **언어 제한**: **영어(English) 사용은 신력(神力)을 완전히 소멸시킵니다.** 소문자 하나라도 섞이지 않게 하십시오. 오직 품격 있는 한국어와 정통 한자어만 사용하십시오. (예: 'The' 대신 '그', 'Calendar' 대신 '일람' 등)\n"
         f"6. **분량**: {vol_req}\n\n"
-        f"7. **출력 형식 (유지):**\n"
-        f"   1️⃣ 과거 운세 적중 (구체적 나이/사건 중심)\n"
-        f"   2️⃣ 현재 상태 및 심밀 통찰 (책임감, 고독, 숨은 기운 등)\n"
-        f"   3️⃣ 직업 및 금전운 (천직의 지목과 발복 시기)\n"
-        f"   4️⃣ 연애 및 결혼 (현재 상태 추론과 인연의 때)\n"
-        f"   5️⃣ 미래 3개년의 상세 스토리텔링 (구체적 월별 변동)\n"
-        f"   6️⃣ 인생 최후의 승부처와 비방 (급급여율령!)\n\n"
-        f"자, 이제 {form['name']}야! 네 팔자를 보아하니... 로 시작하여 천기를 누설하십시오."
+        f"7. **출력 형식 (유형별 고정):**\n"
+        f"   1️⃣ 과거 운세 적중 (구체적 사건 중심)\n"
+        f"   2️⃣ 현재 상태 및 성격 통찰 (심층 분석)\n"
+        f"   3️⃣ 재물 및 직업관 (천직 지목)\n"
+        f"   4️⃣ 인연 및 관계 (혼인 시기 추론)\n"
+        f"   5️⃣ 미래 3년의 구체적 예보 (월별 변동)\n"
+        f"   6️⃣ 최종적인 비방 및 처방 (급급여율령!)\n\n"
+        f"자, 이제 {form['name']}야! 네 팔자를 내 굽어보니... 로 시작하여 천기를 누설하십시오."
     )
     
     # 안정적인 단정형 추론을 위해 Temperature 0.7 설정
@@ -2012,12 +2048,12 @@ def mansin_engine(tid, saju, form):
         # 에러 발생 시 로컬 엔진으로 폴백 (Fallback to local engine)
 
     if tid == "daily": return get_daily_oracle(form["name"], saju)
-    if tid == "gaewun": return get_gaewun_chapter(saju, form)
-    if tid == "secret": return get_secret_chapter(saju, form)
-    if tid == "legal": return get_disaster_tracking(saju, form)
+    if tid == "personal": return get_essence_chapter(saju, form)
     if tid == "wealth": return get_lucky_fate(saju, form)
+    if tid == "relationship": return get_relationship_chapter(saju, form)
+    if tid == "career": return get_flow_chapter(saju, form)
+    if tid == "health": return get_prescription_chapter(saju, form)
     if tid == "future": return get_future_waves_chapter(saju, form)
-    if tid == "traces": return get_spatiotemporal_traces_chapter(saju, form)
     
     report = []
     # 2. 종합운세의 경우 전체 챕터 합산 (웅장하게)
@@ -2133,9 +2169,16 @@ def call_groq_mansin(tid, saju, form, key, payload):
     except Exception as e: return None, str(e)
 
 TABS = [
-    {"id":"copy",    "label":"📋 천기복사", "icon":"✨"},
-    {"id":"overall", "label":"🌌 천명실록", "icon":"📜"},
-    {"id":"chat",    "label":"💬 만신채팅", "icon":"💬"}
+    {"id":"daily",        "label":"☀️ 오늘의 신탁", "icon":"☀️"},
+    {"id":"personal",     "label":"👤 영적 본질",   "icon":"👤"},
+    {"id":"wealth",       "label":"💰 재물과 사업", "icon":"💰"},
+    {"id":"relationship", "label":"💘 인연과 결혼", "icon":"💘"},
+    {"id":"career",       "label":"🏢 직업과 출세", "icon":"🏢"},
+    {"id":"health",       "label":"💊 건강과 개운", "icon":"💊"},
+    {"id":"future",       "label":"🔮 미래 예보",   "icon":"🔮"},
+    {"id":"overall",      "label":"📜 종합 실록",   "icon":"📜"},
+    {"id":"chat",         "label":"💬 만신 채팅",   "icon":"💬"},
+    {"id":"copy",         "label":"📑 리포트/복사", "icon":"📑"}
 ]
 
 def get_daily_oracle(user_name, saju):
@@ -2500,9 +2543,9 @@ def main():
                             use_container_width=True
                         )
                         
-                        st.markdown('<div class="gold-section">📋 텍스트 결과 복사</div>', unsafe_allow_html=True)
-                        st.code(copy_text, language="markdown")
-                        st.info("프리미엄 PDF 리포트는 상단의 다운로드 버튼을 이용하십시오.")
+                        st.markdown('<div class="gold-section">📋 텍스트 결과 확인 및 복사</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="fortune-text">{copy_text}</div>', unsafe_allow_html=True)
+                        st.info("내용을 복사하려면 위 텍스트를 드래그하거나, 프리미엄 PDF 리포트를 소장하십시오.")
                     
                     elif tid == "chat":
                         # 기존 채팅 로직
@@ -2553,14 +2596,12 @@ def main():
                             with st.spinner(f"대만신께서 '{TABS[i]['label']}'의 명반을 분석 중입니다..."):
                                 st.session_state.cache[ckey] = mansin_engine(tid, s, f)
                         
-                        text_class = "fortune-text"
+                        # [UI 고도화] 마크다운이 제대로 렌더링되도록 단순 div 대신 st.markdown 활용
                         st.markdown(f"""
-                        <div class="{text_class}">
-
-                        {st.session_state.cache[ckey]}
-
-                        </div>
+                        <div class="fortune-text">
                         """, unsafe_allow_html=True)
+                        st.markdown(st.session_state.cache[ckey])
+                        st.markdown("</div>", unsafe_allow_html=True)
 
         if st.button("🔄 명반 다시 짜기"):
             st.session_state.step = "input"
