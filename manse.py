@@ -1402,7 +1402,7 @@ def get_flow_chapter(saju, form):
 
 
 def get_prescription_chapter(saju, form):
-    y_oh, name = saju["engine"]["yongshin"]["yongshin"], form["name"]
+    y_oh, name = saju["engine"]["yongshin"]["oh"], form["name"]
     text = [f"## 💊 【제4장: 만신급 생활 밀착 처방전 - 운명을 바꾸는 비방】"]
     text.append(f"문만 열고 나간다고 개운이 되는 것이 아니니라! {name}야, 네 일상을 뒤흔들 처방을 내리노라.\n")
     
