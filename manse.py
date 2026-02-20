@@ -4,6 +4,7 @@ import json
 from datetime import date, datetime, timedelta
 import random
 import io
+import re
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
@@ -1901,9 +1902,20 @@ def generate_pdf(filename_or_buffer, name, interpretation_text):
         elif line.startswith("## ") or line.startswith("### "):
             elements.append(Paragraph(line.replace("## ", "").replace("### ", ""), section_style))
         else:
-            # 기본 문단
-            clean_line = line.replace("**", "<b>").replace("__", "<b>").replace("*", "").replace("</b>", "</b>")
-            elements.append(Paragraph(clean_line, body_style))
+            # 기본 문단 (Markdown Bold -> HTML <b></b> 변환 고도화)
+            clean_line = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            # **텍스트** 또는 __텍스트__ 를 <b>텍스트</b>로 변환
+            clean_line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', clean_line)
+            clean_line = re.sub(r'__(.*?)__', r'<b>\1</b>', clean_line)
+            # 나머지 단일 * 제거
+            clean_line = clean_line.replace("*", "")
+            
+            try:
+                elements.append(Paragraph(clean_line, body_style))
+            except:
+                # 만약 태그 오류가 발생하면 텍스트만이라도 출력
+                safe_line = clean_line.replace("<b>", "").replace("</b>", "")
+                elements.append(Paragraph(safe_line, body_style))
 
     doc.build(elements)
 
