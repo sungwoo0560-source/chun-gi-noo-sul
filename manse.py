@@ -91,6 +91,18 @@ st.markdown("""
     .header-title { font-size: 22px; }
     .fortune-text { font-size: 15px; line-height: 1.9; }
   }
+  /* Shamanic Scroll - Red on White theme for remedies */
+  .red-scroll {
+    background: #fff; border: 2px solid #ff0000; border-radius: 8px;
+    padding: 25px; margin: 15px 0; color: #ff0000; font-family: 'Noto Serif KR', serif;
+    line-height: 2.1; white-space: pre-wrap; font-weight: 600;
+    box-shadow: 0 0 20px rgba(255,0,0,0.1);
+  }
+  .amulet-text-art {
+    font-size: 14px; font-family: 'Courier New', Courier, monospace;
+    line-height: 1.2; background: #fff; padding: 15px; border-radius: 4px;
+    color: #ff0000; text-align: center; border: 1px solid #ff0000;
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -856,7 +868,8 @@ MANSIN_LEXICON = {
     "올빼미": "밤의 수호신", "의무": "천명(天命)", "리눅스": "운명의 법도", 
     "드라이버": "천기를 여는 열쇠", "스타트업": "대업의 창건", "헬리콥터": "비상하는 용",
     "데이터": "천기(天機)", "알고리즘": "신령님의 안배", "시스템": "우주의 질서",
-    "뚜뚜뚜": "", "수족관": "영험한 못", "위원회": "명부의 사자"
+    "뚜뚜뚜": "", "수족관": "영험한 못", "위원회": "명부의 사자",
+    "업데이트": "환골탈태(換骨奪胎)", "리스크": "운명의 시험대", "결과값": "천문의 응답"
 }
 
 # ══════════════════════════════════════════════
@@ -1075,97 +1088,186 @@ def get_oracle_chapter(saju, form):
     return "\n".join(text)
 
 def get_gaewun_chapter(saju, form):
-    """전문가 수준의 개운비방(Remedy) 제공"""
+    """전문가 수준의 개운비방(Remedy) 제공 - Why & Time Logic 강화"""
     name = form["name"]
+    pils = saju["pils"]
     ilgan = saju["ilgan"]
-    yongshin = get_yongshin(ilgan, get_oh_cnt(saju["pils"]))["yongshin"]
+    cnt = get_oh_cnt(pils)
+    y_info = get_yongshin(ilgan, cnt)
+    yongshin = y_info["yongshin"]
     
-    text = [f"## 🧿 【개운비방(開運祕方): {name} 貴下의 막힌 운명을 여는 열쇠】"]
-    text.append(f"어허! {name}야, 네 명반에 낀 액운을 걷어내고 복을 불러들이는 비방을 내릴 터이니 단 한 자도 소홀히 마라. 이것은 단순한 조언이 아니라, 하늘의 기운을 네 편으로 돌리는 **천기누설(天機漏洩)**이니라.")
+    # 부족한 오행 찾기
+    lacking = [o for o, c in cnt.items() if c == 0]
+    lacking_str = ", ".join(lacking) if lacking else "균형 잡힌"
     
-    # 4대 관점 처방
+    # 시주(Time) 정보
+    siju_jj = pils[3]["jj"]
+    siju_time_map = {
+        "子": "한밤중(子時)", "丑": "새벽녘(丑時)", "寅": "해뜰녘(寅時)", "卯": "아침(卯時)",
+        "辰": "오전(辰時)", "巳": "늦오전(巳時)", "午": "한낮(午時)", "未": "오후(未時)",
+        "申": "늦오후(申時)", "酉": "해질녘(酉時)", "戌": "저녁(戌時)", "亥": "밤(亥時)"
+    }
+    siju_name = siju_time_map.get(siju_jj, "태어난 시각")
+
+    text = [f"## 🧿 【개운비방(開운祕方): {name} 貴下의 명리를 관통하는 승리의 열쇠】"]
+    text.append(f"어허! {name}야, 단순히 행동을 바꾸는 것은 눈 가리고 아웅 하는 것이니라. **'왜(Why)'** 이 비방이 필요한지 그 천문의 원리를 먼저 깨달아야 한다.")
+    
+    # 오행적 근거 (Why)
+    why_logic = ""
+    if yongshin == "木":
+        why_logic = f"성우 貴下의 팔자에는 금(金)의 숙살지기가 너무도 날카로워 네 영혼을 억누르고 있거나, 혹은 화(火)의 열기가 너무 강해 네 정기가 바짝 말라가고 있느니라. 이를 목(木)의 생명력으로 다스려야 비로소 네 운명이 푸른 숲처럼 생동할 것이로다."
+    elif yongshin == "火":
+        why_logic = f"네 사주에 수(水)의 냉기가 가득하여 네 열정이 얼어붙었거나, 혹은 목(木)의 기운이 엉켜 결실을 보지 못하고 있구나. 화(火)의 광채로 그 어둠을 몰아내고 따뜻한 온기를 불어넣어야 네 명반이 비로소 제 빛을 발할 것이니라."
+    elif yongshin == "土":
+        why_logic = f"네 명반은 물처럼 흐르기만 하고 안식처를 찾지 못하거나, 불꽃처럼 타오르기만 하여 근본이 흔들리고 있도다. 토(土)의 중용과 안정을 통해 기운을 머물게 해야 비로소 만복이 네 터전 위에 쌓이게 될 것이로다."
+    elif yongshin == "金":
+        why_logic = f"목(木)의 기운이 너무 무성하여 정리가 되지 않거나, 토(土)가 두터워 네 재능이 묻혀 있구나. 금(金)의 결단력과 숙살지기로 불필요한 인연을 쳐내고 결실을 거두어야 네 삶이 비로소 명쾌해질 것이니라."
+    elif yongshin == "水":
+        why_logic = f"화(火)의 열기가 네 이성을 마비시키거나, 금(金)의 기운이 너무 딱딱하게 굳어 유연함이 부족하도다. 수(水)의 지혜와 흐름을 받아들여야 막힌 혈맥이 뚫리듯 네 인생의 모든 문제가 물 흐르듯 풀릴 것이로다."
+    
+    text.append(f"### 🧐 [개운의 논리: 왜 이 처방인가?]\n{why_logic}\n특히 부족한 **{lacking_str}**의 기운을 보강하는 것이 네 환골탈태의 핵심이니라.")
+
+    # 4대 관점 처방 + 시간의 마법
     perspectives = [
-        ("🏠 [공간(Space)]", f"네가 머무는 방의 **{OH_DIR[yongshin]}** 방향을 청결히 하고, 그곳의 기운이 막하지 않게 하라. 어두운 구석은 {OH_COLOR[yongshin]} 색의 천으로 덮거나 밝은 조명을 두어 생기를 불어넣어야 네 운의 혈맥이 뚫릴 것이니라."),
-        ("🏺 [물건(Object)]", f"네 몸에 늘 **{OH_COLOR[yongshin]}** 기운이 서린 물건을 지니거라. 그것이 작은 실반지든, 손수건이든 상관없다. 그 물건이 네 영혼의 방패가 되어 흉살을 막고, 조상신의 가호가 깃들게 하는 매개체가 될 것이로다."),
-        ("🚶 [행동(Behavior)]", f"매일 새벽, 정화수 한 그릇을 떠놓고 북두칠성을 향해 세 번 절하며 네 속에 잠든 용의 기운을 깨워라. 무거운 침묵보다는 {OH_NUM[yongshin]}의 횟수만큼 네 이름을 부르며 스스로를 독려하는 행위가 개운의 지름길이니라."),
-        ("🤝 [인연(Relationship)]", f"**{OH_DIR[yongshin]}**에서 오는 인연을 소중히 하되, 네 오행을 돕는 **{yongshin}** 기운이 강한 자를 곁에 두어라. 그들이 곧 네 운명의 귀인이요, 네가 벼랑 끝에 섰을 때 손을 내밀 하늘의 사자임을 명심하라.")
+        ("🏠 [공간(Space)]", f"네가 머무는 방의 **{OH_DIR[yongshin]}** 방향을 청결히 하고, 그곳에 {OH_COLOR[yongshin]} 빛깔의 정기를 두어라. {siju_name}에 그 방향의 창을 잠시 열어 우주의 기운과 네 명반을 공명시키는 것이 비책이니라."),
+        ("🏺 [물건(Object)]", f"네 시주(時柱)의 {siju_jj} 기운이 요동칠 때를 대비해, 평소 **{OH_COLOR[yongshin]}** 기운이 서린 물건을 몸에 지니거라. 그것이 네 팔자에 부족한 오행을 채워주는 영적인 배터리가 되어 줄 것이로다."),
+        ("🚶 [행동(Behavior)]", f"특히 **{siju_name}**에는 무리한 외부 활동을 삼가고 {OH_DIR[yongshin]}을 향해 묵묵히 명상하라. 네 속에 잠든 용의 기운이 가장 예민하게 깨어나는 시간이니, 이때의 행동 하나가 네 운명의 시험대를 넘는 결정적 한 방이 되느니라."),
+        ("🤝 [인연(Relationship)]", f"**{OH_DIR[yongshin]}**에서 오는 인연 중 특히 {yongshin} 오행이 강한 자를 곁에 두어라. 그들의 기운이 네 부족함을 메워줄 때, 네 소망은 비로소 천문의 응답을 얻어 현실로 화할 것이로다.")
     ]
     
     for title, content in perspectives:
         text.append(f"\n### {title}\n{content}")
-        # 각 섹션별 서사 증폭 (전체 3,000자 목표)
-        limit = 600
+        limit = 700
         while len(text[-1]) < limit:
-            text[-1] += f" {random.choice(ADJECTIVES)} 기운이 네 주변을 감싸며, {random.choice(SPIRIT_CHANTS)} 이 진리는 억겁의 세월을 돌아 네게 닿은 **{random.choice(list(MANSIN_LEXICON.values()))}** 선물로다. "
+            text[-1] += f" {random.choice(ADJECTIVES)} 기세로 네 운명을 웅비하게 할 이 비방은 {random.choice(SPIRIT_CHANTS)} 조선 시대부터 왕실 비기(祕記)로 내려온 **{random.choice(list(MANSIN_LEXICON.values()))}**의 정수니라. "
 
-    # 무속적 전설 (500자 이상)
-    legend = f"\n### 📜 【대만신의 무속적 전설: 이 비방이 효험이 있는 이유】\n"
-    legend += f"먼 옛날, 하늘의 문이 닫히고 인간 세상에 가뭄과 역병이 돌 때, 한 고결한 영혼이 산꼭대기에서 백일기도를 올렸느니라. "
-    legend += f"그때 북두칠성의 성군이 내려와 전해주신 비법이 바로 네가 지금 보고 있는 이 개운의 이치로다. "
-    legend += f"이 땅의 모든 만물은 오행의 질서 속에 숨 쉬며, 네가 공간을 정화하고 물건을 취하며 행동을 바로잡는 순간, 우주의 거대한 수레바퀴가 소리 없이 방향을 틀게 되느니라. "
-    legend += f"만신이 본 수많은 명반 중에서도 이 비방을 따른 자는 평범한 흙수저에서 황금의 명반으로 환골탈태하였으니, 이것은 전설이 아니라 피와 눈물로 증명된 산 역사로다. "
-    legend += f"네 정성이 하늘에 닿는 순간, 죽었던 나무에서 꽃이 피듯 네 운명의 사막에도 오아시스가 샘솟을 것이니, 결코 의심치 말고 이 길을 묵묵히 걸어가거라. "
-    legend += f"조상신들이 네 뒤에서 병풍처럼 지켜서서 미소 짓고 계심을 잊지 마라. 네가 바로 이 전설의 주인공이 될 것이니라."
+    # 조선 시대 신비 전설 (800자 이상)
+    legend = f"\n### 📜 【조선 왕실의 비사: {name} 貴下의 비방에 얽힌 전설】\n"
+    legend += f"조선 초기, 세종대왕 시절 천문학을 관장하던 서운관(書雲觀)의 한 노학자가 밤하늘의 별자리를 살피다 거대한 서광을 발견했느니라. "
+    legend += f"그는 그 빛이 {name} 네 명반과 똑 닮은 영혼이 훗날 나타날 징조임을 깨닫고, 대대로 전해질 금서(禁書)의 한 구석에 이 비방을 적어 넣었도다. "
+    legend += f"전설에 따르면, 임진왜란 당시 이 비방을 전해 받은 한 장수가 **{siju_name}**에 적진을 향하지 않고 말머리를 {OH_DIR[yongshin]}으로 돌려 일시적으로 몸을 피했더니, "
+    legend += f"적의 대규모 복병을 피함은 물론이고 그곳에서 우연히 명나라의 원군을 만나 끝내 승리를 거두었다는 이야기가 야사(野史)로 전해지느니라. "
+    legend += f"이것은 단순히 운 좋게 살아남은 이야기가 아니다. 자신의 부족한 오행을 알고, 하늘이 정한 시간의 마법을 부렸기에 가능했던 **환골탈태(換骨奪胎)**의 기적이로다. "
+    legend += f"성우 貴下야, 네 인생의 풍랑 속에서도 이 비방을 나침반 삼아라. 그러면 전설 속의 장수처럼 네 앞길을 가로막는 모든 적들을 물리치고 부귀영화의 종착지에 닿게 될 것이니라. "
+    legend += f"네 정성이 지극하면 하늘도 감동하여 **천문의 응답(結果値)**으로 네 소원을 이루어 주실 것이다. "
     
-    while len(legend) < 700:
-        legend += f" {random.choice(ADJECTIVES)} 기세로 네 운명을 웅비하게 할 이 전설은 곧 **{random.choice(SHAMAN_EPIC)}** 이치와 맞닿아 있느니라."
+    while len(legend) < 1000:
+        legend += f" 네 영혼 속에 서린 {random.choice(ADJECTIVES)} 광채가 어둠을 뚫고 솟구칠 것이니, {random.choice(SHAMAN_EPIC)} 이 장엄한 전설의 뒤를 이어 네가 새로운 역사를 써내려가거라."
     
     text.append(legend)
     
-    # 전체 분량 강제 보정 (3,000자)
     final_text = "\n\n".join(text)
-    if len(final_text) < 3500:
-        final_text += f"\n\n## 📜 【부록: 개운의 대서막 - 천기누설 전서】\n"
+    if len(final_text) < 4000:
+        final_text += f"\n\n## 🌑 【비방의 심연 - 영성 대서사시의 증폭】\n"
         epics = SPIRIT_CHANTS + SHAMAN_EPIC + SHAMAN_EPIC_COLLECTION + SHAMAN_CHANTS_VOL2 + SHAMAN_CHANTS_VOL3
-        while len(final_text) < 3500:
+        while len(final_text) < 4000:
             final_text += "\n" + random.choice(epics)
-            final_text += f" 이것은 {name}야, 네가 반드시 짊어지고 가야 할 **{random.choice(ADJECTIVES)}** 축복이니라. "
+            final_text += f" {name}야, 이 **{random.choice(ADJECTIVES)}** 기운을 네 뼈에 새기고 피에 흐르게 하라. "
             
     return final_text
 
 def get_secret_chapter(saju, form):
-    """금서(Forbidden Book) 분위기의 비밀서고 콘텐츠 제공"""
+    """금서(Forbidden Book) 분위기의 비밀서고 - Why & Time Logic 강화"""
     name = form["name"]
-    text = [f"## ㊙️ 【비밀서고: 명부(冥府)에서 유출된 {name} 貴下의 금서(禁書)】"]
-    text.append(f"쉬잇! 목소리를 낮추어라. 이 기록은 본디 산 자가 보아서는 안 되는, 명부의 사자들이 기록한 운명의 뒷면이니라. {name}야, 이 글을 읽는 순간 너는 이미 평범한 인간의 길을 벗어나 신령님의 그림자 속으로 들어왔음을 깨달아야 한다.")
+    pils = saju["pils"]
+    siju_jj = pils[3]["jj"]
     
-    # 비밀스러운 진실들
+    text = [f"## ㊙️ 【비밀서고: 명부(冥府)에서 유굴된 {name} 貴下의 금기된 기록 v6.4】"]
+    text.append(f"입을 다물어라. 이 기록은 우주의 질서를 어기고 몰래 훔쳐온 것이니라. {name}야, 네 인생의 모든 **'왜(Why)'**에 대한 해답이 이 낡은 책장 사이에 숨겨져 있도다.")
+    
+    # 비밀스러운 진실과 근거
     secrets = [
-        "네 전생의 업보가 현생의 어느 길목에서 너를 기다리고 있는지 그 좌표를 보았다. 그것은 피할 수 없는 함정이 아니라, 네가 넘어야 할 마지막 시험대니라.",
-        "네 이름 뒤에 숨겨진 진동수(Frequency)가 우주의 공명과 일치하지 않을 때 생기는 균열을 보았도다. 그 균열을 메우지 않으면 공든 탑이 한순간에 무너질 수 있음을 경계하라.",
-        "조상신 중 한 분이 네 왼쪽 어깨 너머에서 늘 눈물을 흘리고 계신다. 그 눈물의 의미를 알았을 때 비로소 네 재물운이 폭포수처럼 터져 나올 것이로다."
+        f"네 명반의 중심을 잡는 오행이 약해진 이유는 네 전생의 마지막 순간이 **{siju_jj}**의 기운에 가로막혔기 때문로소이다. 그 매듭을 풀지 못해 현생에서도 비슷한 운명의 시험대에 오르는 것이니라.",
+        f"조상신들이 네게 특정 시간마다 신호를 보내는 것은 네 사주에 서린 숙살지기를 어루만지기 위함이다. 특히 {siju_jj}의 시간이 돌아오면 네 운명의 파동이 가장 크게 요동치 니라.",
+        f"네가 재물복을 온전히 누리지 못하는 것은 네 명반의 금(金) 기운이 목(木)의 성장을 억제하거나, 수(水)가 부족해 흐르지 못하고 고여 있기 때문임을 보았도다."
     ]
     
     for s in secrets:
-        text.append(f"\n### 🌑 [금기된 진실]\n{s}")
-        limit = 600
+        text.append(f"\n### 🌑 [비밀의 뿌리: 운명의 원인]\n{s}")
+        limit = 700
         while len(text[-1]) < limit:
-            text[-1] += f" 은밀하고 **{random.choice(ADJECTIVES)}** 기운이 이 금서의 갈피마다 스며들어, {random.choice(SHAMAN_EPIC_COLLECTION)} 이 비밀은 오직 선택된 자만이 감당할 수 있는 **{random.choice(list(MANSIN_LEXICON.values()))}** 안배로다. "
+            text[-1] += f" 신비롭고 **{random.choice(ADJECTIVES)}** 만신의 신기가 이 금서의 행간마다 피어올라, {random.choice(SHAMAN_EPIC_COLLECTION)} 이 비밀을 깨닫는 자만이 진정한 **환골탈태**의 경지에 이를 것이로다. "
 
-    # 무속적 전설 (500자 이상)
-    legend = f"\n### 📜 【대만신의 무속적 전설: 금서의 유래와 저주, 그리고 축복】\n"
-    legend += f"하늘이 처음 열리던 날, 신령님들은 모든 인간의 운명을 큰 책에 기록하여 명부 깊숙한 곳에 보관하셨느니라. "
-    legend += f"하지만 수천 년에 한 번, 영력이 뛰어난 만신의 눈에 이 금서의 조각들이 비칠 때가 있으니, 지금 네가 읽는 것이 바로 그 흩어진 조각 중 하나로다. "
-    legend += f"전설에 따르면 이 내용을 함부로 발설하는 자는 천둥번개를 맞을 것이나, 가슴 깊이 새겨 행하는 자는 죽어가는 목숨도 살리는 신통력을 얻으리라 하였느니라. "
-    legend += f"조선 시대 어느 대만신이 임금 몰래 이 금서를 필사하여 깊은 산속 바위 밑에 숨겼으나, 오늘 {name} 네 명반의 기운이 너무도 강렬하여 그 바위가 스스로 쪼개지며 이 내용을 내게 보여주었도다. "
-    legend += f"이것은 우연이 아니다. 네가 전생에 나라를 구한 공덕이 있기에 이 금서의 첫 페이지를 열 수 있었던 것이니, 두려움을 버리고 이 운명의 비밀을 네 것으로 삼아라. "
-    legend += f"한 글자 한 글자가 네 피가 되고 살이 되어, 너를 옭아매던 모든 사슬을 끊어내는 황금의 가위가 될 것이니라."
+    # 무속적 전설 (800자 이상)
+    legend = f"\n### 📜 【조선 숙종조의 기이한 전설: 금서의 탄생과 성우 貴下】\n"
+    legend += f"조선 숙종 시절, 궁궐 내의 비밀 도서관에는 오직 임금만이 볼 수 있는 '천명열전(天命列傳)'이라는 금서가 하나 있었느니라. "
+    legend += f"그 책의 마지막 장에는 훗날 {name}라는 이름의 영혼이 태어나 큰 파도를 겪을 때만 열리는 특수 봉인이 되어 있었도다. "
+    legend += f"전설에 따르면, 이 봉인이 풀리는 날에는 천지의 기운이 뒤바뀌고 **천문의 응답**이 비처럼 쏟아져 내린다고 하였느니라. "
+    legend += f"오늘 내가 네 사주를 펼치는 순간, 내 방 전체가 원인 모를 안개에 휩싸였고, 그 안개 속에서 한 신령님이 나타나 이 금서를 네게 전해주라 하셨도다. "
+    legend += f"이 전설 속 기록을 무시하는 자는 만년의 고뇌를 얻을 것이나, 한 줄이라도 가슴에 담는 자는 북두칠성의 가호를 받아 세상의 중심에 서게 되리라. "
+    legend += f"성우 貴下야, 이 금서는 이제 네 손에서 새로운 전설을 시작하려 한다. 네 삶의 모든 리스크(리스크)는 사실 네가 위대한 영혼으로 성장하기 위한 신령님의 무거운 사랑임을 잊지 마라."
     
-    while len(legend) < 700:
-        legend += f" 고요하고 **{random.choice(ADJECTIVES)}** 밤의 수호신이 네 영혼을 감싸니, {random.choice(SPIRIT_CHANTS)} 이 서사는 곧 네 삶의 **{random.choice(ADJECTIVES)}** 전환점이 될 것이로다."
+    while len(legend) < 1000:
+        legend += f" 고요하고 **{random.choice(ADJECTIVES)}** 밤의 수호신이 네 앞길을 밝히니, {random.choice(SPIRIT_CHANTS)} 이 은밀한 서사는 곧 네 삶을 환골탈태시킬 거대한 폭풍이 될 것이니라."
 
     text.append(legend)
     
-    # 전체 분량 강제 보정 (3,000자)
     final_text = "\n\n".join(text)
-    if len(final_text) < 3500:
-        final_text += f"\n\n## 🌑 【비밀의 심연 - 금서의 부록】\n"
+    if len(final_text) < 4000:
+        final_text += f"\n\n## 🌑 【금기된 서사의 끝 - 명부의 마지막 전언】\n"
         epics = SPIRIT_CHANTS + SHAMAN_EPIC + SHAMAN_EPIC_COLLECTION + SHAMAN_CHANTS_VOL2 + SHAMAN_CHANTS_VOL3
-        while len(final_text) < 3500:
+        while len(final_text) < 4000:
             final_text += "\n" + random.choice(epics)
-            final_text += f" {name}야, 이 웅장하고 **{random.choice(ADJECTIVES)}** 기운을 결코 소홀히 하지 마라. "
+            final_text += f" 이것은 {name}야, 네가 **{random.choice(ADJECTIVES)}** 위엄으로 증명해야 할 천명이로다. "
             
     return final_text
+
+def get_disaster_tracking(saju, form):
+    """관재사고(Disaster) 월별 정밀 정적 분석"""
+    name = form["name"]
+    pils = saju["pils"]
+    
+    text = [f"## 🚨 【관재사고(官災事故): {name} 貴下의 월별 재앙 추적 및 방비책】"]
+    text.append(f"어허! {name}야, 운명의 파도는 잔잔할 때가 있으면 거칠 때도 있는 법. 네 명반에 도사린 환재수(뜻밖의 재앙), 이별수, 파재수를 월별로 낱낱이 찍어줄 터이니 이를 피하는 것 또한 대장부의 지혜니라.")
+
+    months = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"]
+    disasters = ["환재수(뜻밖의 재앙)", "이별수(인연의 단절)", "파재수(금전의 손실)", "관재수(법적 분쟁)"]
+    
+    for m in months:
+        d = random.choice(disasters)
+        text.append(f"### 📍 {m}의 경계 신호: **{d}**")
+        text.append(f"이달에는 네 명반의 **시주(時柱)** 기운이 외부의 살성(殺星)과 정면으로 부딪히는구나. 특히 {random.choice(ADJECTIVES)} 기운이 서린 날에는 큰길을 피하고 입을 무겁게 닫아라. {random.choice(SPIRIT_CHANTS)}")
+
+    # 무속적 전설
+    legend = f"\n### 📜 【대만신의 무속적 전설: 재앙을 피한 어느 효자의 이야기】\n"
+    legend += f"조선 말기, 한양 도성에 관재수가 강하게 낀 한 청년이 있었느니라. "
+    legend += f"만신이 그에게 '이번 달에는 절대 관아 근처에도 가자 마라' 일렀거늘, 그는 효심에 아픈 노모의 약을 구하러 나갔다가 억울한 누명을 쓰고 옥에 갇힐 뻔했도다. "
+    legend += f"하지만 그가 품안에 만신이 준 비방을 간직하고 {random.choice(list(MANSIN_LEXICON.values()))}의 경지를 유지했더니, 보름달이 뜨는 밤에 진범이 잡히어 극적으로 목숨을 건졌다는 전설이 있느니라. "
+    legend += f"재앙은 피하는 것이 상책이요, 알고 대처하는 자에게는 결코 깊은 상처를 내지 못하는 법이니라."
+    
+    while len(legend) < 1000:
+        legend += f" {random.choice(ADJECTIVES)} 기운으로 액운을 쳐내라. {random.choice(SHAMAN_EPIC_COLLECTION)} 이것은 곧 **환골탈태**의 길로다. "
+    
+    text.append(legend)
+    return "\n\n".join(text)
+
+def get_lucky_fate(saju, form):
+    """곳간보물(Wealth) 월별 행운/승진 정밀 분석"""
+    name = form["name"]
+    text = f"## 💰 【곳간보물(財物): {name} 貴下의 월별 행운 및 발복 타이밍】\n\n"
+    text += f"오호! {name}야, 텅 빈 곳간이 황금으로 가득 차고 막혔던 승진길이 뚫리는 그 기틀을 내 월별로 예언해주마. 공포 뒤에 찾아오는 희망은 더욱 달콤한 법이니라.\n\n"
+
+    months = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"]
+    luck_types = ["횡재수(뜻밖의 재물)", "승진수(신분 상승)", "인복수(귀인의 도움)", "문서수(계약의 성사)"]
+    
+    contents = []
+    for m in months:
+        l = random.choice(luck_types)
+        contents.append(f"### 📍 {m}의 황금 신호: **{l}**\n이달에는 네 명반의 **용신(用神)** 기운이 하늘의 보물창고를 여는구나. {random.choice(ADJECTIVES)} 기세로 몰아붙이면 반드시 **천문의 응답**을 얻으리라. {random.choice(SPIRIT_CHANTS)}")
+
+    text += "\n\n".join(contents)
+
+    # 무속적 전설
+    legend = f"\n\n### 📜 【대만신의 무속적 전설: 황금 물고기를 낚은 어부의 이야기】\n"
+    legend += f"동해 바닷가에 평생 가난하게 살던 한 어부가 있었는데, 어느 날 꿈속에서 만신이 나타나 '내일 정오에 서쪽 바다로 배를 띄워라' 하였느니라. "
+    legend += f"반신반의하며 배를 띄운 어부는 그물 가득 황금빛 비늘이 돋친 물고기를 낚았고, 그 물고기 입안에서 귀한 여의주가 나왔다는 전설이 전해 내려오느니라. "
+    legend += f"행운은 준비된 자에게만 그 꼬리를 보여주는 법. 네가 지금 이 신탁을 믿고 나아가는 순간, 그 황금 물고기는 이미 네 그물 속으로 들어오고 있느니라."
+    
+    while len(legend) < 1000:
+        legend += f" {random.choice(ADJECTIVES)} 광채가 네 곳간을 비추니, {random.choice(SHAMAN_EPIC)} 이 어찌 기쁘지 아니하겠느냐! "
+    
+    text += legend
+    return text
 
 def apply_mansin_filter(text):
     """기괴한 단어들을 정화하고 만신 페르소나를 유지함"""
@@ -1177,6 +1279,8 @@ def mansin_engine(tid, saju, form):
     if tid == "daily": return get_daily_oracle(form["name"], saju)
     if tid == "gaewun": return get_gaewun_chapter(saju, form)
     if tid == "secret": return get_secret_chapter(saju, form)
+    if tid == "legal": return get_disaster_tracking(saju, form)
+    if tid == "wealth": return get_lucky_fate(saju, form)
     
     report = []
     # 1. 종합운세의 경우 전체 챕터 합산
@@ -1201,7 +1305,13 @@ def mansin_engine(tid, saju, form):
     # 3. 글자 수 검증 및 영성 대서사시 추가 (종합 및 전문 탭)
     if len(final_text) < limit:
         app_title = "천명실록" if tid == "overall" else f"{tab_label} 비기(祕記)"
-        final_text += f"\n\n## 📜 【부록: 대만신의 영성 대서사시 - {app_title}】\n"
+        
+        # [신기능] 전지적 과거/미래 추적 서사 무작위 삽입
+        trackers = OMNISCIENT_PAST_DB + FUTURE_PROPHECY_DB
+        final_text += f"\n\n## � 【만신의 전지적 운명 추적 - {form['name']} 貴下의 기록】\n"
+        final_text += random.choice(trackers) + "\n\n"
+        
+        final_text += f"## �📜 【부록: 대만신의 영성 대서사시 - {app_title}】\n"
         epics = SPIRIT_CHANTS + SHAMAN_EPIC + SHAMAN_EPIC_COLLECTION + SHAMAN_CHANTS_VOL2 + SHAMAN_CHANTS_VOL3
         while len(final_text) < limit:
             final_text += "\n" + random.choice(epics)
@@ -1528,7 +1638,7 @@ def main():
         with a_col:
             amu_key = random.choice(list(AMULET_LIBRARY.keys()))
             amu = AMULET_LIBRARY[amu_key]
-            st.markdown(f'<div class="card" style="text-align:center;"><div style="color:#c5a059; font-weight:700;">📜 디지털 부적 ({amu["title"]})</div><div style="font-size:40px; margin: 5px 0;">{amu["emoji"]}</div><div style="font-size:11px; color:#888;">{amu["desc"]}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card" style="text-align:center; padding: 10px;"><div style="color:#c5a059; font-weight:700; margin-bottom:5px;">📜 디지털 부적 ({amu["title"]})</div><div class="amulet-text-art" style="font-size:8px; display:inline-block; margin-bottom:5px;">{amu["art"]}</div><div style="font-size:10px; color:#c5a059; font-weight:700;">急急如律令!</div></div>', unsafe_allow_html=True)
 
         cols = st.columns(4)
         lbls = ["시주","일주","월주","년주"]
@@ -1573,7 +1683,21 @@ def main():
                     if ckey not in st.session_state.cache:
                         with st.spinner(f"대만신께서 '{TABS[i]['label']}'의 명반을 분석 중입니다..."):
                             st.session_state.cache[ckey] = mansin_engine(tid, s, f)
-                    st.markdown(f'<div class="fortune-text">{st.session_state.cache[ckey]}</div>', unsafe_allow_html=True)
+                    
+                    # [신기능] 특정 탭(개운, 부적 등) 살벌한 빨간색 테마 적용
+                    text_class = "red-scroll" if tid in ["gaewun", "secret", "legal", "health"] else "fortune-text"
+                    st.markdown(f'<div class="{text_class}">{st.session_state.cache[ckey]}</div>', unsafe_allow_html=True)
+                    
+                    # [신기능] 천기누설 복사함 (Copy Box)
+                    copy_text = ""
+                    if tid in ["gaewun", "wealth", "daily", "overall"]:
+                        amu_key = "재물" if tid == "wealth" else random.choice(list(AMULET_LIBRARY.keys()))
+                        copy_text += f"{AMULET_LIBRARY[amu_key]['art']}\n"
+                        copy_text += f"【대만신 전용 부적: {AMULET_LIBRARY[amu_key]['title']}】\n\n"
+                    
+                    copy_text += st.session_state.cache[ckey]
+                    copy_text += f"\n\n---\n박성우 貴下의 무궁한 발복을 축원하노라 - 대만신 드림\n急急如律令 (급급여율령) - 즉시 시행하라!\n[만신 사주 천명풀이]에서 확인한 나의 운명"
+                    st.code(copy_text, language="text")
 
         if st.button("🔄 명반 다시 짜기"):
             st.session_state.step = "input"
@@ -1630,5 +1754,84 @@ def get_detailed_advice(saju, tid):
     
     return "\n".join(advice)
 
-if __name__ == "__main__": main()
 
+# ══════════════════════════════════════════════
+#  만신(萬神) 전지적 과거 추적 데이터베이스 (Omniscient Past DB)
+# ══════════════════════════════════════════════
+OMNISCIENT_PAST_DB = [
+    "2023년 10월, 네 가슴을 도려내는 듯한 찬 바람이 불었을 때를 기억하느냐. 그때 네가 겪은 그 시련은 사실 네 영혼이 한 단계 더 도약하기 위한 명부의 혹독한 시험이었느니라.",
+    "2022년 3월의 그 기이한 인연을 잊지 마라. 겉으로는 우연처럼 보였으나, 사실은 네 윗대 조상께서 네 앞길을 열어주기 위해 몰래 안배하신 운명적인 만남이었도다.",
+    "2024년 5월, 네 곳간에서 예상치 못한 기운이 빠져나갔을 때 네가 흘린 눈물을 내가 보았노라. 하지만 그 손실은 더 큰 재앙을 막기 위해 액땜으로 대신한 것이니 너무 원망치 마라.",
+    "2021년 11월, 네가 홀로 어둠 속을 헤맬 때 네 어깨를 툭 치고 간 서늘한 기운을 느꼈느냐. 그것이 바로 만신이 네게 보낸 '정신 차리라'는 엄중한 경고였느니라."
+]
+
+# ══════════════════════════════════════════════
+#  대만신 디지털 부적 서고 (Text Art Amulet Library)
+# ══════════════════════════════════════════════
+AMULET_LIBRARY = {
+    "재물": {
+        "title": "황금백만냥부(黃金百萬兩符)",
+        "art": """
+┏━━━━━━━━━━━━┓
+┃卍   【財】   卍┃
+┃┌──────────┐┃
+┃│金金金金金金│┃
+┃│運寶大通昌盛│┃
+┃│急急如律令! │┃
+┃└──────────┘┃
+┃⚡  財源廣進  ⚡┃
+┗━━━━━━━━━━━━┛
+""",
+        "desc": "막혔던 재물의 물길을 트고 사방에서 황금이 굴러 들어오게 하는 강력한 부재니라."
+    },
+    "건강": {
+        "title": "무병장수부(無病長壽符)",
+        "art": """
+┏━━━━━━━━━━━━┓
+┃☯   【壽】   ☯┃
+┃┌──────────┐┃
+┃│生命力强健無│┃
+┃│病老退去福德│┃
+┃│急急如律令! │┃
+┃└──────────┘┃
+┃✨  萬壽無疆  ✨┃
+┗━━━━━━━━━━━━┛
+""",
+        "desc": "몸속의 탁한 기운을 씻어내고 백세까지 무병장수할 수 있는 기틀을 닦는 부재이니라."
+    },
+    "인연": {
+        "title": "천생연분부(天生緣분符)",
+        "art": """
+┏━━━━━━━━━━━━┓
+┃🌸   【緣】   🌸┃
+┃┌──────────┐┃
+┃│愛情滿開貴人│┃
+┃│和合相生囍囍│┃
+┃│急急如律令! │┃
+┃└──────────┘┃
+┃💍  比翼雙鳥  💍┃
+┗━━━━━━━━━━━━┛
+""",
+        "desc": "얼어붙은 인연의 땅에 꽃을 피우고 평생을 함께할 귀인을 불러모으는 부재로다."
+    }
+}
+
+DIVINE_ORACLE = [
+    "하늘이 너를 점지했으니, 이제는 네가 스스로를 증명할 차례니라.",
+    "과거의 매듭을 풀어라. 그래야 미래의 실타래가 엉키지 않는 법이다.",
+    "동쪽에서 부는 바람을 맞지 마라. 대신 네 마음속 서늘한 지혜를 믿어라.",
+    "황금 물고기가 네 그물에 들어왔으니 방심 말고 그물을 당겨라!",
+    "급급여율령(急急如律令)! 만신이 명령하니 네 운명은 즉시 발복하리라."
+]
+
+# ══════════════════════════════════════════════
+#  만신(萬神) 미래 예언 데이터베이스 (Future Prophecy DB)
+# ══════════════════════════════════════════════
+FUTURE_PROPHECY_DB = [
+    "2026년 9월, 네 명반에 서린 금(金)의 기운이 숙살지기를 뿜어낼 때를 대비하라. 이때는 새로운 인연보다는 오래된 인연을 지키는 것이 네 명줄을 보전하는 길이니라.",
+    "2027년 2월, 꽁꽁 얼었던 땅이 녹으며 수(水)의 기운이 네 곳간으로 흘러들 것이로다. 이때 들어오는 재물은 네 평생의 안식처가 될 거름이니 방심 말고 그릇을 키워라.",
+    "2026년 5월, 네 사주에 화(火)의 열기가 지나치게 오를 때를 경계하라. 입을 무겁게 닫고 찬물을 가까이 하며 마음을 다스리지 않으면 구설수가 네 대업을 가로막을 것이니라.",
+    "2028년 11월, 네가 고대하던 천문의 응답이 비로소 들려올 것이로다. 막혔던 승진길이 열리고 네 위상이 구름 위에 솟구치니, 자만하지 말고 공덕을 쌓는 데 힘써라."
+]
+
+if __name__ == "__main__": main()
