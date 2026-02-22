@@ -4089,7 +4089,6 @@ def amplify_with_epics(text, limit, tid, tab_label, user_name):
     """분량이 부족할 경우 만신의 영성 대서사시를 추가하여 보정함"""
     if len(text) >= limit:
         return text
-    return text
 
     app_title = "천명실록(天命實錄)" if tid == "overall" else f"{tab_label} 비기(祕記)"
     
@@ -4176,8 +4175,8 @@ def mansin_engine(tid, saju, form):
         report.append(get_past_traces_chapter(saju, form)) 
         report.append(f"**👑 【천명잔혹사(天命殘酷史): {form['name']} 貴下의 스릴러 연대기】**\n\n")
         report.append(get_essence_chapter(saju, form))        
-        report.append(get_flow_chapter(saju, form))           
         report.append(get_relationship_chapter(saju, form))   
+        report.append(get_flow_chapter(saju, form))           
         report.append(get_prescription_chapter(saju, form))   
         report.append(get_oracle_chapter(saju, form))         
         
@@ -5073,8 +5072,17 @@ def main():
                 with st.spinner(f"대만신께서 '{tab_info['label']}'의 명반을 분석 중입니다..."):
                     st.session_state.cache[ckey] = mansin_engine(tid, s, f)
             
-            # [FIX] Streamlit removeChild error 방지를 위해 마크다운 컨테이너를 하나로 합침
-            content = f'<div class="fortune-text">\n\n{st.session_state.cache[ckey]}\n\n</div>'
+            # [FIX] Streamlit removeChild error 방지를 위해 마크다운 컨테이너를 하나로 합치고, 내부 마크다운을 안전한 HTML로 치환
+            safe_text = st.session_state.cache[ckey]
+            import re
+            safe_text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', safe_text) # 볼드체 변환
+            safe_text = re.sub(r'\n#{1,3}\s+', r'<br><b>', safe_text) # 헤딩을 볼드체로 변환
+            safe_text = safe_text.replace('### ', '<b>').replace('## ', '<b>').replace('# ', '<b>')
+            safe_text = safe_text.replace('\n- ', '<br>• ') # 리스트 변환
+            safe_text = safe_text.replace('\n> ', '<br>🔸 ') # 인용구 변환
+            safe_text = safe_text.replace('\n', '<br>') # 줄바꿈 변환
+            
+            content = f'<div class="fortune-text"><br>{safe_text}<br></div>'
             st.markdown(content, unsafe_allow_html=True)
 
         if st.button("🔄 명반 다시 짜기"):
