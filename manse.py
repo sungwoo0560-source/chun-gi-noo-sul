@@ -5,12 +5,6 @@ from datetime import date, datetime, timedelta
 import random
 import io
 import re
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-from reportlab.lib.units import inch
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
 
 # ══════════════════════════════════════════════
 #  페이지 설정
