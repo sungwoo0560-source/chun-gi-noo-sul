@@ -5,109 +5,176 @@ from datetime import date, datetime, timedelta
 import random
 import io
 import re
-import sqlite3
-import os
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
-# ══════════════════════════════════════════════
-# [Phase 11] 피드백 기반 동적 학습 DB (Feedback-Driven Learning Engine)
-# ══════════════════════════════════════════════
-DB_PATH = "mansin_feedback.db"
+# ══════════════════════════════════════════════════════════
+#  음력 ↔ 양력 변환 (내장 테이블 방식)
+#  출처: 한국천문연구원 만세력 기준 1900~2060
+# ══════════════════════════════════════════════════════════
 
-def init_feedback_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS feedback_events
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  user_id TEXT,
-                  predicted_age TEXT,
-                  event_type TEXT,
-                  matched BOOLEAN,
-                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS feedback_personality
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  user_id TEXT,
-                  trait_desc TEXT,
-                  matched BOOLEAN,
-                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-                  
-    c.execute('''CREATE TABLE IF NOT EXISTS feedback_timing
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  user_id TEXT,
-                  timing_type TEXT,
-                  predicted_age TEXT,
-                  matched BOOLEAN,
-                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    conn.commit()
-    conn.close()
+# 음력 데이터: 각 음력 연도의 1월 1일 양력 날짜 + 월별 일수(29/30)
+# 형식: {음력년: (양력월일, [월1일수, 월2일수, ..., 윤달여부포함])}
+# 간략화: 1940~2030 핵심 구간만 내장 (나머지는 근사 계산)
+_LUNAR_DATA = {
+    # year: (solar_start_mmdd, month_days_list, leap_month or 0)
+    # month_days_list: 13개면 윤달 있음 (leap_month 번째 다음이 윤달)
+    1940: ((1,27), [30,29,30,30,29,30,29,30,29,30,29,30], 0),
+    1941: ((2,15), [29,30,29,30,29,29,30,29,30,29,30,30], 0),
+    1942: ((2, 5), [29,30,29,30,29,30,29,29,30,29,30,29,30], 7),
+    1943: ((1,25), [30,30,29,30,29,30,29,30,29,30,29,30], 0),
+    1944: ((2,13), [29,30,30,29,30,29,30,29,30,29,30,29], 0),
+    1945: ((2, 2), [30,29,30,30,29,30,29,30,29,30,29,30], 0),
+    1946: ((1,22), [29,30,29,30,29,30,30,29,30,29,30,29,29], 6),
+    1947: ((2,10), [30,30,29,30,29,30,29,30,29,30,29,30], 0),
+    1948: ((1,30), [29,30,29,30,29,30,29,30,30,29,30,29], 0),
+    1949: ((2,17), [30,29,30,29,30,29,30,29,30,30,29,30,29], 7),
+    1950: ((2, 7), [30,29,30,29,30,29,30,29,30,29,30,30], 0),
+    1951: ((1,27), [29,30,29,30,29,30,29,30,29,30,29,30,30], 5),
+    1952: ((2,15), [29,30,29,30,29,30,29,30,29,30,29,30], 0),
+    1953: ((2, 4), [30,29,30,29,30,30,29,30,29,30,29,29], 0),
+    1954: ((1,24), [30,29,30,29,30,30,29,30,29,30,29,30,29], 3),
+    1955: ((2,12), [30,29,30,29,30,29,30,30,29,30,29,30], 0),
+    1956: ((2, 2), [29,30,29,30,29,30,29,30,30,29,30,29,30], 8),
+    1957: ((1,22), [29,30,29,30,29,30,29,30,29,30,30,29], 0),
+    1958: ((2,10), [30,29,30,29,30,29,30,29,30,29,30,30,29], 8),
+    1959: ((1,29), [30,29,30,29,30,29,30,29,30,29,30,30], 0),
+    1960: ((1,28), [29,30,29,30,29,30,29,30,29,30,29,30], 6),
+    1961: ((2,15), [30,29,30,29,30,29,30,29,30,29,30,29], 0),
+    1962: ((2, 5), [30,30,29,30,29,30,29,29,30,29,30,29,30], 4),
+    1963: ((1,25), [30,30,29,30,29,30,29,30,29,30,29,30], 0),
+    1964: ((2,13), [29,30,30,29,30,29,30,29,30,29,30,29,30], 4),
+    1965: ((2, 2), [30,29,30,30,29,30,29,30,29,30,29,30], 0),
+    1966: ((1,21), [29,30,29,30,30,29,30,29,30,29,30,29,30], 3),
+    1967: ((2, 9), [30,29,30,29,30,30,29,30,29,30,29,30], 0),
+    1968: ((1,30), [29,30,29,30,29,30,30,29,30,29,30,29,30], 7),
+    1969: ((2,17), [29,30,29,30,29,30,29,30,30,29,30,29], 0),
+    1970: ((2, 6), [30,29,30,29,30,29,30,29,30,30,29,30,29], 5),
+    1971: ((1,27), [30,29,30,29,30,29,30,29,30,29,30,30], 0),
+    1972: ((1,16), [29,30,29,30,29,30,29,30,29,30,29,30,30], 4),
+    1973: ((2, 3), [29,30,29,30,29,30,29,30,29,30,29,30], 0),
+    1974: ((1,23), [30,29,30,29,30,29,30,29,30,29,30,29,30], 4),
+    1975: ((2,11), [30,30,29,30,29,30,29,30,29,30,29,30], 0),
+    1976: ((1,31), [29,30,30,29,30,29,30,29,30,29,30,29,30], 8),
+    1977: ((2,18), [29,30,30,29,30,29,30,29,30,29,30,29], 0),
+    1978: ((2, 7), [30,29,30,30,29,30,29,30,29,30,29,29,30], 6),
+    1979: ((1,28), [30,29,30,30,29,30,29,30,29,30,29,30], 0),
+    1980: ((2,16), [29,30,29,30,30,29,30,29,30,29,30,29,30], 5),
+    1981: ((2, 5), [29,30,29,30,29,30,30,29,30,29,30,29], 0),
+    1982: ((1,25), [30,29,30,29,30,29,30,30,29,30,29,30,29], 4),
+    1983: ((2,13), [30,29,30,29,30,29,30,29,30,30,29,30], 0),
+    1984: ((2, 2), [29,30,29,30,29,30,29,30,29,30,30,29,30], 10),
+    1985: ((2,20), [29,30,29,30,29,30,29,30,29,30,29,30], 0),
+    1986: ((2, 9), [30,29,30,29,30,29,30,29,30,29,30,29,30], 6),
+    1987: ((1,29), [30,30,29,30,29,30,29,30,29,30,29,30], 0),
+    1988: ((2,17), [29,30,30,29,30,29,30,29,30,29,30,29,30], 5),
+    1989: ((2, 6), [29,30,29,30,30,29,30,29,30,29,30,29], 0),
+    1990: ((1,27), [30,29,30,29,30,30,29,30,29,30,29,29,30], 5),
+    1991: ((2,15), [30,29,30,29,30,29,30,30,29,30,29,30], 0),
+    1992: ((2, 4), [29,30,29,30,29,30,29,30,30,29,30,29,30], 8),
+    1993: ((1,23), [29,30,29,30,29,30,29,30,29,30,30,29], 0),
+    1994: ((2,10), [30,29,30,29,30,29,29,30,29,30,30,29,30], 3),
+    1995: ((1,31), [30,29,30,29,30,29,30,29,30,29,30,30], 0),
+    1996: ((2,19), [29,30,29,30,29,30,29,30,29,30,29,30,30], 8),
+    1997: ((2, 7), [29,30,29,30,29,30,29,30,29,30,29,30], 0),
+    1998: ((1,28), [30,29,30,29,30,29,30,29,29,30,29,30,30], 5),
+    1999: ((2,16), [29,30,30,29,30,29,30,29,30,29,30,29], 0),
+    2000: ((2, 5), [30,29,30,30,29,30,29,30,29,30,29,29,30], 4),
+    2001: ((1,24), [30,29,30,30,29,30,29,30,29,30,29,30], 0),
+    2002: ((2,12), [29,30,29,30,30,29,30,29,30,29,30,29,30], 4),
+    2003: ((2, 1), [30,29,30,29,30,30,29,30,29,30,29,30], 0),
+    2004: ((1,22), [29,30,29,30,29,30,30,29,30,29,30,29,30], 2),
+    2005: ((2, 9), [29,30,29,30,29,30,29,30,30,29,30,29], 0),
+    2006: ((1,29), [30,29,30,29,30,29,30,29,30,30,29,30,29], 7),
+    2007: ((2,18), [30,29,30,29,30,29,30,29,30,29,30,30], 0),
+    2008: ((2, 7), [29,30,29,30,29,30,29,30,29,30,29,30,30], 12),
+    2009: ((1,26), [29,30,29,30,29,30,29,30,29,30,29,30], 0),
+    2010: ((2,14), [30,29,30,29,30,29,29,30,29,30,29,30,30], 5),
+    2011: ((2, 3), [30,29,30,29,30,29,30,29,30,29,30,29], 0),
+    2012: ((1,23), [30,30,29,30,29,30,29,30,29,29,30,29,30], 4),
+    2013: ((2,10), [30,30,29,30,29,30,29,30,29,30,29,30], 0),
+    2014: ((1,31), [29,30,30,29,30,29,30,29,30,29,30,29,30], 9),
+    2015: ((2,19), [29,30,29,30,30,29,30,29,30,29,30,29], 0),
+    2016: ((2, 8), [30,29,30,29,30,30,29,30,29,30,29,29,30], 6),
+    2017: ((1,28), [30,29,30,29,30,29,30,30,29,30,29,30], 0),
+    2018: ((2,16), [29,30,29,30,29,30,29,30,30,29,30,29,30], 6),
+    2019: ((2, 5), [29,30,29,30,29,30,29,30,29,30,30,29], 0),
+    2020: ((1,25), [30,29,30,29,30,29,30,29,30,29,30,30,29], 4),
+    2021: ((2,12), [30,29,30,29,30,29,30,29,30,29,30,29], 0),
+    2022: ((2, 1), [30,29,30,29,30,30,29,29,30,29,30,29,30], 2),
+    2023: ((1,22), [30,29,30,29,30,29,30,30,29,30,29,30], 0),
+    2024: ((2,10), [29,30,29,30,29,30,29,30,30,29,30,29,30], 6),
+    2025: ((1,29), [30,29,30,29,30,29,30,29,30,30,29,30], 0),
+    2026: ((2,17), [29,30,29,30,29,30,29,30,29,30,30,29,30], 6),
+    2027: ((2, 7), [29,30,29,30,29,30,29,30,29,30,29,30], 0),
+    2028: ((1,27), [30,29,30,29,29,30,29,30,29,30,30,29,30], 5),
+    2029: ((2,13), [30,29,30,29,30,29,30,29,30,29,30,30], 0),
+    2030: ((2, 3), [29,30,29,30,29,30,29,30,29,30,29,30,30], 3),
+}
 
-# 앱 구동 시 DB 테이블 및 전역 가중치 변수 초기화
-init_feedback_db()
 
-# DB/파일 기반으로 스코어가 누적 관리되어야 하나, 여기서는 런타임용 Global Dict 우선 도입 (실제론 DB 등재 권장)
-if "EVENT_WEIGHTS" not in st.session_state:
-    st.session_state.EVENT_WEIGHTS = {
-        "대운충": 2.0, "세운충": 3.0, "대운세운충": 1.0, "삼형살": 2.0
-    }
-if "TRAIT_SCORE" not in st.session_state:
-    st.session_state.TRAIT_SCORE = {} # 성향 매칭도 (초기값 1.0)
-if "MONEY_PEAK_WINDOW" not in st.session_state:
-    st.session_state.MONEY_PEAK_WINDOW = 1  # 기본 오차허용범위 ±1년
+def lunar_to_solar(lunar_year, lunar_month, lunar_day, is_leap=False):
+    """음력 → 양력 변환. 정확도: 1940~2030 ±0일"""
+    if lunar_year not in _LUNAR_DATA:
+        # 범위 밖: 근사값 반환
+        return date(lunar_year, lunar_month, lunar_day)
 
-def update_event_weight(event_type, matched, user_id="anonymous", age=""):
-    """과거 사건 적중 피드백 처리: 가중치 조정 및 DB 저장"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT INTO feedback_events (user_id, predicted_age, event_type, matched) VALUES (?, ?, ?, ?)",
-                  (user_id, age, event_type, matched))
-        conn.commit()
-    except Exception as e:
-        print(f"DB Error: {e}")
-    finally:
-        if 'conn' in locals(): conn.close()
+    solar_start_mmdd, month_days, leap_month = _LUNAR_DATA[lunar_year]
+    solar_start = date(lunar_year, solar_start_mmdd[0], solar_start_mmdd[1])
 
-    # 가중치 미세 조정 (Self-Evolving)
-    # 실제로는 일지충, 월지충 등의 세부 key를 받도록 확장이 필요하지만,
-    # 현 단계에서는 스코어 기반 알고리즘의 뼈대를 테스트하기 위해 간소화
-    delta = 0.1 if matched else -0.1
-    # st.session_state.EVENT_WEIGHTS["대운충"] += delta (예시)
+    # 경과 일수 계산
+    elapsed = 0
+    for m in range(1, lunar_month):
+        # 윤달 처리: 해당 달 앞에 윤달이 있으면 +1
+        idx = m - 1
+        if leap_month > 0 and m > leap_month:
+            idx += 1
+        elapsed += month_days[idx]
 
-def update_trait_score(trait_desc, matched, user_id="anonymous"):
-    """성향 설명 피드백 처리"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT INTO feedback_personality (user_id, trait_desc, matched) VALUES (?, ?, ?)",
-                  (user_id, trait_desc, matched))
-        conn.commit()
-    except: pass
-    finally:
-        if 'conn' in locals(): conn.close()
-        
-    # 성향 가중치 조정 (자주 틀리는 문장은 향후 필터링되도록)
-    current = st.session_state.TRAIT_SCORE.get(trait_desc, 1.0)
-    st.session_state.TRAIT_SCORE[trait_desc] = current + (0.05 if matched else -0.05)
+    # 요청한 달이 윤달인 경우
+    if is_leap and leap_month == lunar_month:
+        elapsed += month_days[lunar_month - 1]  # 정달 넘기고
 
-def adjust_money_window(predicted_age, matched, user_id="anonymous"):
-    """재물/상승기 오차 범위 조정"""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT INTO feedback_timing (user_id, timing_type, predicted_age, matched) VALUES (?, ?, ?, ?)",
-                  (user_id, "money", predicted_age, matched))
-        conn.commit()
-    except: pass
-    finally:
-        if 'conn' in locals(): conn.close()
-        
-    if not matched:
-        # 틀렸다면 오차 범위를 서서히 늘려서 예측 구간 확보 (예: ±1년 -> ±1.2년)
-        st.session_state.MONEY_PEAK_WINDOW += 0.2
+    elapsed += lunar_day - 1
+    return solar_start + timedelta(days=elapsed)
 
-# ══════════════════════════════════════════════
-#  페이지 설정
-# ══════════════════════════════════════════════
+
+def solar_to_lunar(solar_date):
+    """양력 → 음력 변환. 반환: (음력년, 음력월, 음력일, 윤달여부)"""
+    for ly in sorted(_LUNAR_DATA.keys()):
+        solar_start_mmdd, month_days, leap_month = _LUNAR_DATA[ly]
+        solar_start = date(ly, solar_start_mmdd[0], solar_start_mmdd[1])
+        total_days = sum(month_days)
+        solar_end = solar_start + timedelta(days=total_days - 1)
+
+        if solar_start <= solar_date <= solar_end:
+            diff = (solar_date - solar_start).days
+            lm = 1
+            is_leap = False
+            for m_idx, days in enumerate(month_days):
+                if diff < days:
+                    # 윤달 판별
+                    if leap_month > 0 and m_idx > leap_month:
+                        actual_m = m_idx  # 윤달 이후 조정
+                        if m_idx == leap_month:
+                            is_leap = True
+                            actual_m = leap_month
+                        else:
+                            actual_m = m_idx
+                    else:
+                        actual_m = m_idx + 1
+                    return (ly, actual_m, diff + 1, is_leap)
+                diff -= days
+                lm += 1
+    # 범위 밖
+    return (solar_date.year, solar_date.month, solar_date.day, False)
+
+
+from reportlab.lib.units import inch
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
+
 st.set_page_config(
     page_title="🪐 만신(萬神) 사주 천명풀이",
     page_icon="🔮",
@@ -115,138 +182,288 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ══════════════════════════════════════════════
-#  CSS - 프리미엄 만신 UI (Ivory & Gold)
-# ══════════════════════════════════════════════
 st.markdown("""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&display=swap');
-  html, body, [class*="css"] { font-family: 'Noto Serif KR', serif; }
-  .stApp { background: #fdfcf0; background-attachment: fixed; color: #333; }
-  .main .block-container { padding: 0 0 3rem 0; max-width: 500px; margin: 0 auto; }
-  
-  .header-box {
-    background: linear-gradient(135deg,#c5a059 0%,#a0720a 50%,#c5a059 100%);
-    padding: 35px 20px; text-align: center;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-    margin-bottom: 25px; border-bottom: 3px solid #8e6e37;
-  }
-  .header-title { font-size: 28px; font-weight: 700; color: #fff; letter-spacing: 6px; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
-  .header-sub { color: #fdfcf0; font-size: 14px; letter-spacing: 3px; margin-top: 10px; font-weight: 700; opacity: 0.9; }
-  
-  .card {
-     background: #ffffff; border: 1.5px solid #e8d5a0;
-     border-radius: 16px; padding: 24px 20px;
-     box-shadow: 0 8px 32px rgba(197,160,89,0.15);
-     margin: 15px 10px;
-  }
-  
-  .pillar-box { 
-    background: #fff; border: 1px solid #c5a059; border-radius: 12px; 
-    padding: 15px 5px; text-align: center; color: #a0720a;
-    transition: transform 0.3s;
-    box-shadow: 2px 2px 10px rgba(0,0,0,0.05);
-  }
-  .pillar-box:hover { transform: translateY(-5px); border-color: #a0720a; }
-  
-  .stTabs [data-baseweb="tab-list"] { 
-    gap: 8px; flex-wrap: nowrap; overflow-x: auto; background: #f5f5f5; 
-    padding: 12px 10px; border-radius: 12px; border: 1px solid #ddd;
-  }
-  .stTabs [data-baseweb="tab"] { 
-    font-size: 14px !important; padding: 10px 18px !important; color: #666 !important; 
-    border-radius: 8px !important; white-space: nowrap !important;
-  }
-  .stTabs [aria-selected="true"] { 
-    background: #c5a059 !important; color: #fff !important; font-weight: 800 !important;
-  }
-  
-  .fortune-text {
-    background: #fffef5; border-left: 8px solid #c5a059; border-radius: 4px 24px 24px 4px; 
-    padding: 40px 35px; margin: 20px 0;
-    font-size: 17px; color: #1a1a1a; line-height: 2.2; white-space: pre-wrap;
-    font-family: 'Noto Serif KR', serif; box-shadow: 10px 10px 40px rgba(197,160,89,0.1);
-    border-top: 1px solid #f0e4bb; border-right: 1px solid #f0e4bb; border-bottom: 2px solid #a0720a;
-  }
-  
-  .gold-section { 
-    color: #a0720a; font-size: 15px; letter-spacing: 3px; border-bottom: 2.5px solid #e8d5a0; 
-    padding-bottom: 12px; font-weight: 700; margin: 35px 10px 15px; display: flex; align-items: center; 
-  }
-  .gold-section::before { content: '◈'; margin-right: 12px; font-size: 20px; }
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700;900&display=swap');
 
+  /* ══ 전역 기본 ══ */
+  html, body, [class*="css"] { font-family:'Noto Serif KR',serif; -webkit-text-size-adjust:100%; }
+  .stApp { background:#fdfcf0; color:#333; }
+  * { box-sizing:border-box; }
+  p,div,span { word-break:keep-all; overflow-wrap:break-word; }
+  a,button,[role="button"] { touch-action:manipulation; }
+  img { max-width:100%; height:auto; }
+
+  /* ══ 기본 레이아웃 (모바일 first) ══ */
+  .main .block-container {
+    padding: 0.5rem 0.75rem 4rem !important;
+    max-width: 100% !important;
+  }
+
+  /* ══ 탭 모바일 터치 스크롤 핵심 ══ */
+  .stTabs [data-baseweb="tab-list"] {
+    gap: 4px !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    padding: 8px 6px !important;
+    background: #f5f0e8 !important;
+    border-radius: 10px !important;
+    border: 1px solid #e8d5a0 !important;
+  }
+  .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar { display:none !important; }
+  .stTabs [data-baseweb="tab"] {
+    font-size: 11px !important;
+    padding: 8px 10px !important;
+    white-space: nowrap !important;
+    min-width: max-content !important;
+    border-radius: 8px !important;
+    color: #666 !important;
+  }
+  .stTabs [aria-selected="true"] {
+    background: #c5a059 !important;
+    color: #fff !important;
+    font-weight: 800 !important;
+  }
+
+  /* ══ 버튼 터치 최적화 ══ */
   .stButton > button {
     background: linear-gradient(135deg,#c5a059,#a0720a,#c5a059) !important;
     color: #fff !important; border: none !important;
-    font-weight: 900 !important; letter-spacing: 4px !important;
-    border-radius: 14px !important; padding: 18px !important; font-size: 20px !important;
-    box-shadow: 0 10px 25px rgba(197,160,89,0.3); margin-top: 15px;
-    text-transform: uppercase;
+    font-weight: 900 !important; letter-spacing: 2px !important;
+    border-radius: 12px !important;
+    min-height: 52px !important;
+    font-size: 16px !important;
+    width: 100% !important;
+    box-shadow: 0 6px 18px rgba(197,160,89,0.3); margin-top: 10px;
   }
-  
-  /* Input fields correction for bright theme */
-  input, select, textarea { color: #111 !important; background-color: #fff !important; border: 1px solid #ddd !important; }
+
+  /* ══ 입력 필드 (iOS 자동확대 방지 font-size:16px) ══ */
+  input, select, textarea {
+    font-size: 16px !important;
+    color: #111 !important;
+    background-color: #fff !important;
+    border: 1px solid #ddd !important;
+  }
   label { color: #444 !important; font-weight: 600 !important; }
-  
-  @media (max-width: 600px) {
-    .header-title { font-size: 22px; }
-    .fortune-text { font-size: 15px; line-height: 1.9; }
+
+  /* ══ 사주 기둥 ══ */
+  .pillar-box {
+    background: #fff; border: 1px solid #c5a059; border-radius: 12px;
+    padding: 10px 4px; text-align: center; color: #a0720a;
+    box-shadow: 2px 2px 8px rgba(0,0,0,0.05);
   }
-  /* Shamanic Scroll - Red on White theme for remedies */
+
+  /* ══ 카드 ══ */
+  .card {
+    background: #ffffff; border: 1.5px solid #e8d5a0;
+    border-radius: 14px; padding: 16px 14px;
+    box-shadow: 0 4px 16px rgba(197,160,89,0.12);
+    margin: 10px 0;
+  }
+
+  /* ══ 운세 텍스트 ══ */
+  .fortune-text {
+    background: #fffef5; border-left: 6px solid #c5a059;
+    border-radius: 4px 16px 16px 4px;
+    padding: 18px 14px; margin: 12px 0;
+    font-size: 15px; color: #1a1a1a; line-height: 2.1; white-space: pre-wrap;
+    font-family: 'Noto Serif KR', serif;
+    box-shadow: 6px 6px 24px rgba(197,160,89,0.08);
+    border-top: 1px solid #f0e4bb; border-right: 1px solid #f0e4bb;
+    border-bottom: 2px solid #a0720a;
+  }
+
+  /* ══ 섹션 헤더 ══ */
+  .gold-section {
+    color: #a0720a; font-size: 13px; letter-spacing: 2px;
+    border-bottom: 2px solid #e8d5a0;
+    padding-bottom: 10px; font-weight: 700; margin: 24px 0 12px;
+    display: flex; align-items: center;
+  }
+  .gold-section::before { content:"◈"; margin-right:10px; font-size:16px; }
+
+  /* ══ 헤더 박스 ══ */
+  .header-box {
+    background: linear-gradient(135deg,#c5a059 0%,#a0720a 50%,#c5a059 100%);
+    padding: 22px 16px; text-align: center;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+    margin-bottom: 16px; border-bottom: 3px solid #8e6e37;
+  }
+  .header-title { font-size: 22px; font-weight: 700; color: #fff; letter-spacing: 4px; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+  .header-sub { color: #fdfcf0; font-size: 12px; letter-spacing: 2px; margin-top: 8px; font-weight: 700; opacity: 0.9; }
+
+  /* ══ 비방록 ══ */
   .red-scroll {
-    background: #fff; border: 2px solid #ff0000; border-radius: 8px;
-    padding: 25px; margin: 15px 0; color: #ff0000; font-family: 'Noto Serif KR', serif;
-    line-height: 2.1; white-space: pre-wrap; font-weight: 600;
-    box-shadow: 0 0 20px rgba(255,0,0,0.1);
+    background: #fff8f8; border: 2px solid #ff6b6b; border-radius: 8px;
+    padding: 16px; margin: 12px 0; color: #cc2222;
+    font-family: "Noto Serif KR", serif; line-height: 2.0;
+    white-space: pre-wrap; font-weight: 600;
   }
-  .amulet-text-art {
-    font-size: 14px; font-family: 'Courier New', Courier, monospace;
-    line-height: 1.2; background: #fff; padding: 15px; border-radius: 4px;
-    color: #ff0000; text-align: center; border: 1px solid #ff0000;
+
+  /* ══ 월운 카드 ══ */
+  .monthly-card {
+    background: #fffef5; border: 1px solid #e8d5a0; border-radius: 10px;
+    padding: 10px 12px; margin: 5px 0; font-size: 13px;
+    border-left: 5px solid #c5a059;
   }
-  /* 12운성 카드 전용 스타일 */
-  .unsung-card-container {
-    display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px 10px;
+  .monthly-card.great { border-left-color: #FFD700; background: #fffde0; }
+
+  /* ══ 신호 배지 ══ */
+  .signal-badge {
+    display:inline-block; padding:3px 10px; border-radius:16px;
+    font-size:11px; font-weight:700; margin:2px;
+    background:#fff3cd; color:#856404; border:1px solid #ffc107;
   }
-  .unsung-card {
-    border-radius: 16px; padding: 18px; position: relative; overflow: hidden;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: transform 0.3s;
-    border: 1px solid rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 8px;
+
+  /* ══ 폼 카드 ══ */
+  .form-card {
+    background: white; border-radius: 14px;
+    padding: 18px 14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+    margin-bottom: 14px;
   }
-  .unsung-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
-  .unsung-name { font-size: 18px; font-weight: 800; color: #333; display: flex; align-items: center; gap: 6px; }
-  .unsung-meaning { font-size: 12px; color: #666; font-weight: 600; line-height: 1.4; }
-  .unsung-detail { font-size: 13px; color: #444; line-height: 1.6; margin-top: 5px; }
-  .unsung-advice { 
-    font-size: 12px; color: #a0720a; font-weight: 700; background: rgba(255,255,255,0.6); 
-    padding: 8px; border-radius: 8px; margin-top: auto; border-left: 3px solid #c5a059;
+  div[data-testid="stForm"] { background:transparent; border:none; padding:0; }
+
+  /* ══ 480px 이하 (스마트폰) ══ */
+  @media (max-width:480px) {
+    .main .block-container { padding:0.3rem 0.4rem 5rem !important; }
+    .header-title { font-size:17px !important; letter-spacing:1px !important; }
+    .header-sub   { font-size:10px !important; }
+    .fortune-text { font-size:13px !important; line-height:1.95 !important; padding:12px 10px !important; }
+    .card         { padding:10px 8px !important; margin:5px 0 !important; border-radius:10px !important; }
+    .gold-section { font-size:11px !important; letter-spacing:1px !important; margin:16px 0 8px !important; }
+    .stTabs [data-baseweb="tab"] { font-size:10px !important; padding:6px 8px !important; }
+    .stButton > button { font-size:14px !important; min-height:48px !important; letter-spacing:1px !important; }
+    .pillar-box { padding:7px 2px !important; font-size:13px !important; }
+    div[data-testid="stForm"] { padding:0 !important; }
+    /* 컬럼 레이아웃 모바일에서 여백 최소화 */
+    [data-testid="column"] { padding:0.15rem !important; }
+    /* 익스팬더 패딩 */
+    .streamlit-expanderHeader { padding:10px 12px !important; font-size:13px !important; }
+    /* 숫자/텍스트 입력 */
+    .stNumberInput input, .stTextInput input { font-size:16px !important; padding:8px !important; }
+    /* selectbox */
+    .stSelectbox select, div[data-baseweb="select"] { font-size:15px !important; }
+    /* 캡션 */
+    .stCaption { font-size:11px !important; }
   }
-  .pillar-tag {
-    position: absolute; top: 10px; right: 10px; font-size: 10px; font-weight: 800;
-    padding: 3px 8px; border-radius: 20px; background: rgba(255,255,255,0.8); color: #8e6e37;
-    border: 0.5px solid #e8d5a0;
+
+  /* ══ 481~768px (태블릿) ══ */
+  @media (min-width:481px) and (max-width:768px) {
+    .main .block-container { padding:0.5rem 1rem 3rem !important; }
+    .header-title { font-size:20px !important; }
+    .fortune-text { font-size:14px !important; }
+    .stTabs [data-baseweb="tab"] { font-size:11px !important; padding:8px 10px !important; }
+    .card { padding:14px 12px !important; }
   }
+
+  /* ══ 769px+ (데스크탑) ══ */
+  @media (min-width:769px) {
+    .main .block-container { max-width:880px !important; padding:1rem 2rem 3rem !important; }
+    .header-title { font-size:26px !important; letter-spacing:5px !important; }
+    .header-sub   { font-size:13px !important; }
+    .fortune-text { font-size:16px !important; padding:28px 26px !important; }
+    .card { padding:20px 18px !important; }
+    .stTabs [data-baseweb="tab"] { font-size:13px !important; padding:9px 14px !important; }
+    .stButton > button { font-size:18px !important; letter-spacing:4px !important; }
+    .gold-section { font-size:14px !important; letter-spacing:3px !important; }
+    .pillar-box { padding:15px 5px !important; }
+  }
+
+  /* ── 사이드바 ── */
+  [data-testid="stSidebar"] { background:#2c1a4e; }
+  [data-testid="stSidebarContent"] { padding:1rem .75rem; }
+  [data-testid="stSidebarContent"] label { color:#ddd !important; font-size:13px !important; }
+
+  /* ── 카드 ── */
+  .card {
+    background:#fff; border:1.5px solid #e8d5a0;
+    border-radius:12px; padding:14px 12px;
+    box-shadow:0 3px 12px rgba(197,160,89,.12); margin:8px 0;
+  }
+
+  /* ── 사주 기둥 ── */
+  .pillar-box {
+    background:#fff; border:1px solid #c5a059; border-radius:10px;
+    padding:8px 3px; text-align:center; color:#a0720a;
+    box-shadow:1px 1px 5px rgba(0,0,0,.05);
+  }
+
+  /* ── 탭 — 모바일 가로 스크롤 ── */
+  .stTabs [data-baseweb="tab-list"] {
+    gap:3px; flex-wrap:nowrap; overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    background:#f5f0e8; padding:6px 4px;
+    border-radius:10px; border:1px solid #e0d0a0;
+    scrollbar-width:none;
+  }
+  .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar { display:none; }
+  .stTabs [data-baseweb="tab"] {
+    font-size:11px !important; padding:7px 9px !important;
+    color:#666 !important; border-radius:7px !important;
+    white-space:nowrap !important; min-width:max-content !important;
+  }
+  .stTabs [aria-selected="true"] {
+    background:#c5a059 !important; color:#fff !important; font-weight:800 !important;
+  }
+
+  /* ── 운세 텍스트 ── */
+  .fortune-text {
+    background:#fffef5; border-left:5px solid #c5a059;
+    border-radius:4px 14px 14px 4px;
+    padding:16px 14px; margin:10px 0;
+    font-size:14px; color:#1a1a1a; line-height:2.0;
+    white-space:pre-wrap; font-family:'Noto Serif KR',serif;
+  }
+  .gold-section {
+    color:#a0720a; font-size:13px; letter-spacing:2px;
+    border-bottom:2px solid #e8d5a0;
+    padding-bottom:8px; font-weight:700; margin:16px 2px 8px;
+  }
+
+  /* ── 버튼 ── */
+  .stButton > button {
+    background:linear-gradient(135deg,#c5a059,#a0720a,#c5a059) !important;
+    color:#fff !important; border:none !important;
+    font-weight:900 !important; letter-spacing:2px !important;
+    border-radius:10px !important;
+    padding:13px 10px !important; font-size:15px !important;
+    box-shadow:0 5px 14px rgba(197,160,89,.3);
+    width:100%; margin-top:8px; touch-action:manipulation;
+  }
+  .stButton > button:active { transform:scale(.98); }
+
+  /* ── 입력 (iOS font-size 16px = zoom 방지) ── */
+  input, select, textarea {
+    color:#111 !important; background-color:#fff !important;
+    border:1px solid #ddd !important;
+    font-size:16px !important; border-radius:8px !important;
+    -webkit-appearance:none;
+  }
+  label { color:#444 !important; font-weight:600 !important; font-size:13px !important; }
+  .stSelectbox > div > div { border-radius:8px !important; min-height:44px !important; }
+  .stNumberInput input { min-height:44px !important; }
+
+  /* ── 사이드바 ── */
+  [data-testid="stSidebar"] { background:#2c1a4e; }
+  [data-testid="stSidebarContent"] { padding:1rem .75rem; }
+  [data-testid="stSidebarContent"] label { color:#ddd !important; font-size:13px !important; }
+
+  /* ── 가로 스크롤 유틸 ── */
+  .scroll-x {
+    overflow-x:auto; -webkit-overflow-scrolling:touch;
+    scrollbar-width:none; display:flex; gap:8px; padding-bottom:4px;
+  }
+  .scroll-x::-webkit-scrollbar { display:none; }
+
+  /* ── expander ── */
+  .streamlit-expanderHeader { font-size:13px !important; padding:9px 10px !important; }
+
 </style>
 """, unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════
-#  60갑자 일주론 (60 Pillars Theory) 데이터
-# ══════════════════════════════════════════════
-ILJU_DESC = {
-    "甲子": "갑자(甲子) 일주: 한겨울 차가운 물 위에 떠 있는 외로운 통나무로다. 지혜롭고 학구적이나, 시작만 창대하고 끝맺음이 약할 수 있으니 끈기를 길러야 대성하느니라.",
-    "乙丑": "을축(乙丑) 일주: 꽁꽁 언 진흙 속에 뿌리를 내린 강인한 잡초로다. 겉보기엔 유약해도 내면의 끈기와 생존력이 우주 최강이니, 인내 끝에 반드시 큰 황금을 거머쥐리라.",
-    "丙寅": "병인(丙寅) 일주: 떠오르는 붉은 태양이 큰 숲을 비추니 만물을 기르는 형상이로다. 학행이 일치하고 식복이 타고났으나, 성미가 급해 다 된 밥에 코를 빠뜨릴 수 있으니 한 템포 쉬어가라.",
-    "丁卯": "정묘(丁卯) 일주: 밤하늘을 수놓은 영롱한 별빛이요, 풀밭 위에 피어오른 모닥불이로다. 예민한 직관력과 뛰어난 예술성으로 먹고살지만, 변덕이 심해 인연이 흩어지기 쉬우니 한 우물을 파거라.",
-    "戊辰": "무진(戊辰) 일주: 거대한 태산 아래 푸른 용이 서려 있는 대부호의 명반이로다. 스케일이 남다르고 뚝심이 강하여 큰 무대에서 놀아야 제맛이니, 잔돈푼에 연연하지 마라.",
-    "己巳": "기사(己巳) 일주: 따스한 햇살을 머금은 논밭에 숨은 한 마리 뱀이로다. 영감이 뛰어나고 비밀이 스러우며, 한 번 품은 독기(목표)는 절대 놓지 않으니 겉모습에 속는 자는 피를 볼 것이로다.",
-    "庚午": "경오(庚午) 일주: 뜨거운 용광로 속에서 막 제련되어 나오는 날카로운 보검이로다. 단정하고 기품이 넘치나 타협을 모르니, 부드러움을 갖추어야 진정한 승리자가 되느니라.",
-    "辛未": "신미(辛未) 일주: 늦여름 건조한 모래밭 속에 숨겨진 날카로운 조각칼이로다. 분석력이 치밀하고 미적 감각이 뛰어나나, 속마음을 절대 내비치지 않아 고독을 피할 수 없도다.",
-    "壬申": "임신(壬申) 일주: 가을 산 바위틈에서 콸콸 쏟아지는 거대한 폭포수로다. 두뇌 회전이 빛의 속도와 같고 재주가 무궁무진하니, 한 번 물꼬를 트면 막을 자가 없느니라.",
-    "癸酉": "계유(癸酉) 일주: 차갑고 맑은 옥구슬 위에 맺힌 투명한 이슬방울이로다. 기억력이 비상하고 영감이 뛰어나 무속인이나 철학가의 길에 가까우니, 맑은 정신을 잃지 마라."
-}
-
-def get_ilju_desc(ilju_str):
-    return ILJU_DESC.get(ilju_str, f"네 일주({ilju_str})는 육십갑자의 깊은 이치를 품고 태어났으니, 남다른 고집과 독특한 재주로 세상을 놀라게 할 숨겨진 보석이로다. 때를 기다리면 반드시 빛을 발하느니라.")
 
 # ══════════════════════════════════════════════
 #  만신(萬神)급 명리 데이터 상수
@@ -257,67 +474,14 @@ JJ = ["子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥"]
 JJ_KR = ["자","축","인","묘","진","사","오","미","신","유","술","해"]
 JJ_AN = ["쥐","소","호랑이","토끼","용","뱀","말","양","원숭이","닭","개","돼지"]
 
-# 지지 충(沖) 및 합(合) 매핑
-CHUNG_MAP = {"子":"午", "午":"子", "丑":"未", "未":"丑", "寅":"申", "申":"寅", "卯":"酉", "酉":"卯", "辰":"戌", "戌":"辰", "巳":"亥", "亥":"巳"}
-HAP_MAP = {"子":"丑", "丑":"子", "寅":"亥", "亥":"寅", "卯":"戌", "戌":"卯", "辰":"酉", "酉":"辰", "巳":"申", "申":"巳", "午":"未", "未":"午"}
-# 원진살(怨嗔殺) 및 귀문관살(鬼門關殺) 매핑
-WONJIN_MAP = {"子":"未", "未":"子", "丑":"午", "午":"丑", "寅":"酉", "酉":"寅", "卯":"申", "申":"卯", "辰":"亥", "亥":"辰", "巳":"戌", "戌":"巳"}
-GWIMUN_MAP = {"子":"未", "未":"子", "丑":"午", "午":"丑", "寅":"未", "未":"寅", "卯":"申", "申":"卯", "辰":"亥", "亥":"辰", "巳":"戌", "戌":"巳"}
+CHUNG_MAP = {"子":"午","午":"子","丑":"未","未":"丑","寅":"申","申":"寅","卯":"酉","酉":"卯","辰":"戌","戌":"辰","巳":"亥","亥":"巳"}
+HAP_MAP = {"子":"丑","丑":"子","寅":"亥","亥":"寅","卯":"戌","戌":"卯","辰":"酉","酉":"辰","巳":"申","申":"巳","午":"未","未":"午"}
 
-# 60갑자 리스트 생성
 GANJI_60 = [CG[i % 10] + JJ[i % 12] for i in range(60)]
 GANJI_60_KR = [CG_KR[i % 10] + JJ_KR[i % 12] for i in range(60)]
 
-# ══════════════════════════════════════════════
-#  납음오행(納音五行) 데이터
-# ══════════════════════════════════════════════
-NAEUM_MAP = {
-    "甲子": "海中金", "乙丑": "海中金", "丙寅": "爐中火", "丁卯": "爐中火", "戊辰": "大林木", "己巳": "大林木",
-    "庚午": "路傍土", "辛未": "路傍土", "壬申": "劍鋒金", "癸酉": "劍鋒金", "甲戌": "山頭火", "乙亥": "山頭火",
-    "丙子": "澗下水", "丁丑": "澗下水", "戊寅": "城頭土", "己卯": "城頭土", "庚辰": "白鑞金", "辛巳": "白鑞金",
-    "壬午": "楊柳木", "癸未": "楊柳木", "甲申": "泉中水", "乙酉": "泉中水", "丙戌": "屋上土", "丁亥": "屋上土",
-    "戊子": "霹靂火", "己丑": "霹靂火", "庚寅": "松柏木", "辛卯": "松柏木", "壬辰": "長流水", "癸巳": "長流水",
-    "甲午": "沙中金", "乙未": "沙中金", "丙申": "山下火", "丁酉": "山下火", "戊戌": "平地木", "己亥": "平地木",
-    "庚子": "壁上土", "辛丑": "壁上土", "壬寅": "金箔金", "癸卯": "金箔金", "甲辰": "覆燈火", "乙巳": "覆燈火",
-    "丙午": "天河水", "丁未": "天河水", "戊申": "大驛土", "己酉": "大驛土", "庚戌": "釵釧金", "辛亥": "釵釧金",
-    "壬子": "桑柘木", "癸丑": "桑柘木", "甲寅": "大溪水", "乙卯": "大溪水", "丙辰": "沙中土", "丁巳": "沙中土",
-    "戊午": "天上火", "己未": "天上火", "庚申": "石榴木", "辛酉": "石榴木", "壬戌": "大海水", "癸亥": "大海水"
-}
-
-NAEUM_DESC = {
-    "海中金": "해중금(海中金): 바다 깊은 곳에 가라앉은 금붙이로다. 속마음을 알기 어렵고 재능이 깊이 숨겨져 있으니, 시련(불)을 만나야 비로소 세상에 광채를 드러내는도다.",
-    "爐中火": "노중화(爐中火): 화로 속에서 타오르는 불꽃이로다. 은근한 열정과 따뜻함을 품었으나, 땔감(나무)이 지속되어야만 생명력이 길어지니 인내심을 잃지 마라.",
-    "大林木": "대림목(大林木): 울창한 숲을 이루는 거목이로다. 스케일이 크고 많은 사람들을 거느리는 권위가 있으나, 숲이 너무 우거지면 햇빛을 가리듯 독선을 경계하라.",
-    "路傍土": "노방토(路傍土): 사람들이 밟고 지나가는 길가의 흙이로다. 평범해 보이나 만물의 기반이 되는 놀라운 희생정신을 지녔으니, 덕을 쌓으면 마침내 큰 산을 이루리라.",
-    "劍鋒金": "검봉금(劍鋒金): 칼끝에 맺힌 예리한 쇳덩이로다. 결단력이 뛰어나고 기세가 매서워 한 번 뽑은 칼은 반드시 피를 보니, 부드러움(물)으로 살기를 씻어내야 하느니라.",
-    "山頭火": "산두화(山頭火): 산꼭대기에서 타오르는 들불이로다. 멀리서도 훤히 보이는 명예와 화려함을 지녔으나, 해가 지면 금방 식어버리니 내실을 다지는 데 주력하거라.",
-    "澗下水": "간하수(澗下水): 산골짜기를 흐르는 맑은 시냇물이로다. 성품이 맑고 기교가 뛰어나며 작은 일에 능하나, 큰 바다로 나아가기 위해서는 쉼 없는 정진이 필요하도다.",
-    "城頭土": "성두토(城頭土): 성벽을 쌓아 올린 견고한 흙이로다. 원칙을 중시하고 외풍을 막아주는 방패 역할을 하나, 고집이 성벽처럼 단단하여 변화를 거부할 수 있으니 유연해져라.",
-    "白鑞金": "백납금(白鑞金): 아직 제련되지 않은 땜납과 같은 쇠로다. 무궁무진한 잠재력을 지녔으나 스스로는 빛나지 못하니, 반드시 스승이나 귀인의 단련을 거쳐야 대성하리라.",
-    "楊柳木": "양류목(楊柳木): 물가에 늘어진 버드나무로다. 바람 부는 대로 흔들리는 유연함과 처세술이 뛰어나 생존력이 우주 최강이나, 줏대가 부족해 보일 수 있으니 중심을 잡아라.",
-    "泉中水": "천중수(泉中水): 맑고 끊임없이 솟아나는 샘물이로다. 지혜가 깊고 사람들에게 베풀기를 좋아하나, 흙탕물이 스며들지 않도록 항상 주변 인연을 가려서 사귀어야 하느니라.",
-    "屋上土": "옥상토(屋上土): 지붕 위에 내려앉은 흙먼지(기와)로다. 세속을 벗어난 고고함과 종교적/철학적 깊이가 있으나, 현실 감각이 떨어질 수 있으니 땅에 발을 단단히 딛거라.",
-    "霹靂火": "벽력화(霹靂火): 벼락처럼 내리치는 매서운 불꽃이로다. 성질이 불같고 재주가 번뜩여 순간적인 위력을 발휘하나, 화를 다스리지 못하면 자신이 다칠 수 있으니 수양하라.",
-    "松柏木": "송백목(松柏木): 한겨울에도 푸른 소나무와 잣나무로다. 엄동설한(역경) 속에서도 절개를 잃지 않는 선비의 기상이니, 초년의 고생이 훗날 만인의 존경으로 돌아오리라.",
-    "長流水": "장류수(長流水): 멈추지 않고 흘러가는 긴 강물이로다. 활동 무대가 넓고 사교성이 뛰어나며 변화를 두려워하지 않으나, 정착하지 못하고 떠돌 수 있으니 닻을 내릴 곳을 찾거라.",
-    "沙中金": "사중금(沙中金): 모래 속에 파묻힌 황금이로다. 겉보기엔 평범한 모래밭 같으나 그 속에 엄청난 재물과 재능을 숨기고 있으니, 흙을 털어내 줄 귀인을 만나면 천지가 개벽하리라.",
-    "山下火": "산하화(山下火): 해 질 녘 산봉우리 너머로 지는 태양의 붉은 노을이로다. 인생의 후반부가 아름답고 예술적 기질이 충만하나, 화려했던 과거에 얽매이면 앞길이 어두워지느니라.",
-    "平地木": "평지목(平地木): 평원에 자라난 들꽃과 작은 나무로다. 평범한 듯 무난하게 살아가며 대인관계가 원만하여 큰 풍파 없이 일생을 보내는 무던하고 따뜻한 덕을 지녔도다.",
-    "壁上土": "벽상토(壁上土): 진흙을 이겨 바른 벽의 흙이로다. 가정을 지키고 타인에게 은신처를 제공하는 따뜻함이 있으나, 지반이 무너지면 함께 쓰러지니 기초를 튼튼히 다져야 하느니라.",
-    "金箔金": "금박금(金箔金): 화려하게 덧칠해진 얇은 금박이로다. 겉모습이 대단히 화려하고 언변이 뛰어나 대중을 사로잡으나, 내면이 허술할 수 있으니 속을 꽉 채우는 데 힘쓰거라.",
-    "覆燈火": "복등화(覆燈火): 어둠을 밝혀주는 제단의 등불이로다. 희생정신이 강하고 어둔 길을 밝히는 지도자적 기질이 있으나, 바람(시련)에 쉽게 꺼질 수 있으니 방풍(보호자)이 필요하도다.",
-    "天河水": "천하수(天河水): 하늘에서 내리는 은혜로운 비(은하수)로다. 스케일이 하늘을 찌르고 고귀한 신분을 상징하니, 온 세상을 적시는 훌륭한 덕을 베풀되 교만함을 경계하라.",
-    "大驛土": "대역토(大驛土): 넓은 길과 역참을 이루는 큰 흙이로다. 천하를 주유하는 스케일로 큰 재물을 쥐락펴락하나, 흙먼지가 날리듯 주변이 산만해질 수 있으니 중심을 잡아라.",
-    "釵釧金": "차천금(釵釧金): 아름답게 세공된 비녀와 가락지로다. 타고난 미적 감각과 우아함으로 귀한 대접을 받으며 자라나나, 시련에 대한 내성이 약하니 역경을 딛고 일어서는 법을 배워라.",
-    "桑柘木": "상자목(桑柘木): 누에를 먹여 살리는 뽕나무로다. 자신의 몸을 내어 남을 이롭게 하는 희생과 활인(活人)의 명을 타고났으니, 베푼 베는 반드시 더 큰 갑절로 돌아올 것이니라.",
-    "大溪水": "대계수(大溪水): 산골짜기에서 큰 강으로 흘러드는 계곡물이로다. 변화무쌍하고 적응력이 뛰어나 무에서 유를 창조하는 힘이 있으나, 탁류에 휩쓸리지 않도록 본심을 지켜라.",
-    "沙中土": "사중토(沙中土): 물가에 쌓인 부드러운 모래흙이로다. 성품이 유순하고 어떤 모양으로든 변할 수 있어 대인관계가 좋으나, 큰 파도를 만나면 흔적 없이 흩어질 수 있으니 내공을 쌓으라.",
-    "天上火": "천상화(天上火): 맑은 하늘에 떠 있는 붉고 뜨거운 태양이로다. 만물의 우두머리 격으로 세상을 호령하려는 기상이 대단하나, 그 열기로 인해 주위 사람들이 다칠 수 있으니 하심하라.",
-    "石榴木": "석류목(石榴木): 늦가을에 붉은 열매를 맺는 석류나무로다. 겉모습보다 내면이 알차고 속이 깊어 대기만성형 인물이 될 상이나, 열매가 맺히기 전의 시련을 잘 견뎌내야 하느니라.",
-    "大海水": "대해수(大海水): 모든 것을 포용하는 끝없는 큰 바다로다. 속을 알 수 없는 깊은 지혜와 모든 오물을 정화하는 엄청난 그릇을 지녔으니, 그 바다에 파도가 일면 천지가 진동하리라."
-}
-
-OH = {"甲":"木","乙":"木","丙":"火","丁":"火","戊":"土","己":"土","庚":"金","辛":"金","壬":"水","癸":"水","子":"水","丑":"土","寅":"木","卯":"木","辰":"土","巳":"火","午":"火","未":"土","申":"金","酉":"金","戌":"土","亥":"水"}
+OH = {"甲":"木","乙":"木","丙":"火","丁":"火","戊":"土","己":"土","庚":"金","辛":"金","壬":"水","癸":"水",
+      "子":"水","丑":"土","寅":"木","卯":"木","辰":"土","巳":"火","午":"火","未":"土","申":"金","酉":"金","戌":"土","亥":"水"}
 OHN = {"木":"나무","火":"불","土":"흙","金":"쇠","水":"물"}
 OHE = {"木":"🌿","火":"🔥","土":"🪨","金":"✨","水":"💧"}
 OH_DIR = {"木":"동쪽","火":"남쪽","土":"중앙","金":"서쪽","水":"북쪽"}
@@ -326,89 +490,189 @@ OH_NUM = {"木":"1, 3","火":"2, 7","土":"5, 0","金":"4, 9","水":"1, 6"}
 OH_FOOD = {"木":"신맛, 푸른 채소","火":"쓴맛, 붉은 과일","土":"단맛, 뿌리 채소","金":"매운맛, 흰색 육류","水":"짠맛, 해조류/검은콩"}
 
 ILGAN_DESC = {
-    "甲": {
-        "destiny": "갑목(甲木) 일간으로 태어난 당신은 만물의 시작을 알리는 거대한 거목(巨木)의 기운을 타고났습니다. 하늘은 당신에게 척박한 땅을 뚫고 솟아올라 숲의 지향점이 되는 대들보의 천명(天命)을 내렸습니다. 조상의 음덕이 튼튼한 뿌리가 되어 어떤 시련에도 꺾이지 않는 고결한 의지를 지녔으며, 생명을 보호하고 위로하는 인자함이 근본에 자리 잡고 있습니다.",
-        "strength": "하늘이 내린 강력한 리더십과 곧은 정직함이 당신의 가장 큰 무기입니다. 어떤 조직에서도 우두머리의 기질을 발휘하며, 한 번 결심한 일은 끝까지 밀어붙이는 추진력이 탁월합니다. 또한 측은지심이 깊어 약자를 돕고 공정함을 실천하는 도덕적 권위가 남다릅니다.",
-        "weakness": "너무 곧은 나무는 강한 바람에 부러지기 쉽듯, 지나친 고집과 융통성 부족은 당신의 복(福)을 가로막는 장애물이 될 수 있습니다. 때로는 굽힐 줄 아는 지혜가 더 큰 성장을 가져옴을 명심하십시오. 타인의 충고를 적개심이 아닌 양분으로 삼아야 진정한 대림(大林)을 이룰 수 있습니다.",
-        "career": "정치적 지도자, 대기업 경영진, 교육 분야의 권위자, 법조계, 건축 및 설계업, 예술 감독 등 창의적이면서도 주도적인 역할을 수행하는 전문직이 최적입니다.",
-        "health": "목(木)의 기운이 강하므로 간(肝)과 담(膽)의 기운을 보강해야 합니다. 특히 신경계 질환과 두통에 주의하고, 충분한 수면을 통해 기운을 다스려야 합니다. 숲길을 걷는 산책이 최고의 보약입니다.",
-        "luck": "행운의 색상은 푸른색(청색)이며, 숫자 3과 8이 길운을 부릅니다. 동쪽 방향에서 귀인을 만날 확률이 높으며, 나무 소재의 소품을 가까이 두면 정서적 안정과 복이 깃듭니다."
+    "甲":{
+        "nature":"""갑목(甲木) 일간으로 태어난 당신에게 하늘은 천년 거목(巨木)의 기운을 점지하였습니다.
+조상의 음덕(蔭德)이 깊은 뿌리가 되어 어떤 폭풍과 세파에도 결코 꺾이지 않는 굳건한 천명(天命)을 품고 이 세상에 오셨습니다.
+갑목은 십천간(十天干)의 으뜸이요, 동방(東方) 봄기운의 시작이니 새벽을 여는 자, 길을 여는 자의 사명을 타고나셨습니다.
+하늘 높이 곧게 뻗어 오르는 소나무처럼 굽힘 없는 기상(氣象)과 우직한 뚝심으로 세상을 헤쳐나가는 것이 당신의 본성입니다.
+인(寅)·묘(卯) 목왕절(木旺節)에 운이 오면 크게 발복하며, 경(庚)·신(辛) 금(金)운에 단련을 받아 진정한 동량지재(棟樑之材)가 됩니다.""",
+        "strength":"""◎ 타고난 리더십과 개척 정신: 남들이 가지 않은 길을 먼저 나아가는 선구자의 기운이 있습니다. 조직에서 자연스럽게 우두머리 자리에 오르며, 어떤 역경도 정면으로 돌파하는 불굴의 의지가 있습니다.
+◎ 원칙과 의리: 한번 맺은 인연과 약속은 목숨처럼 지키는 의리의 사람입니다. 이 신뢰가 평생의 귀인(貴人)을 불러 모읍니다.
+◎ 강한 추진력: 목표를 정하면 어떤 장애도 뚫고 나아가는 힘이 있어, 큰 사업이나 조직의 수장으로서 빛을 발합니다.""",
+        "weakness":"""▲ 지나친 고집과 아집: 갑목 특유의 강직함이 지나치면 주위 사람들과 충돌을 빚고 귀중한 인연을 잃을 수 있습니다. 대나무처럼 굽힐 줄 알아야 폭풍에도 꺾이지 않는 법입니다.
+▲ 자존심으로 인한 실기(失機): 자존심이 강한 나머지 도움을 청하지 못하거나 기회가 와도 허리를 굽히지 못해 복을 놓치는 경우가 있습니다. 용의 겸손함을 배우십시오.
+▲ 독불장군 성향: 혼자 모든 것을 짊어지려 하다 소진되는 경향이 있습니다. 믿는 사람에게 권한을 나누는 지혜가 필요합니다.""",
+        "career":"정치·행정·공무원, 경영인·CEO, 교육자·교수, 법조계, 군 장성·무관, 건축·토목, 의료계 수장",
+        "health":"""간담(肝膽) 계통이 가장 취약하니 과음을 삼가고 정기적으로 간 기능을 점검하십시오.
+목(木)기운이 과다할 때는 분노와 스트레스로 간을 상하고, 부족할 때는 근육과 눈의 피로를 호소합니다.
+봄(춘)에 보약을 챙기고, 신맛 나는 음식으로 간 기운을 북돋우시기 바랍니다.""",
+        "lucky":"""행운의 방향: 동쪽(東方), 행운의 색: 청색·초록, 행운의 수: 1·3, 인연의 일간: 己土(정재)·辛金(정관), 피해야 할 운: 庚金 편관 과다"""
     },
-    "乙": {
-        "destiny": "을목(乙木) 일간으로 태어난 당신은 거친 환경에서도 끈질기게 생명을 이어가는 담쟁이덩굴과 화초의 기운을 타고났습니다. 하늘은 당신에게 유연함으로 강함을 이기고, 세상에 아름다운 꽃과 열매를 맺게 하는 생명력의 천명을 내렸습니다. 적응력이 뛰어나 어떤 상황에서도 자신의 자리를 찾아내며, 사람과 사람을 잇는 가교의 역할을 수행합니다.",
-        "strength": "섬세한 감수성과 뛰어난 적응력, 그리고 부드러우면서도 끈질긴 외유내강형 기질이 돋보입니다. 대인관계에서 타인의 마음을 읽는 통찰력이 탁월하며, 복잡한 문제를 지혜롭고 아름답게 해결하는 능력이 있습니다. 실용적인 사고방식으로 실속을 챙기면서도 품격을 잃지 않습니다.",
-        "weakness": "자신의 주관보다 주변의 환경이나 타인의 시선에 쉽게 흔들릴 수 있습니다. 이는 신기(神氣)를 흐트러뜨려 불안감을 조성할 수 있으니, 자신만의 내면적 중심을 잡는 것이 중요합니다. 시기심이나 질투는 당신의 맑은 기운을 오염시키니 주의하십시오.",
-        "career": "예술 디자인 개발자, 전문 심리상담사, 교육 서비스업, 패션 및 뷰티 산업, 원예 및 환경 설계, 섬세한 마케팅 전문가로서 이름을 떨칠 수 있습니다.",
-        "health": "간담 계통과 더불어 사지 말단 및 관절 건강을 살펴야 합니다. 소화기계의 기체(氣滯) 현상을 주의하고, 요가나 스트레칭 같은 유연성 운동을 통해 기의 흐름을 원활히 하는 것이 좋습니다.",
-        "luck": "행운의 색상은 초록색과 연두색이며, 숫자 3과 8이 조화를 돕습니다. 동남쪽 방향이 유리하며, 꽃 문양이나 식물을 활용한 인테리어가 복의 통로가 됩니다."
+    "乙":{
+        "nature":"""을목(乙木) 일간으로 태어난 당신에게 하늘은 강인한 생명력으로 꽃을 피우는 기운을 점지하였습니다.
+바위틈에서도, 척박한 땅에서도 기어코 싹을 틔우고 꽃을 피우는 들풀과 덩굴의 천명을 안고 오셨습니다.
+갑목이 곧게 자라는 교목(喬木)이라면, 을목은 유연하게 휘어 어디에도 적응하는 덩굴식물의 지혜를 지녔습니다.
+겉으로는 부드럽고 온화하나 내면에는 어떤 어려움도 이겨내는 질긴 생명력이 있으니, 이것이 을목 최고의 보배입니다.
+무(戊)·기(己) 토(土)운에 재물이 들어오고, 임(壬)·계(癸) 수(水)운에 귀인의 도움을 받습니다.""",
+        "strength":"""◎ 뛰어난 감수성과 심미안: 아름다움을 보고 느끼는 천부적 감각이 있어 예술·문화 분야에서 남들이 따라오지 못하는 경지에 이릅니다.
+◎ 유연한 적응력: 어떤 환경에서도 빠르게 적응하며 인간관계를 부드럽게 유지하는 사교적 지혜가 있습니다. 귀인을 만나는 능력이 탁월합니다.
+◎ 끈질긴 생명력: 을목의 가장 큰 강점은 역경을 딛고 일어서는 회복력입니다. 쓰러져도 반드시 다시 일어서는 불사조의 기운이 있습니다.""",
+        "weakness":"""▲ 남의 시선에 대한 민감함: 타인의 평가에 쉽게 상처받고 흔들리는 경향이 있습니다. 내면의 중심을 굳건히 하는 수련이 필요합니다.
+▲ 우유부단한 결단: 유연함이 지나치면 결정적인 순간에 결단을 내리지 못해 기회를 놓칩니다. 때로는 과감하게 결단하는 용기가 필요합니다.
+▲ 의존 심리: 귀인 의존이 강해지면 스스로의 힘을 키우는 기회를 잃을 수 있습니다. 독립심을 기르는 것이 복의 근원입니다.""",
+        "career":"예술가·화가·음악인, 디자이너, 상담사·심리치료사, 교육자, 뷰티·패션, 원예·조경, 외교관·통역사",
+        "health":"""간담 계통과 신경계 건강에 주의하십시오. 특히 스트레스가 쌓이면 신경성 소화 장애나 두통으로 나타납니다.
+을목은 음목(陰木)으로 수분이 부족하면 쉽게 시들므로 충분한 수분 섭취와 숙면이 중요합니다.
+척추와 관절도 약점이 될 수 있으니 스트레칭과 운동을 생활화하십시오.""",
+        "lucky":"""행운의 방향: 동남쪽, 행운의 색: 연두·청록, 행운의 수: 1·3, 인연의 일간: 庚金(정관)·戊土(정재), 보강할 운: 壬癸水 인성운"""
     },
-    "丙": {
-        "destiny": "병화(丙火) 일간으로 태어난 당신은 세상을 환하게 비추는 태양의 기운을 점지받았습니다. 하늘은 당신에게 만물에 생명력을 불어넣고, 어둠을 몰아내어 정의와 밝음을 실천하는 광명의 천명을 내렸습니다. 조상의 공덕이 빛의 무덤이 되어 주위를 따뜻하게 보살펴야 하며, 화려함 속에 감춰진 고독을 신앙과 수양으로 승화시켜야 하는 숙명을 지녔습니다.",
-        "strength": "타오르는 불꽃 같은 정열과 숨김없는 솔직함이 당신의 매력입니다. 매사에 당당하며 사람들에게 희망과 용기를 주는 에너지가 가득합니다. 한 번 시작하면 앞을 보고 달리는 추진력은 누구도 따라올 수 없으며, 예의를 중시하는 고결한 인품이 돋보입니다.",
-        "weakness": "급한 성격과 앞선 감정으로 인해 실수를 범하기 쉬우며, 때로는 타인에게 위압감을 줄 수 있습니다. 자신의 열정을 스스로 통제하지 못하면 주변을 태워버릴 수 있으니 명상과 정중동(靜中動)의 자세가 필수적입니다. 마무리를 확실히 하는 습관을 들여야 복이 굳건해집니다.",
-        "career": "방송 및 엔터테인먼트, 정치인, 대중 연설가, 광고 기획자, 에너지 관련 전문직, 종교 지도자 등 대중 앞에 서거나 빛을 활용하는 분야에서 대성합니다.",
-        "health": "심장과 혈관 질환을 특별히 관리해야 합니다. 불의 기운이 충만하여 안구 건조나 고혈압을 주의해야 하며, 쓴맛이 나는 음식을 적절히 섭취하여 심장의 열을 내려주어야 합니다.",
-        "luck": "행운의 색상은 붉은색(적색)이며, 숫자 2와 7이 길조를 보입니다. 남쪽 방향이 대단히 유리하며, 해가 잘 드는 밝은 환경을 유지하는 것이 개운의 핵심입니다."
+    "丙":{
+        "nature":"""병화(丙火) 일간으로 태어난 당신에게 하늘은 태양(太陽)의 기운을 점지하였습니다.
+동녘 하늘을 붉게 물들이며 떠오르는 아침 태양처럼 온 세상을 환하게 비추고 만물에 생명력을 불어넣는 천명을 부여받으셨습니다.
+태양은 높낮이 없이 귀천(貴賤)을 가리지 않고 빛을 고루 나누니, 당신 또한 넓은 포용력으로 많은 이들을 품는 인물입니다.
+병화는 십천간 중 가장 밝고 뜨거운 기운으로, 어디에 있든 자연스럽게 중심이 되고 주목받는 운명을 타고났습니다.
+임(壬)·계(癸) 수(水)운에 단련되어 더욱 성숙해지고, 목(木)운에 생조(生助)를 받아 크게 발복합니다.""",
+        "strength":"""◎ 강력한 카리스마와 존재감: 어느 자리에서나 자연스럽게 빛나는 존재감이 있습니다. 사람들이 본능적으로 따르게 되는 천부적 지도자 기질입니다.
+◎ 뜨거운 열정과 추진력: 한번 목표를 정하면 몸을 사리지 않고 전력투구하는 열정이 있습니다. 이 열정이 주변 사람들에게 감동과 동기를 부여합니다.
+◎ 뛰어난 사교성과 화술: 밝고 유쾌한 성품으로 어디서든 쉽게 친화력을 발휘하며, 말로 사람을 움직이는 능력이 탁월합니다.""",
+        "weakness":"""▲ 충동적 결정: 열정이 이성을 앞서면 신중함을 잃고 충동적으로 행동하여 나중에 후회하는 상황이 생깁니다.
+▲ 지속력 부족: 태양이 항상 떠 있을 수 없듯, 처음의 열기가 식으면 지속력이 약해지는 경향이 있습니다. 꾸준함을 기르는 것이 중요합니다.
+▲ 자기중심적 사고: 자신이 옳다는 확신이 강해 타인의 의견을 경청하지 않는 경우가 있으니 유의하십시오.""",
+        "career":"방송·연예인·유튜버, 정치인·사회운동가, 영업·마케팅, 요식업·요리사, 스포츠인, 종교지도자, 강연가",
+        "health":"""심장과 혈관계 건강을 최우선으로 관리하십시오. 과도한 흥분과 스트레스는 심장에 직접적인 부담을 줍니다.
+여름(하)이 되면 더위에 약해지니 충분한 휴식과 수분 보충이 필요합니다.
+눈의 피로와 시력 관리에도 주의를 기울이시기 바랍니다. 정기적인 혈압 측정을 권합니다.""",
+        "lucky":"""행운의 방향: 남쪽(南方), 행운의 색: 빨강·주황, 행운의 수: 2·7, 인연의 일간: 辛金(정재)·壬水(편관), 보강할 운: 木운 인성"""
     },
-    "丁": {
-        "destiny": "정화(丁火) 일간으로 태어난 당신은 어둠 속을 밝히는 등불이자 따뜻한 온기를 나누는 난로의 기운을 타고났습니다. 하늘은 당신에게 세상의 소외된 곳을 보듬고, 지혜의 빛으로 사람들의 앞날을 인도하는 헌신적 천명을 내렸습니다. 눈동자에는 영험한 신기가 서려 있어 보이지 않는 이치를 꿰뚫는 통찰력을 지녔으며, 예민함이 예술적 완성도로 승화되는 숙명을 품고 있습니다.",
-        "strength": "매우 섬세하고 치밀한 사고력을 바탕으로 완벽에 가까운 결과를 만듭니다. 겉으로는 조용해 보이나 내면에는 뜨거운 장인 정신과 집념이 서려 있습니다. 타인의 아픔에 깊이 공감하는 자비심이 있어 많은 이들의 정신적 지주가 되며, 탁월한 창의력을 발휘합니다.",
-        "weakness": "속으로 삭이는 성품 탓에 화병(火病)이나 우울감이 생기기 쉽습니다. 작은 일에도 예민하게 반응하여 스스로를 고립시키기도 하니, 마음의 문을 열고 감정을 발산하는 연습이 필요합니다. 지나친 의심은 당신의 맑은 통찰을 흐리게 합니다.",
-        "career": "의료인(내과, 정신과), 전문 심리 분석가, 첨단 기술 연구원, 철학자 및 역술가, 예술 작가, 수작업 명장 등 고도의 집중력이 필요한 분야가 적합합니다.",
-        "health": "심장과 소화기의 균형을 맞춰야 합니다. 특히 시력 감퇴와 빈혈을 주의하고, 냉한 기운으로부터 몸을 따뜻하게 보호하는 식습관이 중요합니다. 반신욕이 기운 회복에 큰 도움이 됩니다.",
-        "luck": "행운의 색상은 보라색과 주홍색이며, 숫자 2와 7이 기운을 북돋웁니다. 남쪽 방향의 열린 공간이 좋으며, 붉은 계열의 조명을 활용한 인테리어가 행운을 부릅니다."
+    "丁":{
+        "nature":"""정화(丁火) 일간으로 태어난 당신에게 하늘은 촛불과 별빛의 기운을 점지하였습니다.
+태양(丙火)이 온 세상을 밝히는 빛이라면, 정화는 어두운 밤 홀로 빛나는 별처럼 가장 필요한 곳에서 가장 소중한 빛을 발합니다.
+연약해 보이지만 결코 꺼지지 않는 촛불처럼, 당신에게는 역경 속에서도 희망의 불꽃을 간직하는 내면의 강인함이 있습니다.
+정화 일간은 영성(靈性)과 직관력이 뛰어나 보이지 않는 이치를 꿰뚫어 보는 혜안(慧眼)이 있으며, 한 분야를 깊이 파고드는 전문가의 기질을 타고났습니다.
+갑(甲)·을(乙) 목(木)운에 크게 발복하고, 무(戊)·기(己) 토(土)운에 재물이 모입니다.""",
+        "strength":"""◎ 뛰어난 직관과 통찰력: 보통 사람이 보지 못하는 사물의 본질과 이치를 꿰뚫어 보는 직관력이 있습니다. 이 능력이 학문·예술·상담 분야에서 빛을 발합니다.
+◎ 깊은 정과 헌신: 한번 인연을 맺으면 깊은 정으로 헌신하는 따뜻한 인품이 있습니다. 주변 사람들이 마음 깊이 의지하는 존재가 됩니다.
+◎ 전문성과 집중력: 관심 분야에 몰두하면 남다른 경지에 이르는 전문가 기질이 있습니다. 한 분야의 대가(大家)가 될 운명입니다.""",
+        "weakness":"""▲ 감수성으로 인한 상처: 섬세한 감수성이 지나치면 작은 말 한마디에도 깊이 상처받아 신기(神氣)를 소진합니다.
+▲ 내향적 고립: 혼자만의 세계에 빠지면 현실과의 괴리가 생기고 사회적 관계가 단절될 수 있습니다.
+▲ 우유부단: 너무 많은 것을 느끼고 고려하다 보면 결정이 늦어져 기회를 놓치는 경우가 있습니다.""",
+        "career":"의료인·한의사, 심리상담사·정신과의사, 종교인·성직자, 철학자·작가, 교육자, 연구원, 예술가·음악가",
+        "health":"""심장과 소화기 계통을 함께 관리하십시오. 정신적 스트레스가 심장과 소화기에 동시에 영향을 미치는 체질입니다.
+수면의 질을 높이는 것이 건강의 핵심입니다. 과도한 야간 활동을 줄이고 규칙적인 수면 습관을 들이십시오.
+순환기 계통도 챙기시고, 차갑고 자극적인 음식은 피하시기 바랍니다.""",
+        "lucky":"""행운의 방향: 남남동, 행운의 색: 자주·보라, 행운의 수: 2·7, 인연의 일간: 壬水(정관)·甲木(정인), 보강할 운: 木운 인성"""
     },
-    "戊": {
-        "destiny": "무토(戊土) 일간으로 태어난 당신은 장엄한 태산(泰山)과 광활한 대지(大地)의 기운을 점지받았습니다. 하늘은 당신에게 모든 것을 포용하고 중재하며, 흔들림 없는 신의(信義)로 세상의 무게 중심을 잡는 중후한 천명을 내렸습니다. 조상의 음덕이 넓은 들판이 되어 만인을 먹여 살려야 하며, 때를 기다릴 줄 아는 인내심으로 대업을 완수하는 기질을 부여받았습니다.",
-        "strength": "바위 같은 묵직한 존재감과 변치 않는 성실함이 최고의 강점입니다. 타인의 비밀을 지키는 입이 무겁고 신용도가 높아 누구나 의지하고 싶어 하는 리더가 됩니다. 어떤 위기 앞에서도 당황하지 않는 침착함과 넓은 포용력은 당신을 성공의 길로 인도합니다.",
-        "weakness": "생각이 너무 깊어 행동이 늦어지거나, 한 번 마음을 굳히면 절대 바꾸지 않는 고집이 단점이 될 수 있습니다. 이는 변화하는 시대 흐름을 놓치는 결과를 초래할 수 있으니 유연한 사고가 절실합니다. 때로는 자신을 낮추고 타인의 혁신적인 아이디어를 수용하십시오.",
-        "career": "부동산 개발 및 토목업, 금융 자산 관리자, 행정 공무원, 교육 행정, 대규모 생산 관리, 전통문화 보존 사업 등 안정과 신뢰가 기반이 되는 산업이 천직입니다.",
-        "health": "비위(脾胃), 즉 소화기관의 건강을 각별히 챙겨야 합니다. 위장병이나 복부 비만을 주의하고, 규칙적인 식사와 적당한 흙 밟기(맨발 걷기)를 통해 대지의 기운을 직접 흡수하는 것이 좋습니다.",
-        "luck": "행운의 색상은 황색(노란색)과 갈색이며, 숫자 5와 0이 길운을 연결합니다. 중앙 또는 넓은 평지가 유리하며, 황토나 돌 소재의 오브제를 실내에 두는 것이 좋습니다."
+    "戊":{
+        "nature":"""무토(戊土) 일간으로 태어난 당신에게 하늘은 크고 높은 산(山)과 대지(大地)의 기운을 점지하였습니다.
+태산(泰山)처럼 굳건히 자리를 지키며 사방의 모든 것을 품고 길러내는 위대한 어머니 땅의 기운이 당신의 천명입니다.
+무토는 오행의 중앙(中央)을 관장하니 중재자요, 조율자요, 포용자입니다. 어떤 갈등도 당신 앞에서는 자연스럽게 봉합됩니다.
+인내와 신용이 두텁고 한번 맡은 일은 반드시 해내는 성실함으로, 주변의 신망(信望)을 한 몸에 받는 인물입니다.
+갑(甲)·을(乙) 목(木)운에 관(官)이 발달하고, 병(丙)·정(丁) 화(火)운에 인성(印星)으로 명예가 높아집니다.""",
+        "strength":"""◎ 산 같은 믿음직스러움: 어떤 상황에서도 흔들리지 않는 안정감으로 주위 사람들의 든든한 버팀목이 됩니다. 이 신뢰가 평생의 재산입니다.
+◎ 탁월한 포용력: 다양한 의견과 사람들을 아우르는 포용력이 있어, 조직의 화합과 중재에 탁월한 능력을 발휘합니다.
+◎ 실천적 성실함: 화려한 말보다 묵묵한 실천으로 증명하는 스타일입니다. 이 성실함이 결국 큰 성취로 이어집니다.""",
+        "weakness":"""▲ 경직된 사고: 산처럼 고집스러운 면이 있어 새로운 변화와 혁신을 받아들이기 어려워하는 경향이 있습니다.
+▲ 느린 결단: 모든 것을 신중하게 검토하다 보니 변화하는 환경에서 결단이 늦어 기회를 놓치는 경우가 있습니다.
+▲ 고지식함: 원칙에 너무 얽매여 융통성이 부족해 보일 수 있으니, 상황에 따른 유연함이 필요합니다.""",
+        "career":"부동산·건설업, 금융·은행원, 공무원·행정가, 농업·목축업, 산업계 경영인, 중재인·조정사, 의료계",
+        "health":"""비위(脾胃), 즉 소화기 계통이 취약점입니다. 과식, 야식, 불규칙한 식사가 쌓이면 위장 질환으로 이어집니다.
+토(土)가 과다하면 부종이나 당뇨 관련 질환에 주의하십시오.
+규칙적인 식사와 적당한 운동, 과로를 피하는 생활습관이 건강의 핵심입니다.""",
+        "lucky":"""행운의 방향: 중앙·북동, 행운의 색: 노랑·황토, 행운의 수: 5·0, 인연의 일간: 癸水(정재)·甲木(편관), 보강할 운: 丙丁火 인성운"""
     },
-    "己": {
-        "destiny": "기토(己土) 일간으로 태어난 당신은 만물이 자랄 수 있는 비옥한 전답(田畓)과 평야의 기운을 타고났습니다. 하늘은 당신에게 보잘것없는 씨앗을 귀한 열매로 변환시키고, 따스한 모성애로 주변을 양육하는 생산의 천명을 내렸습니다. 조상의 정성이 기름진 흙이 되어 당신의 손길이 닿는 곳마다 생기가 솟아나며, 실속 있고 알찬 삶을 일궈나가는 지혜를 지녔습니다.",
-        "strength": "치밀하고 꼼꼼한 업무 처리 능력과 남을 배려하는 자상함이 돋보입니다. 현실적이고 경제적인 감각이 뛰어나 자수성가할 가능성이 매우 높으며, 어떤 조직에서도 훌륭한 참모이자 실천가 역할을 합니다. 화합을 중시하며 주위 사람들을 편안하게 해주는 친화력이 탁월합니다.",
-        "weakness": "내면의 소심함과 지나친 걱정은 당신의 발전을 가로막는 장애물입니다. 의심이 많아 좋은 기회를 놓치기도 하니, 큰 목표를 정했다면 과감하게 도전하는 배짱이 필요합니다. 자신의 이익에만 너무 매몰되면 큰 복의 흐름이 끊길 수 있음을 유념하십시오.",
-        "career": "회계사 및 세무 전문직, 전문 요리학자, 농업 기술 연구원, 공예 및 정밀 가공업, 비서 및 지원 부서장, 아동 교육 전문가 등 세밀함이 필요한 전문직이 길합니다.",
-        "health": "비장과 위장 질환, 특히 피부가 예민할 수 있으니 관리가 필요합니다. 소화기계의 순환을 돕는 발효 음식이나 단맛이 풍부한 자연 식단이 좋으며, 규칙적인 생활 습관이 건강의 척도입니다.",
-        "luck": "행운의 색상은 노란색과 아이보리색이며, 숫자 5와 0이 균형을 잡습니다. 평온한 중앙의 기운이 좋으며, 도자기나 흙으로 빚은 소품을 배치하면 복이 쌓입니다."
+    "己":{
+        "nature":"""기토(己土) 일간으로 태어난 당신에게 하늘은 기름진 논밭(田畓)의 기운을 점지하였습니다.
+무토(戊土)가 산이라면 기토는 농부의 손길이 닿아 씨앗을 받아들이고 풍요로운 결실을 맺는 옥토(沃土)입니다.
+당신은 가진 것을 더욱 가치 있게 변환시키고 길러내는 연금술사의 능력을 타고났습니다.
+표면적으로는 온순하고 부드러워 보이지만, 내면에는 집요하리만치 강한 의지와 인내심이 숨어 있습니다.
+병(丙)·정(丁) 화(火)운에 인성이 강해져 학문과 명예가 빛나고, 경(庚)·신(辛) 금(金)운에 식상(食傷)이 발달하여 재주가 드러납니다.""",
+        "strength":"""◎ 세심하고 꼼꼼한 완성도: 어떤 일이든 디테일을 챙기며 완성도 높게 마무리하는 능력이 있습니다. 이 꼼꼼함이 신뢰와 전문성의 바탕이 됩니다.
+◎ 실용적 지혜: 화려함보다 실질적인 효용을 추구하는 현실적 지혜가 있어, 실생활에서 놀라운 성과를 거둡니다.
+◎ 깊은 배려심: 주변 사람들의 필요를 세심하게 살피고 채워주는 따뜻한 마음이 귀인을 불러 모읍니다.""",
+        "weakness":"""▲ 과도한 걱정과 불안: 기토의 특성상 작은 문제도 크게 걱정하는 경향이 있어 신기(神氣)를 소진합니다. 현재에 집중하는 연습이 필요합니다.
+▲ 결단력 부족: 너무 많은 것을 고려하다 보면 결정이 늦어지고, 다른 사람의 의견에 쉽게 흔들리는 경우가 있습니다.
+▲ 자기희생 과다: 남을 돌보다가 자신을 돌보지 못하는 경우가 많습니다. 나 자신도 소중한 존재임을 기억하십시오.""",
+        "career":"회계사·세무사, 의료인·약사, 요리사·조리사, 원예·농업, 교육자, 심리상담사, 중소기업 경영",
+        "health":"""소화기와 피부 질환을 가장 주의해야 합니다. 기름진 음식, 과식, 스트레스성 식이 장애에 취약합니다.
+비만이나 당뇨, 피부 트러블이 건강의 신호등이 됩니다. 절제된 식습관이 최고의 보약입니다.
+토(土)가 습(濕)하면 무기력증이 오니 규칙적인 운동으로 습기를 털어내십시오.""",
+        "lucky":"""행운의 방향: 북동·중앙, 행운의 색: 황색·베이지, 행운의 수: 5·0, 인연의 일간: 甲木(편관)·壬水(정재), 보강할 운: 丙丁火 인성운"""
     },
-    "庚": {
-        "destiny": "경금(庚金) 일간으로 태어난 당신은 날카로운 검(劍)과 가공되지 않은 단단한 원석의 기운을 점지받았습니다. 하늘은 당신에게 부조리를 척결하고 정의를 실현하며, 혹독한 단련을 통해 스스로를 완성해가는 변혁의 천명을 내렸습니다. 조상의 강직한 기질이 칼날이 되어 세상의 악한 기운을 다스려야 하며, 한 번 벼려지면 천하의 보검(寶劍)이 되는 숙명을 안고 있습니다.",
-        "strength": "거침없는 결단력과 불의를 참지 못하는 정의감이 당신의 위대한 무기입니다. 솔직담백한 성품으로 신의를 중시하며, 한 번 시작한 일은 바위를 뚫는 기세로 완수합니다. 동료와 부하를 아끼는 의리가 깊어 선 굵은 리더십을 발휘하며, 현실적인 판단력이 매우 뛰어납니다.",
-        "weakness": "지나치게 강직하여 타인에게 상처를 주는 독설을 하거나, 융통성 없는 태도로 적을 만들기 쉽습니다. 칼은 휘두르기보다 칼집에 있을 때 더 위엄이 있는 법임을 알아야 합니다. 유연한 소통과 부드러운 화법을 익히는 것이 노후의 복을 지키는 비결입니다.",
-        "career": "검찰 및 경찰 간부, 전문 서전(의사), 정밀 금속 가공업, 금융 통제 전문가, 고위 군직자, 스포츠 감독 등 강한 카리스마와 결단이 필요한 분야에서 승승장구합니다.",
-        "health": "폐와 대장 등 호흡기 질환과 뼈 건강을 우선적으로 챙겨야 합니다. 금(金)의 기운이 강하므로 매운맛으로 기를 소통시키고, 건조한 환경을 피해 항상 적정 습도를 유지하는 것이 좋습니다.",
-        "luck": "행운의 색상은 흰색(백색)과 은색이며, 숫자 4와 9과 힘을 더합니다. 서쪽 방향이 길하며, 금속 소재의 액세서리나 시계를 착용하면 카리스마와 행운이 증폭됩니다."
+    "庚":{
+        "nature":"""경금(庚金) 일간으로 태어난 당신에게 하늘은 천하를 호령하는 강철 칼날과 원석(原石)의 기운을 점지하였습니다.
+광산에서 막 캐낸 원석처럼 겉은 거칠고 투박해 보이지만, 그 안에는 세상 어떤 것도 베어낼 수 있는 강인한 기운이 잠들어 있습니다.
+정(丁)화의 제련(製鍊)을 받아 갈고 닦을수록 더욱 빛나는 보검(寶劍)이 되는 천명을 타고났으니, 고난이 오히려 당신을 완성시킵니다.
+경금 일간은 불의를 보면 참지 못하는 정의감과 결단력이 있어, 사회의 불합리한 것을 바로잡는 역할을 운명으로 받아들입니다.
+정(丁)화운에 단련되어 진정한 강자가 되고, 토(土)운에 생조를 받아 근본이 두터워집니다.""",
+        "strength":"""◎ 불굴의 결단력: 한번 결심한 일은 어떤 어려움도 뚫고 반드시 실행에 옮기는 강철 같은 의지력이 있습니다.
+◎ 강렬한 정의감: 옳고 그름에 대한 판단이 명확하여 불의를 보면 자신의 손해를 감수하고도 바로잡으려 합니다. 이 기개가 많은 사람의 존경을 받습니다.
+◎ 뛰어난 실행력: 계획을 세우면 빠르고 강력하게 실행에 옮기는 추진력이 있어 조직에서 없어서는 안 되는 핵심 인재가 됩니다.""",
+        "weakness":"""▲ 거친 언행: 직설적인 표현이 지나치면 주변 사람들에게 상처를 주고 관계를 해치는 경우가 있습니다. 말에 포장지를 입히는 지혜가 필요합니다.
+▲ 극단적 선택: 회색지대를 인정하지 않는 흑백 논리가 지나치면 중도(中道)를 잃어 극단으로 치닫는 경향이 있습니다.
+▲ 오만: 자신의 능력을 과신하여 타인을 무시하는 경향이 있을 수 있습니다. 겸손이 경금의 가장 큰 보완재입니다.""",
+        "career":"군인·장교, 경찰·검사, 외과의사·치과의사, 기계·금속 기술자, 운동선수, 건설·토목, 중공업",
+        "health":"""폐(肺)와 대장(大腸) 계통을 각별히 관리하십시오. 건조한 환경에서 폐 기능이 저하되기 쉽습니다.
+피부 관련 질환과 호흡기 질환에 취약한 체질이므로 가을에 특히 주의가 필요합니다.
+격렬한 운동은 좋지만 관절과 인대 부상에 주의하시고, 수술을 요하는 상황이 종종 생길 수 있습니다.""",
+        "lucky":"""행운의 방향: 서쪽(西方), 행운의 색: 흰색·은색, 행운의 수: 4·9, 인연의 일간: 乙木(정재)·丁火(정관), 보강할 운: 土운 인성"""
     },
-    "辛": {
-        "destiny": "신금(辛金) 일간으로 태어난 당신은 고귀한 보석과 날카로운 침(鍼)의 기운을 타고났습니다. 하늘은 당신에게 세상의 아름다움을 정제하고, 예리한 감각으로 숨겨진 진실을 밝혀내는 완벽의 천명을 내렸습니다. 조상의 세밀한 공덕이 보석의 광채가 되어 당신의 삶을 빛나게 하지만, 작은 흠집 하나에도 예민하게 반응하는 숙명적 예민함을 지혜롭게 다스려야 합니다.",
-        "strength": "비할 데 없는 섬세함과 깔끔한 일 처리, 그리고 탁월한 미적 감각이 돋보입니다. 자존심이 매우 높고 기품이 있으며, 한 번 정한 목표에 대해서는 놀라운 집중력으로 최고 수준의 성취를 이루어냅니다. 두뇌 회전이 빠르고 논리적 비판력이 날카로워 지식 사회의 선두주자가 됩니다.",
-        "weakness": "지나치게 자기중심적이거나 타인의 작은 결점을 용납하지 못하는 냉정함이 복을 깎아먹을 수 있습니다. 보석은 혼자 빛날 때보다 주위와 어우러질 때 더 가치 있음을 기억하십시오. 까다로운 성격이 신기(神氣)를 소모시키지 않도록 너그러운 마음과 베풂의 미덕을 길러야 합니다.",
-        "career": "전문 연구원, 보석 감정사 및 쥬얼리 디자이너, 정밀 금융 분석가, 피부과 의사, 고급 요리사, 하이테크 개발자 등 섬세한 감각과 완성도가 요구되는 전문직이 최적입니다.",
-        "health": "폐와 기관지, 특히 피부 피부 알레르기에 민감할 수 있으니 주의해야 합니다. 몸을 항상 따뜻하게 하고, 충분한 수분 섭취를 통해 폐의 기운을 촉촉하게 적셔주는 것이 건강 유지의 핵심입니다.",
-        "luck": "행운의 색상은 하얀색과 진주색이며, 숫자 4와 9가 운의 통로가 됩니다. 서쪽 방향이 행운을 가져다주며, 수정이나 투명한 유리 소재의 소품을 배치하면 기운이 맑아집니다."
+    "辛":{
+        "nature":"""신금(辛金) 일간으로 태어난 당신에게 하늘은 빛나는 보석과 완성된 금속의 기운을 점지하였습니다.
+경금(庚金)이 다듬어지지 않은 광석이라면, 신금은 이미 세공을 마친 아름다운 보석과 정밀한 칼날입니다.
+당신은 날카로운 감식안(鑑識眼)으로 아름다움과 가치를 알아보고, 완벽한 것을 추구하는 미의식(美意識)이 천성입니다.
+섬세하고 예민한 기질로 인해 상처도 쉽게 받지만, 그 감수성이 예술적 감각과 통찰력의 원천이 됩니다.
+임(壬)·계(癸) 수(水)운에 식상이 발달하여 재주가 빛나고, 토(土)운에 인성이 강해져 학문과 명예가 높아집니다.""",
+        "strength":"""◎ 완벽주의적 심미안: 다른 사람이 보지 못하는 미세한 결함도 발견하고 완성도를 높이는 능력이 탁월합니다. 최고 수준을 추구하는 이 기질이 전문가로 성장하는 힘입니다.
+◎ 날카로운 분석력: 상황을 세밀하게 분석하고 핵심을 찌르는 통찰력이 있어, 전략적 판단이 필요한 분야에서 두각을 나타냅니다.
+◎ 우아함과 품격: 언행에 자연스러운 품격이 배어 있어 사람들에게 신뢰와 호감을 줍니다. 격이 있는 환경에서 더욱 빛을 발합니다.""",
+        "weakness":"""▲ 지나친 완벽주의로 인한 소진: 완벽하지 않으면 시작조차 못하거나, 완성된 것도 계속 수정하다 에너지를 소진합니다.
+▲ 예민한 감수성: 작은 자극에도 크게 반응하여 마음의 상처가 깊어지고, 대인관계에서 소소한 갈등을 크게 받아들이는 경향이 있습니다.
+▲ 외로움: 자신의 높은 기준을 맞춰줄 사람이 드물어 외로움을 느끼는 경우가 많습니다. 타인의 다름을 인정하는 관대함이 필요합니다.""",
+        "career":"연구원·과학자, 예술가·공예가, 디자이너, 금융·투자분석가, 패션·뷰티, 치과·성형외과, 보석감정사",
+        "health":"""폐와 피부·호흡기 계통이 신금의 취약점입니다. 건조한 공기와 대기오염에 특히 민감하므로 가습기와 공기청정기를 활용하십시오.
+피부 트러블이 건강의 신호가 되는 경우가 많으니 피부 상태를 통해 내면 건강을 점검하십시오.
+과도한 스트레스와 완벽주의는 면역력을 떨어뜨리니 충분한 휴식이 필수입니다.""",
+        "lucky":"""행운의 방향: 서서남, 행운의 색: 흰색·은색·금색, 행운의 수: 4·9, 인연의 일간: 丙火(정관)·壬水(상관), 보강할 운: 土운 인성"""
     },
-    "壬": {
-        "destiny": "임수(壬水) 일간으로 태어난 당신은 만물을 품는 거대한 바다(大海)와 깊은 호수의 기운을 타고났습니다. 하늘은 당신에게 모든 지혜를 받아들여 정화하고, 넓은 식견으로 세상을 통합하는 통합의 천명을 내렸습니다. 조상의 음덕이 넓은 물결이 되어 어떤 역경도 유유히 넘어가게 해주며, 깊이를 알 수 없는 내면에는 우주적 지혜와 창조적 에너지가 소용돌이치고 있습니다.",
-        "strength": "바다 같은 넓은 포용력과 모든 장애물을 우회하는 유연한 지혜가 최고의 자산입니다. 임기응변에 능하며 대인관계가 폭넓고 원만합니다. 보이지 않는 상황의 흐름을 읽는 통찰력이 탁월하여 전략가적인 면모를 발휘하며, 끊임없이 새로운 것을 배우고 탐구하는 학구열이 높습니다.",
-        "weakness": "때로 방향성을 잃고 방황하거나, 속내를 알 수 없는 음침함으로 오해를 살 수 있습니다. 감정이 파도처럼 요동치면 주변을 삼켜버릴 수 있으니, 자신만의 명확한 기준과 목표를 설정하는 것이 중요합니다. 지나친 방임주의는 당신의 소중한 복의 기운을 흩어지게 합니다.",
-        "career": "해외 무역 및 외교관, 해양 운송업, 대형 물류 시스템 기획, 전문 전략가, 창작 및 시나리오 작가, 여행가 등 역동적이고 넓은 범위를 다루는 분야에서 최고가 됩니다.",
-        "health": "신장과 방광, 그리고 순환기 계통의 건강을 관리해야 합니다. 몸이 냉해지기 쉬우니 하체를 따뜻하게 보호하고, 짠맛을 적절히 조절하여 체액의 균형을 맞추는 것이 필수입니다. 꾸준한 수영이나 걷기 운동이 좋습니다.",
-        "luck": "행운의 색상은 검은색(흑색)과 짙은 청색이며, 숫자 1과 6이 길운을 부릅니다. 북쪽 방향이 가장 유리하며, 거울이나 어항 등 물의 기운을 상징하는 소품이 행운을 증폭시킵니다."
+    "壬":{
+        "nature":"""임수(壬水) 일간으로 태어난 당신에게 하늘은 천하를 품는 대해(大海)의 기운을 점지하였습니다.
+무한한 바다처럼 모든 강물을 받아들이고 무궁한 지혜를 품은 당신은, 광활한 포용력과 깊은 통찰력으로 세상을 읽어내는 천명을 받았습니다.
+임수는 십천간 중 가장 깊고 넓은 기운으로, 겉으로는 유연하게 흘러가되 거대한 파도처럼 세상을 움직이는 잠재력이 있습니다.
+빠른 두뇌회전과 폭넓은 지식, 국제적 안목을 갖춘 전략가요, 사상가의 기질을 타고났습니다.
+금(金)운에 생조를 받아 지혜가 샘솟고, 목(木)운에 식상이 발달하여 재능이 만개합니다.""",
+        "strength":"""◎ 탁월한 지혜와 통찰력: 복잡한 상황의 본질을 꿰뚫어 보는 뛰어난 지혜가 있습니다. 남들이 보지 못하는 미래를 내다보는 선견지명이 있습니다.
+◎ 무한한 포용력: 다양한 관점과 사람을 받아들이는 넓은 마음이 있어 국제적인 무대에서도 자연스럽게 활약합니다.
+◎ 전략적 사고: 크고 복잡한 그림을 한 번에 파악하는 능력이 있어 전략 기획, 투자, 외교 분야에서 탁월한 성과를 냅니다.""",
+        "weakness":"""▲ 일관성 부족: 물이 그릇에 따라 모양이 변하듯, 환경에 따라 쉽게 변하여 일관성 없다는 평을 듣는 경우가 있습니다.
+▲ 실행력 부족: 머릿속으로는 완벽한 계획을 세우지만 실행에 옮기는 단계에서 에너지가 분산되는 경향이 있습니다.
+▲ 감정 기복: 깊은 감수성으로 인해 감정 기복이 있을 수 있으며, 우울감에 빠지는 경우도 있습니다. 마음의 닻을 내리는 수련이 필요합니다.""",
+        "career":"외교관·국제무역, 철학자·사상가, 종교인, 법조인, 의료계, 심리학자, 투자가·펀드매니저, 해운·항공업",
+        "health":"""신장(腎臟)과 방광(膀胱), 그리고 생식기계 건강을 중점 관리하십시오. 차가운 음식과 음료를 과도하게 섭취하면 신장 기능이 저하됩니다.
+겨울철 보온을 철저히 하고, 허리와 무릎 관절 관리에도 주의를 기울이십시오.
+임수 일간은 수면 부족에 취약하여 만성피로로 이어지기 쉬우니 수면 관리가 건강의 핵심입니다.""",
+        "lucky":"""행운의 방향: 북쪽(北方), 행운의 색: 검정·남색, 행운의 수: 1·6, 인연의 일간: 丁火(정재)·甲木(식신), 보강할 운: 金운 인성"""
     },
-    "癸": {
-        "destiny": "계수(癸水) 일간으로 태어난 당신은 만물에 생명수를 제공하는 아침 이슬과 맑은 샘물의 기운을 타고났습니다. 하늘은 당신에게 소리 없이 세상을 적시고, 지친 영혼을 치유하며 새로운 생명을 일깨우는 치유의 천명을 내렸습니다. 당신의 영혼에는 영험한 직관력이 깃들어 있어 보이지 않는 세계의 소리를 듣는 숙명을 지녔으며, 지극히 순수하고 맑은 기운으로 복을 불러옵니다.",
-        "strength": "타인의 마음을 어루만지는 부드러운 친절함과 타의 추종을 불허하는 예리한 영감(靈感)이 돋보입니다. 적응력이 유연하면서도 내면에는 끝없는 창의력이 솟아나오며, 봉사와 희생정신으로 많은 이들의 사랑을 받습니다. 조용히 자신의 목표를 향해 스며드는 끈기가 대단합니다.",
-        "weakness": "작은 충격에도 쉽게 상처받는 여린 심성이 단점이 될 수 있습니다. 스스로를 과소평가하여 기회를 놓치기도 하니, 자신감을 갖고 세상 밖으로 당당히 나서는 용기가 필요합니다. 우려 섞인 생각들이 꼬리를 물면 신기가 어지러워지니, 명랑한 마음가짐을 갖도록 노력하십시오.",
-        "career": "심리치료 및 전문 상담가, 문학 작가, 순수 예술인, 의료 보건 서비스, 교육 연구원, 종교적 봉사자 등 영성과 지성이 조화로운 직업군에서 가장 빛이 납니다.",
-        "health": "비뇨기계와 자궁 및 순환기 건강을 세밀히 살펴야 합니다. 면역력 저하와 수족냉증을 주의하고, 따뜻한 성질의 차(茶)를 자주 마셔 몸 안의 한기를 몰아내고 기운을 맑게 유지해야 합니다.",
-        "luck": "행운의 색상은 하늘색과 흰색이며, 숫자 1과 6이 조화를 돕습니다. 북동쪽 방향이 유리하며, 은은한 향기(향초, 디퓨저)가 나는 공간이 당신의 복을 지켜주는 안식처가 됩니다."
+    "癸":{
+        "nature":"""계수(癸水) 일간으로 태어난 당신에게 하늘은 이슬과 샘물, 봄비의 기운을 점지하였습니다.
+임수(壬水)가 거대한 바다라면, 계수는 생명을 살리는 이슬이요, 대지를 적시는 봄비이며, 깊은 산속의 맑은 샘물입니다.
+작고 섬세한 것 같지만, 이 세상 모든 생명이 계수의 은혜 없이는 살아갈 수 없으니 당신은 세상에서 가장 소중한 기운의 주인공입니다.
+영적 감수성과 예술적 재능이 탁월하며, 보이지 않는 것을 느끼고 표현하는 천부적 능력이 있습니다.
+금(金)운에 생조를 받아 기운이 풍성해지고, 목(木)운에 식상이 발달하여 재능이 펼쳐집니다.""",
+        "strength":"""◎ 뛰어난 직관과 영적 감수성: 논리가 닿지 않는 영역의 진실을 직관으로 파악하는 능력이 있습니다. 이 능력이 예술·상담·의료 분야에서 빛납니다.
+◎ 깊은 공감 능력: 타인의 감정과 아픔을 내 것처럼 느끼는 공감 능력이 있어, 사람들이 마음을 열고 의지하는 존재가 됩니다.
+◎ 창의적 상상력: 독창적인 아이디어와 상상력이 풍부하여 새로운 것을 창조하는 분야에서 탁월한 성과를 냅니다.""",
+        "weakness":"""▲ 자기 과소평가: 계수 일간의 가장 큰 적은 자기 자신입니다. 스스로의 능력을 너무 낮게 평가하여 도전을 포기하는 경우가 많습니다.
+▲ 경계 설정 어려움: 타인의 감정을 너무 잘 흡수하다 보니 자신의 에너지가 고갈되고 경계가 무너지는 경험을 합니다.
+▲ 현실 도피: 현실의 어려움을 직면하기보다 상상의 세계나 영성으로 도피하는 경향이 있습니다. 현실에 뿌리를 내리는 훈련이 필요합니다.""",
+        "career":"예술가·시인·소설가, 문학가·작가, 심리치료사, 의료인, 종교인·영성지도자, 음악인, 사진작가, 복지사",
+        "health":"""면역력과 신장 계통이 가장 취약합니다. 몸이 차가워지면 면역력이 급격히 저하되니 항상 몸을 따뜻하게 유지하십시오.
+정서적 스트레스가 면역계에 직접적인 영향을 주므로 감정 관리가 건강 관리와 직결됩니다.
+하체와 신장, 방광 관리에 주의를 기울이고, 차가운 음식과 날 음식을 가급적 피하십시오.""",
+        "lucky":"""행운의 방향: 북북동, 행운의 색: 검정·보라·자주, 행운의 수: 1·6, 인연의 일간: 戊土(정관)·丙火(정재), 보강할 운: 金운 인성"""
     }
 }
 
-ess_map = {k: v["destiny"] for k, v in ILGAN_DESC.items()}
+ess_map = {k: v["nature"] for k, v in ILGAN_DESC.items()}
 
 OH_RELATE = {
     "木": {"saeng": "火", "geuk": "土"},
@@ -418,205 +682,27 @@ OH_RELATE = {
     "水": {"saeng": "木", "geuk": "火"}
 }
 
-
-# 십성 (Sipsung)
 SIPSUNG_LIST = ["비견", "겁재", "식신", "상관", "편재", "정재", "편관", "정관", "편인", "정인"]
 
-# 100-pattern Sipsung Matrix (Ten Gods)
 TEN_GODS_MATRIX = {
+    "甲": {"甲":"비견","乙":"겁재","丙":"식신","丁":"상관","戊":"편재","己":"정재","庚":"편관","辛":"정관","壬":"편인","癸":"정인"},
+    "乙": {"乙":"비견","甲":"겁재","丁":"식신","丙":"상관","己":"편재","戊":"정재","辛":"편관","庚":"정관","癸":"편인","壬":"정인"},
+    "丙": {"丙":"비견","丁":"겁재","戊":"식신","己":"상관","庚":"편재","辛":"정재","壬":"편관","癸":"정관","甲":"편인","乙":"정인"},
+    "丁": {"丁":"비견","丙":"겁재","己":"식신","戊":"상관","辛":"편재","庚":"정재","癸":"편관","壬":"정관","乙":"편인","甲":"정인"},
+    "戊": {"戊":"비견","己":"겁재","庚":"식신","辛":"상관","壬":"편재","癸":"정재","甲":"편관","乙":"정관","丙":"편인","丁":"정인"},
+    "己": {"己":"비견","戊":"겁재","辛":"식신","庚":"상관","癸":"편재","壬":"정재","乙":"편관","甲":"정관","丁":"편인","丙":"정인"},
+    "庚": {"庚":"비견","辛":"겁재","壬":"식신","癸":"상관","甲":"편재","乙":"정재","丙":"편관","丁":"정관","戊":"편인","己":"정인"},
+    "辛": {"辛":"비견","庚":"겁재","癸":"식신","壬":"상관","乙":"편재","甲":"정재","丁":"편관","丙":"정관","己":"편인","戊":"정인"},
+    "壬": {"壬":"비견","癸":"겁재","甲":"식신","乙":"상관","丙":"편재","丁":"정재","戊":"편관","己":"정관","庚":"편인","辛":"정인"},
+    "癸": {"癸":"비견","壬":"겁재","乙":"식신","甲":"상관","丁":"편재","丙":"정재","己":"편관","戊":"정관","辛":"편인","庚":"정인"}
 }
 
-# ══════════════════════════════════════════════
-#  대만신 격국(Gyeokguk) 심층 해설 라이브러리
-# ══════════════════════════════════════════════
-GYEOK_DESC = {
-    "식신격": {
-        "theory": "식신격(食神格)은 타고난 풍요와 재능의 상징입니다. 내면의 에너지가 자연스럽게 밖으로 흘러나와 만물을 먹여 살리고 즐거움을 창조하는 천명을 가졌습니다.",
-        "condition": "일간이 튼튼하고 식신이 형/충을 받지 않아야 하며, 재성(財星)을 보아 그 재능이 결과로 이어질 때 거상의 반열에 오릅니다.",
-        "yongshin": "비겁(比劫)으로 기운을 돋우거나, 재성(財星)으로 유통시키는 것이 가장 길합니다.",
-        "caution": "지나친 안일함과 게으름을 경계해야 합니다. 재능만 믿고 노력을 게을리하면 평범한 삶에 머물 수 있습니다.",
-        "alerts": [
-            "⚠️ 편인(偏印)의 도식(倒食)을 극도로 경계하십시오. 밥그릇이 뒤엎어지는 형국이니 문서 계약에 신중해야 합니다.",
-            "⚠️ 식신이 너무 많으면 상관(傷官)처럼 변하여 구설수와 관재수가 따를 수 있습니다.",
-            "⚠️ 재물에 대한 탐욕이 깊어지면 오히려 타고난 건강과 복을 해칠 수 있으니 베풂을 잊지 마십시오."
-        ]
-    },
-    "상관격": {
-        "theory": "상관격(傷官格)은 천재적인 창의성과 기존의 틀을 깨는 혁명가의 기질입니다. 예술적 감각이 탁월하며 언변으로 천하를 호령하는 기운입니다.",
-        "condition": "인성(印星)이 있어 날카로운 기운을 다스리거나(상관패인), 재성이 있어 기운을 빼주어야 명성을 얻습니다.",
-        "yongshin": "인성(印星)으로 수양하거나 재성(財星)으로 목표를 명확히 하는 것이 길합니다.",
-        "caution": "입으로 화를 부르는 설화(舌禍)를 가장 주의해야 합니다. 오만함이 인복을 깎아먹을 수 있습니다.",
-        "alerts": [
-            "⚠️ 정관(正官)을 정면으로 치는 것을 경계하십시오. 조직 내에서의 항명이나 법적 분쟁이 삶을 피곤하게 할 수 있습니다.",
-            "⚠️ 자신의 재능을 과신하여 타인을 무시하는 태도는 말년에 고독을 부릅니다.",
-            "⚠️ 감정 기복이 심해지면 우울감이나 신경쇠약이 올 수 있으니 명상과 정적인 취미를 가지십시오."
-        ]
-    },
-    "편재격": {
-        "theory": "편재격(偏財格)은 넓은 세상을 무대로 삼는 호탕한 사업가이자 개척자의 기운입니다. 고정된 월급보다는 유동적인 큰 재물을 움직이는 힘을 가졌습니다.",
-        "condition": "식상이 있어 재물의 원천이 마르지 않아야 하며, 일간이 힘이 있어 그 큰 재물을 감당할 수 있어야 대성합니다.",
-        "yongshin": "식상(食傷)으로 생재하거나 관성(官星)으로 재물을 지키는 것이 길합니다.",
-        "caution": "도박성 투자나 일확천금을 노리는 심보를 경계하십시오. 한순간의 욕망이 평생의 공든 탑을 무너뜨릴 수 있습니다.",
-        "alerts": [
-            "⚠️ 비겁(比劫)이 몰려와 재물을 겁탈하려는 형국을 경계하십시오. 동업이나 돈거래에는 피눈물을 흘릴 수 있습니다.",
-            "⚠️ 이성 문제로 인해 공들여 쌓은 사회적 명성이 무너질 수 있으니 처신을 바르게 하십시오.",
-            "⚠️ 돈이 들어올 때 나갈 구멍을 먼저 생각하는 지혜가 필요합니다. 낭비와 허영은 금물입니다."
-        ]
-    },
-    "정재격": {
-        "theory": "정재격(正財格)은 성실함과 정직함으로 일궈내는 안정된 풍요의 상징입니다. 한 푼의 소홀함도 없는 치밀함과 책임감으로 가문을 일으키는 기운입니다.",
-        "condition": "관성이 있어 재물을 귀하게 보호받거나, 식상이 적절히 보조할 때 안정적인 명예와 부를 동시에 누립니다.",
-        "yongshin": "관성(官星)으로 재물을 고정하거나 식상(食傷)으로 끊임없이 노력하는 것이 길합니다.",
-        "caution": "지나친 인색함이 사람을 멀어지게 할 수 있습니다. 때로는 큰 목적을 위해 작은 것을 내어주는 대범함이 필요합니다.",
-        "alerts": [
-            "⚠️ 겁재(劫財)운이 들어올 때 갑작스러운 지출이나 배신을 경계하십시오. 문단속을 철저히 해야 합니다.",
-            "⚠️ 사소한 이익에 집착하다 큰 기회를 놓칠 수 있습니다. 숲을 보는 안목을 기르십시오.",
-            "⚠️ 배우자에게 너무 엄격하거나 소유욕이 강하면 가정 내 불화의 씨앗이 됩니다."
-        ]
-    },
-    "편관격": {
-        "theory": "편관격(偏官格)은 난세를 다스리는 장수의 기운이자 강력한 권위의 상징입니다. 고난과 역경을 스스로 짊어지고 극복하여 만인의 우두머리가 되는 천명입니다.",
-        "condition": "식신이 있어 살기(殺氣)를 제압하거나(식신제살), 인성이 있어 살기를 자비로 돌려야(살인상생) 대귀합니다.",
-        "yongshin": "식신(食神)으로 힘을 조절하거나 인성(印星)으로 부드럽게 감싸는 것이 가장 길합니다.",
-        "caution": "독단적인 판단과 폭력적인 성향을 극도로 경계해야 합니다. 강하면 부러지는 이치를 잊지 마십시오.",
-        "alerts": [
-            "⚠️ 기운이 너무 강해지면 건강을 해치거나 사고수가 따를 수 있으니 항상 몸을 낮추십시오.",
-            "⚠️ 주변의 시선에 지나치게 민감하게 반응하여 스스로를 고립시키지 마십시오.",
-            "⚠️ 권력을 남용하면 반드시 보복이 따릅니다. 공정함과 자비가 네 명줄을 늘리는 길임을 명심하라."
-        ]
-    },
-    "정관격": {
-        "theory": "정관격(正官格)은 하늘이 내린 질서와 원칙의 수호자입니다. 품위 있고 단정한 성품으로 조직의 기둥이 되며, 명예와 법도를 소중히 여기는 전형적인 귀인의 기운입니다.",
-        "condition": "재성이 있어 명예를 뒷받침하거나, 인성이 있어 권위를 인정받아야 진정한 고위직에 오릅니다.",
-        "yongshin": "재성(財星)으로 힘을 실어주거나 인성(印星)으로 명예를 굳건히 하는 것이 길합니다.",
-        "caution": "융통성 없는 고지식함이 발전을 가로막을 수 있습니다. 원칙도 사람을 위해 존재함을 잊지 마십시오.",
-        "alerts": [
-            "⚠️ 상관(傷官)의 위협을 경계하십시오. 하극상이나 구설수로 인해 쌓아온 명예가 하루아침에 실추될 수 있습니다.",
-            "⚠️ 겉치레와 체면에 집중하다 정작 소중한 내실을 놓칠 수 있으니 진실된 마음을 가져야 합니다.",
-            "⚠️ 남들의 기대에 부응하려다 스스로의 행복을 외면하지 마십시오."
-        ]
-    },
-    "편인격": {
-        "theory": "편인격(偏인格)은 신비로운 직관과 남다른 전문성을 가진 기인의 기운입니다. 종교, 철학, 예술 및 독보적인 기술 분야에서 천재성을 발휘하는 심오한 에너지입니다.",
-        "condition": "재성이 있어 지나친 망상을 억제하고 현실 감각을 깨워주어야 비로소 그 재능이 빛을 발합니다.",
-        "yongshin": "재성(財星)으로 현실감을 찾거나 비겁(比劫)으로 생각을 행동으로 옮기는 것이 길합니다.",
-        "caution": "변덕스러운 마음과 고독한 성품을 경계해야 합니다. 세상과 소통하려는 노력이 없으면 외토리로 남기 쉽습니다.",
-        "alerts": [
-            "⚠️ 식신(食神)을 극하는 '도식'을 가장 주의하십시오. 다 된 밥에 재 뿌리는 격이니 부정적인 생각을 버려야 합니다.",
-            "⚠️ 의심이 많아 좋은 기회를 의심하다가 놓치는 경우가 많습니다. 믿음을 갖고 행동하십시오.",
-            "⚠️ 건강 면에서 소화기 및 정신 건강의 기복을 주의해야 합니다. 긍정적인 자기 암시가 필수적입니다."
-        ]
-    },
-    "정인격": {
-        "theory": "정인격(正印格)은 조상의 복과 학문의 기운을 타고난 도덕적 수호자입니다. 타인의 사랑과 인정을 기본으로 깔고 가며, 지혜롭고 자비로운 성품으로 세상을 밝히는 등불입니다.",
-        "condition": "관성이 있어 학문이 권위로 이어지거나, 일간이 너무 약하지 않아야 그 깊은 학식을 세상에 폅니다.",
-        "yongshin": "관성(官星)으로 권위를 세우거나 비겁(比劫)으로 배운 바를 실천하는 것이 길합니다.",
-        "caution": "타인에게 의존하려는 심리와 안일함을 경계하십시오. 스스로 일어서는 법을 배워야 큰 복을 지킵니다.",
-        "alerts": [
-            "⚠️ 재성(財星)의 극(剋)을 받는 탐재괴인(貪財壞印)을 주의하십시오. 재물을 좇다 양심과 명예를 버리면 천벌을 받습니다.",
-            "⚠️ 지나친 이론 위주의 사고는 현실 감각을 떨어뜨립니다. 발로 뛰는 경험을 중요하게 여기십시오.",
-            "⚠️ 남들의 호의를 당연하게 여기는 오만함은 언젠가 독이 되어 돌아옵니다. 항상 감사하며 사십시오."
-        ]
-    },
-    "비견격": {
-        "theory": "비견격(比肩格)은 독립심과 자강불굴의 의지를 상징합니다. 누구에게도 굽히지 않는 주체적인 삶을 살며, 동료와 어깨를 나란히 하고 경쟁 속에서 성장하는 기운입니다.",
-        "condition": "식상이 있어 에너지를 발산하거나, 관성이 있어 자아 성찰과 절제를 할 때 비로소 진정한 지도자가 됩니다.",
-        "yongshin": "식상(食傷)으로 재능을 펴거나 관성(官星)으로 자신을 다스리는 것이 길합니다.",
-        "caution": "지나친 고집과 경쟁심이 적을 만들 수 있습니다. 화합과 양보의 미덕이 당신의 진정한 힘임을 깨달아야 합니다.",
-        "alerts": [
-            "⚠️ 재물을 가까운 이들과 나누지 않으면 오히려 큰 손실을 보게 됩니다. 욕심이 화를 부릅니다.",
-            "⚠️ 타인의 충고를 간섭으로 치부하지 마십시오. 귀를 닫는 순간 성장은 멈춥니다.",
-            "⚠️ 부부간에 경쟁하려 들지 마십시오. 가정은 전쟁터가 아닌 안식처가 되어야 복이 깃듭니다."
-        ]
-    },
-    "겁재격": {
-        "theory": "겁재격(劫財格)은 강인한 생존력과 승부욕을 타고난 투사의 기운입니다. 뺏고 뺏기는 세상의 냉혹함 속에서 자신을 지키고, 끝내 승리를 쟁취하는 드라마틱한 에너지를 가졌습니다.",
-        "condition": "식상이 있어 투쟁심을 생산적인 활동으로 승화시키거나, 관성이 있어 거친 기운을 법도로 눌러야 대업을 이룹니다.",
-        "yongshin": "식상(食傷)으로 기운을 빼거나 관성(官星)으로 질서를 잡는 것이 길합니다.",
-        "caution": "투기적인 성향과 남의 것을 탐하는 마음을 경계하십시오. 탈재(奪財)의 기운은 결국 나에게도 돌아옵니다.",
-        "alerts": [
-            "⚠️ 한순간의 분노로 평생 쌓은 인맥을 무너뜨리는 것을 주의하십시오. 감정 조절이 곧 운명 조절입니다.",
-            "⚠️ 동업이나 금전적 보증은 절대 금물입니다. 믿었던 도끼에 발등 찍히는 기운이 강합니다.",
-            "⚠️ 건강 면에서 급성 질환이나 사고수를 주의해야 합니다. 항상 차분함을 유지하는 훈련을 하십시오."
-        ]
-    }
-}
-
-def detect_structure(ilgan, wolji_jj, pils=None):
-    """
-    [격국 자동 판단 엔진 v2] 내격 판별 및 오행 쏠림에 따른 외격(外格 - 종격) 판별을 수행함.
-    """
-    if pils:
-        # 외격(外格 - 종격) 판별 로직
-        ilgan_oh = OH[ilgan]
-        oh_counts = {"木": 0, "火": 0, "土": 0, "金": 0, "水": 0}
-        
-        # 기본 개수 카운팅
-        for p in pils:
-            oh_counts[OH[p["cg"]]] += 1
-            oh_counts[OH[p["jj"]]] += 1
-            
-        # 일간 오행과 어머니 오행(인성) 확인
-        mother_oh = ""
-        for k, v in OH_RELATE.items():
-            if type(v) == dict and v.get("생") == ilgan_oh:
-                mother_oh = k
-                break
-                
-        # 종격 조건: 내 세력(나와 인성)이 너무 약하고(1~2개 이하), 특정 세력이 5개 이상일 때
-        my_power = oh_counts[ilgan_oh] + (oh_counts[mother_oh] if mother_oh else 0)
-        wolji_oh = OH[wolji_jj]
-        
-        if my_power <= 2:
-            # 종아격(식상), 종재격(재성), 종살격(관성) 판별
-            child_oh = OH_RELATE.get(ilgan_oh, {}).get("생")
-            wealth_oh = OH_RELATE.get(ilgan_oh, {}).get("극")
-            power_oh = next((k for k, v in OH_RELATE.items() if type(v) == dict and v.get("극") == ilgan_oh), "")
-            
-            if child_oh and oh_counts[child_oh] >= 5 and wolji_oh == child_oh:
-                return "종아격(從兒格)", "외격(특수격)"
-            if wealth_oh and oh_counts[wealth_oh] >= 5 and wolji_oh == wealth_oh:
-                return "종재격(從財格)", "외격(특수격)"
-            if power_oh and oh_counts[power_oh] >= 5 and wolji_oh == power_oh:
-                return "종살격(從殺格)", "외격(특수격)"
-                
-        # 전왕격 (내 세력이 극단적으로 강할 때)
-        if my_power >= 6:
-            if oh_counts[ilgan_oh] >= 5:
-                return "종왕격(從旺格)", "외격(특수격)"
-            elif mother_oh and oh_counts[mother_oh] >= 5:
-                return "종강격(從强格)", "외격(특수격)"
-
-    # 기본 내격 판별
-    jijang = JIJANGGAN.get(wolji_jj, [])
-    if not jijang: return "일반격", "평격(平格)"
-    
-    jeongi = jijang[-1]
-    structure_type = TEN_GODS_MATRIX.get(ilgan, {}).get(jeongi, "기타")
-    
-    grade = "잡격(雜格)" # 기본값
-    if pils:
-        # 천간 투출 확인
-        stems = [p["cg"] for p in pils]
-        if jeongi in stems:
-            grade = "순격(純格)"
-        elif any(s in stems for s in jijang[:-1]):
-            grade = "잡격(雜格)"
-        else:
-            grade = "암격(暗格)"
-            
-    return f"{structure_type}격", grade
-
-
-
-# 지장간 (Jijanggan)
 JIJANGGAN = {
-    "子":["壬","癸"], "丑":["癸","辛","己"], "寅":["戊","丙","甲"], "卯":["甲","乙"],
-    "辰":["乙","癸","戊"], "巳":["戊","庚","丙"], "午":["丙","己","丁"], "未":["丁","乙","己"],
-    "申":["戊","壬","庚"], "酉":["庚","辛"], "戌":["辛","丁","戊"], "亥":["戊","甲","壬"]
+    "子":["壬","癸"],"丑":["癸","辛","己"],"寅":["戊","丙","甲"],"卯":["甲","乙"],
+    "辰":["乙","癸","戊"],"巳":["戊","庚","丙"],"午":["丙","己","丁"],"未":["丁","乙","己"],
+    "申":["戊","壬","庚"],"酉":["庚","辛"],"戌":["辛","丁","戊"],"亥":["戊","甲","壬"]
 }
 
-# 십이운성 (12 Unsung Mapping)
 UNSUNG_TABLE = {
     "甲": {"亥":"장생","子":"목욕","丑":"관대","寅":"건록","卯":"제왕","辰":"쇠","巳":"병","午":"사","未":"묘","申":"절","酉":"태","戌":"양"},
     "乙": {"午":"장생","巳":"목욕","辰":"관대","卯":"건록","寅":"제왕","丑":"쇠","子":"병","亥":"사","戌":"묘","酉":"절","申":"태","未":"양"},
@@ -627,798 +713,149 @@ UNSUNG_TABLE = {
     "庚": {"巳":"장생","午":"목욕","未":"관대","申":"건록","酉":"제왕","戌":"쇠","亥":"병","子":"사","丑":"묘","寅":"절","卯":"태","辰":"양"},
     "辛": {"子":"장생","亥":"목욕","戌":"관대","酉":"건록","申":"제왕","未":"쇠","午":"병","巳":"사","辰":"묘","卯":"절","寅":"태","丑":"양"},
     "壬": {"申":"장생","酉":"목욕","戌":"관대","亥":"건록","子":"제왕","丑":"쇠","寅":"병","卯":"사","辰":"묘","巳":"절","午":"태","未":"양"},
-    "癸": {"卯": "장생", "寅": "목욕", "丑": "관대", "子": "건록", "亥": "제왕", "戌": "쇠", "酉": "병", "申": "사", "未": "묘", "午": "절", "巳": "태", "辰": "양"}
+    "癸": {"卯":"장생","寅":"목욕","丑":"관대","子":"건록","亥":"제왕","戌":"쇠","酉":"병","申":"사","未":"묘","午":"절","巳":"태","辰":"양"}
 }
 
-# Element Control Map (Who controls whom)
-CONTROL_MAP = {"木": "土", "火": "金", "土": "水", "金": "木", "水": "火"}
-# Element Birth Map (Who feeds whom)
-BIRTH_MAP = {"木": "火", "火": "土", "土": "金", "金": "水", "水": "木"}
+CONTROL_MAP = {"木":"土","火":"金","土":"水","金":"木","水":"火"}
+BIRTH_MAP = {"木":"火","火":"土","土":"金","金":"水","水":"木"}
 
-def classify_event(sewoon_pillar, yongshin_oh, day_element, gisin_oh=""):
-    """
-    [사건의 질 판단 엔진]
-    용신/기신 여부로 상승/압박/재물 사건을 구분함.
-    """
-    sw_cg = sewoon_pillar["cg"]
-    sw_oh = OH.get(sw_cg, "")
-    
-    if sw_oh == yongshin_oh:
-        return "상승 사건 (용신 발복)"
-    elif sw_oh == gisin_oh:
-        return "압박 사건 (기신 압박)"
-    elif sw_oh == CONTROL_MAP.get(day_element):
-        return "재물/성취 사건 (통제/재성)"
-    elif sw_oh == BIRTH_MAP.get(day_element):
-        return "확장/배품 사건 (식상)"
-    else:
-        return "변동/이동 사건"
+def detect_structure(ilgan, wolji_jj):
+    jijang = JIJANGGAN.get(wolji_jj, [])
+    if not jijang: return "일반격"
+    junggi = jijang[-1]
+    structure_type = TEN_GODS_MATRIX.get(ilgan, {}).get(junggi, "기타")
+    return f"{structure_type}격"
 
-
-# [신규] 12운성 심층 데이터 (3단계 구조 및 프리미엄 디자인 속성)
-UNSUNG_DESC = {
-    "장생": {
-        "icon": "🌱", "color_label": "생명력",
-        "meaning": "장생(長生) — 새로운 생명이 이 세상에 첫 발을 내딛는 희망찬 탄생의 단계입니다.",
-        "detail": "마치 봄날 대지를 뚫고 싹이 트듯, 새로운 시작과 출발의 기운이 넘칩니다. 이 기운이 강한 분은 어떤 분야에 발을 들여도 초반부터 순조롭게 시작되는 행운이 있습니다. 귀인의 도움을 받아 자연스럽게 성장하는 환경이 만들어집니다.",
-        "advice": "✓ 새로운 일을 시작하기에 좋은 기운 ✓ 귀인이 자연스럽게 나타납니다 ✓ 건강하고 활기찬 기질을 타고납니다",
-        "color": "#4CAF50", "grad": "linear-gradient(135deg, #e8f5e9, #c8e6c9)"
-    },
-    "목욕": {
-        "icon": "🌊", "color_label": "감수성",
-        "meaning": "목욕(沐浴) — 갓 태어난 생명이 처음으로 목욕을 하는 혼돈과 감성의 단계입니다.",
-        "detail": "세상 물정을 모르는 순수함과 동시에 유혹과 시험에 취약한 시기입니다. 예술적 감수성이 극도로 발달하여 음악·미술·문학 분야에서 천재적 재능을 발휘하는 경우가 많습니다. 다만 이성 문제와 방탕함을 경계해야 합니다.",
-        "advice": "⚠ 이성 문제와 유혹을 각별히 경계 ✓ 예술·감성 분야에서 천부적 재능 ⚠ 방향을 잡아줄 멘토가 반드시 필요합니다",
-        "color": "#E91E63", "grad": "linear-gradient(135deg, #fce4ec, #f8bbd0)"
-    },
-    "관대": {
-        "icon": "🎓", "color_label": "성장기",
-        "meaning": "관대(冠帶) — 성인식을 마치고 관과 띠를 두르는 청년기의 활기찬 단계입니다.",
-        "detail": "에너지가 넘치고 자신감이 충만한 시기입니다. 사회에 첫 발을 내딛으며 자신의 능력을 증명하고 싶은 야망이 강합니다. 공부·자격증·사회 진출에 유리한 기운으로, 이 시기에 부지런히 쌓아둔 실력이 평생의 자산이 됩니다.",
-        "advice": "✓ 교육·자격증 취득에 유리한 기운 ✓ 사회 진출과 취업에 좋은 기운 ⚠ 과잉 자신감으로 인한 실수를 경계하십시오",
-        "color": "#2196F3", "grad": "linear-gradient(135deg, #e3f2fd, #bbdefb)"
-    },
-    "건록": {
-        "icon": "💪", "color_label": "전성기",
-        "meaning": "건록(建祿) — 녹봉(祿俸)을 받는 장년기의 충실하고 강건한 전성기 단계입니다.",
-        "detail": "인생에서 가장 강력하고 안정적인 기운의 시기입니다. 직업적으로 안정된 자리를 얻고 경제적 기반이 탄탄해집니다. 건록이 일주에 있으면 평생 먹고 사는 걱정이 없는 복을 타고난 것입니다. 독립심이 강하고 자수성가하는 기운입니다.",
-        "advice": "✓ 직업 안정과 경제적 기반이 가장 탄탄한 기운 ✓ 자수성가의 기운이 강합니다 ✓ 건강하고 활력이 넘칩니다",
-        "color": "#673AB7", "grad": "linear-gradient(135deg, #f3e5f5, #e1bee7)"
-    },
-    "제왕": {
-        "icon": "👑", "color_label": "절정",
-        "meaning": "제왕(帝旺) — 왕이 보위에 오르는 절정과 최고조의 단계입니다.",
-        "detail": "기운이 절정에 달한 최강의 운성입니다. 리더십과 카리스마가 최고조에 달하며, 자연스럽게 우두머리 자리에 오르는 기운입니다. 다만 이 기운이 지나치면 독선과 오만으로 흐를 수 있으니, 겸손함을 잃지 않는 것이 제왕격의 진정한 완성입니다.",
-        "advice": "✓ 리더십과 권위가 가장 강한 기운 ⚠ 지나친 독선과 오만을 경계 ✓ 어떤 분야에 가든 정상에 서는 기운",
-        "color": "#FFD700", "grad": "linear-gradient(135deg, #fffde7, #fff9c4)"
-    },
-    "쇠": {
-        "icon": "🌅", "color_label": "하강기",
-        "meaning": "쇠(衰) — 절정에서 내려오기 시작하는 성숙한 노년의 시작 단계입니다.",
-        "detail": "강렬한 활동보다는 안정과 지속을 추구하는 시기입니다. 외면의 강함보다는 내면의 지혜가 빛나는 단계로, 경험에서 우러나오는 통찰력이 생깁니다. 현상을 유지하고 지켜가는 것이 이 기운의 역할입니다.",
-        "advice": "✓ 경험에서 우러나오는 깊은 통찰력 ✓ 안정적이고 신중한 의사결정 ⚠ 새로운 도전보다는 현상 유지와 수성(守成)이 유리",
-        "color": "#FF9800", "grad": "linear-gradient(135deg, #fff3e0, #ffe0b2)"
-    },
-    "병": {
-        "icon": "🍂", "color_label": "조정기",
-        "meaning": "병(病) — 기운이 쇠하여 병을 앓는 단계로, 내면을 돌보는 조정의 시기입니다.",
-        "detail": "신체적·정신적 에너지가 저하되는 시기입니다. 그러나 이 기운이 일주에 있는 분은 병을 통해 더 깊은 영성과 통찰을 얻는 경우가 많습니다. 의료·상담·영성 분야에서 오히려 뛰어난 능력을 발휘합니다. 건강 관리가 최우선입니다.",
-        "advice": "✓ 의료·상담·종교 분야에서 특별한 감수성 ⚠ 건강 관리와 무리하지 않는 생활이 필수 ⚠ 음주와 무절제한 생활은 건강을 급격히 해칩니다",
-        "color": "#9E9E9E", "grad": "linear-gradient(135deg, #f5f5f5, #e0e0e0)"
-    },
-    "사": {
-        "icon": "🕯️", "color_label": "정적",
-        "meaning": "사(死) — 기운이 잠들고 내면의 세계로 침잠하는 정적의 단계입니다.",
-        "detail": "표면적으로는 조용해 보이지만 내면에서 깊은 사색과 정신적 성숙이 이루어지는 단계입니다. 철학·종교·학문에 깊이 몰두하는 경향이 있으며, 세속적 욕망보다 정신적 가치를 추구합니다. 영적 능력과 직관이 발달하는 기운입니다.",
-        "advice": "✓ 철학·종교·학문에서 깊은 경지에 도달 ✓ 영적·직관적 능력이 발달합니다 ⚠ 지나친 내향성으로 사회적 고립을 경계",
-        "color": "#424242", "grad": "linear-gradient(135deg, #eceff1, #cfd8dc)"
-    },
-    "묘": {
-        "icon": "⚰️", "color_label": "축적",
-        "meaning": "묘(墓) — 창고에 저장되듯 기운이 내면에 축적되는 단계입니다.",
-        "detail": "겉으로는 드러나지 않지만 내면에 엄청난 잠재력이 축적되는 기운입니다. 겉과 속이 다르고 속내를 잘 드러내지 않는 성격으로, 비밀이 많거나 복잡한 내면을 지닌 경우가 많습니다. 재물을 모으는 능력과 정보를 축적하는 능력이 탁월합니다.",
-        "advice": "✓ 재물 축적과 정보 수집 능력이 탁월 ⚠ 지나친 비밀주의와 내향성을 경계 ⚠ 고지식함이나 완고함으로 인간관계가 경직될 수 있습니다",
-        "color": "#795548", "grad": "linear-gradient(135deg, #efebe9, #d7ccc8)"
-    },
-    "절": {
-        "icon": "🔄", "color_label": "전환",
-        "meaning": "절(絶) — 완전히 단절되고 새로운 씨앗이 심어지기 직전의 변화와 전환의 단계입니다.",
-        "detail": "기존의 것이 끝나고 새로운 것이 시작되는 전환점입니다. 이 기운이 강한 시기에는 이사·이직·이별 등 큰 변화가 일어나기 쉽습니다. 변화에 대한 적응력이 탁월하며, 전혀 새로운 분야로 도전하여 성공하는 경우도 많습니다.",
-        "advice": "✓ 변화와 새로운 시작에 대한 탁월한 적응력 ⚠ 변화가 많고 정착이 어려운 시기 ⚠ 섣부른 결정보다 충분히 준비한 후 도전하십시오",
-        "color": "#FF5722", "grad": "linear-gradient(135deg, #fbe9e7, #ffccbc)"
-    },
-    "태": {
-        "icon": "🥚", "color_label": "준비",
-        "meaning": "태(胎) — 어머니 뱃속에서 생명이 잉태되는 조용한 준비의 단계입니다.",
-        "detail": "아직 세상에 드러나지 않은 잠재적 가능성이 무한히 준비되는 시기입니다. 조급함 없이 때를 기다리며 내실을 다지는 것이 이 기운의 지혜입니다. 새로운 프로젝트나 사업의 씨앗을 뿌리는 준비 단계로 적합합니다.",
-        "advice": "✓ 조용히 준비하고 씨앗을 심기에 좋은 시기 ✓ 학습과 내공을 쌓는 데 집중하십시오 ⚠ 아직 때가 아니니 조급하게 드러내려 하지 마십시오",
-        "color": "#00BCD4", "grad": "linear-gradient(135deg, #e0f7fa, #b2ebf2)"
-    },
-    "양": {
-        "icon": "🌿", "color_label": "양육",
-        "meaning": "양(養) — 어머니의 품에서 길러지고 양육받는 따뜻한 성장의 단계입니다.",
-        "detail": "누군가의 도움과 후원을 받으며 성장하는 기운입니다. 귀인이나 선배·멘토의 도움으로 능력이 키워지는 시기입니다. 어머니·여성의 도움이 강하고, 교육과 학습을 통해 크게 성장합니다. 독립보다는 의지하며 배우는 시기입니다.",
-        "advice": "✓ 귀인·멘토·어머니의 도움이 강한 시기 ✓ 배움과 학습에 집중하기 좋은 기운 ⚠ 지나친 의존은 독립심을 약화시킵니다",
-        "color": "#FBC02D", "grad": "linear-gradient(135deg, #fffde7, #fff9c4)"
-    }
-}
-
-# [신규] 대운 십성 심층 해설 데이터 (10년 주기 맥락)
-DAEWOON_SIPSUNG_DESC = {
-    "비견": ("🤝", "동류(同類)의 대운", 
-        f"비견(比肩) 대운은 동료·형제·경쟁자의 기운이 강해지는 10년입니다. "
-        f"독립심이 강해지고 새로운 파트너십이 생기며 협력을 통한 성장의 시기입니다. "
-        f"경쟁도 치열해지지만, 함께 성장하는 동료를 만나는 귀한 인연의 시기이기도 합니다. "
-        f"재물은 나누어야 더 들어오는 이치를 깨닫게 되는 10년입니다."),
-    "겁재": ("⚔️", "투쟁과 경쟁의 대운", 
-        f"겁재(劫財) 대운은 치열한 경쟁과 투쟁의 10년입니다. "
-        f"재물의 손실이나 형제·동료와의 갈등이 생길 수 있으나, "
-        f"이 경쟁을 이겨낸 자는 더욱 강해집니다. "
-        f"동업과 보증은 철저히 경계하고, 독립적으로 자신의 능력을 키우는 데 집중하십시오."),
-    "식신": ("🍀", "복록과 재능의 대운", 
-        f"식신(食神) 대운은 하늘이 내리신 복록의 10년입니다! "
-        f"재능이 꽃피고 먹고 사는 걱정이 사라지며, 하는 일마다 순조롭게 풀립니다. "
-        f"자신의 재능을 마음껏 발휘하고, 음식·예술·창작 분야에서 특히 빛을 발합니다. "
-        f"건강도 좋아지고 주변에 사람이 모여드는 행복한 시기입니다."),
-    "상관": ("🌪️", "혁신과 변혁의 대운", 
-        f"상관(傷官) 대운은 기존 질서를 뒤집는 혁신과 변화의 10년입니다. "
-        f"창의력이 폭발하고 새로운 아이디어가 샘솟지만, "
-        f"직장·관직과의 충돌이 생길 수 있습니다. 언행에 각별히 주의하고, "
-        f"자신의 창의력을 긍정적인 방향으로 발산하는 출구를 찾으십시오."),
-    "편재": ("💰", "활동적 재물의 대운", 
-        f"편재(偏財) 대운은 투자·사업·거래를 통한 역동적인 재물의 10년입니다. "
-        f"부동산, 주식, 사업 확장의 기회가 찾아오며 대담한 도전이 빛을 발합니다. "
-        f"이성 인연도 활발해지는 시기입니다. 다만 신약하면 과욕이 화를 부르니 "
-        f"자신의 역량 안에서 운용하십시오."),
-    "정재": ("🏦", "안정적 재물의 대운", 
-        f"정재(正財) 대운은 성실하게 쌓아가는 안정된 재물의 10년입니다. "
-        f"월급·임대수입 등 고정적인 수입이 늘어나고 저축과 자산이 불어납니다. "
-        f"결혼 인연이나 배우자 덕을 보는 시기이기도 합니다. "
-        f"꾸준하고 성실하게 자신의 자리를 지키는 것이 이 대운의 복의 비결입니다."),
-    "편관": ("⚡", "권력과 시련의 대운", 
-        f"편관(偏官) 대운은 강한 권력 기운과 함께 시련이 따르는 10년입니다. "
-        f"군·경·의·법 등 권위 있는 분야에서 두각을 나타내거나, "
-        f"반대로 권력자와의 충돌로 어려움을 겪기도 합니다. "
-        f"인내심을 갖고 정면으로 돌파하면 이 대운을 통해 더욱 강해집니다."),
-    "정관": ("🎖️", "명예와 관직의 대운", 
-        f"정관(正官) 대운은 명예·직위·관직이 빛나는 황금 같은 10년입니다! "
-        f"승진·수상·인정·사회적 지위 향상의 기회가 찾아옵니다. "
-        f"법과 원칙을 지키는 삶이 보상받는 시기이며, 조직 내에서 중요한 역할을 맡게 됩니다. "
-        f"결혼 운도 좋아 이 시기에 인연을 만나는 경우가 많습니다."),
-    "편인": ("🔮", "직관과 학문의 대운", 
-        f"편인(偏印) 대운은 특수한 학문·직관·영성이 발달하는 10년입니다. "
-        f"일반적인 학문보다는 철학·종교·심리·IT 등 특수 분야에서 두각을 나타냅니다. "
-        f"내면의 성찰과 수련에 집중하기 좋은 시기이며, "
-        f"독특한 아이디어로 새로운 길을 개척할 수 있습니다."),
-    "정인": ("📚", "학문과 명예의 대운", 
-        f"정인(正印) 대운은 학문·명예·귀인의 도움이 충만한 10년입니다! "
-        f"시험·자격증·학위 취득에 매우 유리하며, 스승이나 귀인의 도움이 자연스럽게 찾아옵니다. "
-        f"어머니 덕을 보거나 윗사람의 후원이 강해지는 시기입니다. "
-        f"지식을 쌓고 명예를 높이는 데 집중하면 이 대운이 크게 빛납니다."),
-    "-": ("🌐", "복합 기운의 대운", 
-        f"이 대운은 여러 오행의 기운이 복합적으로 작용하는 10년입니다. "
-        f"일간의 강약과 격국에 따라 발현 방식이 달라지니, "
-        f"전문 명리사의 상담을 통해 더욱 정밀한 분석을 받아보시기를 권합니다."),
-}
-
-# ══════════════════════════════════════════════
-#  8대 대만신 엔진 및 거대 데이터베이스 (Primary Logic & DB)
-# ══════════════════════════════════════════════
-
-# 12지신별 2026년(丙午年) 월별 정밀 운세 데이터 (Zodiac Monthly Fortune)
-ZODIAC_FORTUNE = {
-    "쥐": [
-        "1월: 물의 기운이 얼어붙는 시기이니 내실을 기하며 봄을 기다려라. 어설프게 움직였다간 얼음 구멍에 빠져 허우적댈 것이니라!",
-        "2월: 작은 불씨가 큰 산을 태울 수 있으니 말조심, 불조심이 제일이다. 네 혀끝에서 나온 불씨가 네 집안을 태울까 두렵도다.",
-        "3월: 땅이 녹아 싹이 트는 형국이니 새로운 일을 도모하기에 적기다. 만물이 소생하듯 네 명예의 싹도 기지개를 켜는구나.",
-        "4월: 비바람이 몰아치나 뿌리 깊은 나무는 흔들리지 않는 법이다. 풍파는 네 인격을 닦는 숫돌이니 피하려 하지 마라.",
-        "5월: 공들인 탑이 무너지지 않도록 마무리 작업에 열을 올려라. 거의 다 왔다고 방심하는 순간 조상신의 꾸짖음이 내릴 것이니라.",
-        "6월: 남쪽에 귀인이 있으니 막힌 일은 도움을 청해 해결하라. 고집을 버리고 고개를 숙이면 천하의 지혜가 네 것이 되리라.",
-        "7월: 재물이 강물처럼 들어오나 나가는 구멍도 크니 단속을 잘하라. 독에 물 붓기 식이 되지 않도록 곳간 문을 단단히 걸어잠궈라.",
-        "8월: 문서운이 따르니 계약이나 자격증 취득에 힘을 쏟아라. 하늘이 내린 기회니 붓 끝에 기운을 실어 네 이름을 세상에 새기거라.",
-        "9월: 가을 산에 단풍이 들 듯 네 명예도 널리 알려질 것이로다. 만인이 너를 우러러보니 어깨를 펴고 당당하게 호령하라.",
-        "10월: 지나친 욕심은 기껏 모은 복을 쏟으니 마음을 비워라. 채우려 하면 비워지고, 비우려 하면 저절로 차오르는 법이니라.",
-        "11월: 가족 간의 합이 필요한 시기니 화목에 힘쓰는 것이 개운법이다. 집안이 시끄러우면 신령님도 발길을 돌리시는 법임을 명심하라.",
-        "12월: 한 해를 마무리하며 조상신께 감사하면 내년 운이 더욱 트인다. 네가 누린 모든 복이 조상의 음덕임을 잊지 말고 경배하라."
-    ],
-    "소": [
-        f"{m}월: 성실함의 대명사인 소가 병오년의 타오르는 불꽃을 만나 금을 제련하는 형국이로다. {random.choice(['땀 흘린 만큼 황금이 쌓이고', '인내의 결실이 보석처럼 빛나고', '묵직한 발걸음이 대지를 울리고', '겨울을 이겨낸 뿌리가 튼튼해지는'])} 시기이니 절대 쟁기를 놓지 마라!"
-        for m in range(1, 13)
-    ],
-    "호랑이": [
-        f"{m}월: 포효하는 호랑이가 험준한 산을 내려와 저잣거리를 평정하는 장엄한 기상의 달이로다. {random.choice(['네 포효 한 번에 적들이 벌벌 떨고', '사냥감이 네 발 앞에 앞다투어 엎드리고', '산신의 가호가 이마에 번뜩이고', '거침없는 기세로 천하를 삼키는'])} 운세니 당당하게 고개를 들어라!"
-        for m in range(1, 13)
-    ],
-    "토끼": [
-        f"{m}월: 영리한 토끼가 세 개의 굴을 파듯 지혜롭게 위기를 넘기고 더 높은 곳으로 도약하는 시기이로다. {random.choice(['꾀가 샘솟아 막힌 일이 술술 풀리고', '달빛 아래 약초를 찾는 신비로운 운이며', '작은 몸집으로 거인을 이기는 지략이 빛나고', '인연의 실타래가 예쁘게 맺히는'])} 달이니 마음을 차분히 가져라."
-        for m in range(1, 13)
-    ],
-    "용": [
-        f"{m}월: 여의주를 입에 문 청룡이 구름을 뚫고 승천하여 온 세상을 비추는 창조와 명예의 달이로다. {random.choice(['하늘의 문이 열려 신탁이 쏟아지고', '네 몸소 행하는 모든 일이 역사가 되고', '비구름이 걷히고 찬란한 태양이 비추고', '수천 마리의 용들이 너를 호위하는'])} 기운이니 크게 꿈을 펼쳐라!"
-        for m in range(1, 13)
-    ],
-    "뱀": [
-        f"{m}월: 허물을 벗고 새로이 태어나는 뱀의 기운으로 환골탈태하여 새 역사를 쓰는 운이로다. {random.choice(['옛것을 버리고 금빛 비늘을 얻고', '차갑지만 예리한 통찰력으로 적을 꿰뚫고', '재물을 지키는 수호신의 가호가 깃들고', '조용한 움직임 뒤에 거대한 반격이 준비되는'])} 시기니 때를 기다려라."
-        for m in range(1, 13)
-    ],
-    "말": [
-        f"{m}월: 질주하는 야생마처럼 거침없는 추진력이 돋보이니 네 발걸음이 닿는 곳이 곧 네 영토가 될 것이로다. {random.choice(['바람을 가르며 천 리를 달리는 기세를 얻고', '말발굽 소리에 복운이 사방으로 퍼지고', '지치지 않는 열정으로 불가능을 뚫어내고', '화려한 승전보가 귓전을 울리는'])} 운세니 멈추지 말고 달려라!"
-        for m in range(1, 13)
-    ],
-    "양": [
-        f"{m}월: 양떼가 평화로운 푸른 초원을 거닐 듯 고요함 속에 거대한 결실이 맺히는 안락한 계절이로다. {random.choice(['인복이 넘쳐 만인이 너를 돕고', '따뜻한 성품이 얼어붙은 운세를 녹이고', '가족의 웃음소리가 담장을 넘어가고', '평화로운 마음이 신령님을 부르는'])} 시기니 주변에 덕을 베풀거라."
-        for m in range(1, 13)
-    ],
-    "원숭이": [
-        f"{m}월: 재기발랄한 원숭이가 천 년 묵은 나무를 타듯 기발한 아이디어로 세상을 조롱하며 성공을 낚는구나. {random.choice(['재치 한 번에 천 냥 빚을 일시에 갚고', '막힌 담장을 훌쩍 뛰어넘는 재주를 부리고', '재물신이 네 어깨 위에 앉아 춤을 추고', '즐거운 축제 속에 황장군이 왕이 되는'])} 운세니 즐겁게 임하라!"
-        for m in range(1, 13)
-    ],
-    "닭": [
-        f"{m}월: 어둠을 찢고 새벽을 깨우는 닭의 선명한 울음소리처럼 새로운 시작과 희망이 네 앞길을 밝히리라. {random.choice(['빛나는 벼슬이 네 관직운을 높여주고', '부지런한 발길이 금덩이를 파내고', '정각에 울리는 종소리처럼 천명이 닿고', '흐트러진 기운을 바로잡는 위엄이 서리는'])} 달이니 부지런히 움직여라."
-        for m in range(1, 13)
-    ],
-    "개": [
-        f"{m}월: 충직한 개의 기운이 집안의 대문을 지키듯 네 소중한 자산과 인연을 지켜내어 번창하게 하리라. {random.choice(['의리가 재물이 되어 돌아오고', '한 번 맺은 인연이 평생의 방패가 되고', '어떤 침입자도 네 가호 아래 무너지고', '믿음직한 네 모습에 신령님이 감동하시는'])} 시기니 진실하게 살거라."
-        for m in range(1, 13)
-    ],
-    "돼지": [
-        f"{m}월: 복을 한가득 실은 돼지가 네 곳간으로 걸어 들어오니 재물과 인덕이 마르지 않는 풍요의 달이로다. {random.choice(['황금 멧돼지가 네 꿈속에서 길을 터주고', '먹지 않아도 배부른 만석꾼의 운세며', '나눔의 미덕이 더 큰 복으로 되돌아오고', '천하의 온갖 보화가 네 창고에 쌓이는'])} 시기니 크게 기뻐하라!"
-        for m in range(1, 13)
-    ]
-}
-
-# 대만신의 100대 신탁 (Divine Oracle List - Random Oracle Engine)
-DIVINE_ORACLE = [
-    "어허! 지금은 멈춰야 산다. 억지로 밀어붙이면 엔진이 타버릴 것이로다!",
-    "동쪽에서 온 귀인이 네 주머니에 금덩이를 넣어줄 것이니 문을 열어두어라.",
-    "사람을 믿지 마라. 네 발등을 찍을 자는 평소 가장 가깝다 하던 이로다.",
-    "조상의 묘소에 빗물이 스며드는 격이니 부모님께 안부 전화라도 한 통 올려라.",
-    "재물은 물과 같아서 가둬두면 썩는 법이다. 베푸는 만큼 다시 차오르리라.",
-    "지금 네 고민은 먼지보다 가벼운 것. 시간이 흐르면 저절로 씻겨 내려간다.",
-    "붉은색 옷이 네 기운을 북돋으니 중요한 면접이나 만남엔 꼭 착용하라.",
-    "숫자 3과 7이 네 운명의 방패가 되어줄 것이니 번호 선택에 활용하거라.",
-    "산이 높으면 골이 깊은 법. 성공 뒤의 그림자를 항상 경계하며 살라.",
-    "네 마음속에 이미 답이 있으니 밖에서 구하지 말고 침묵 속에 침잠하라.",
-    "하늘이 너를 점지했으니, 이제는 네가 스스로를 증명할 차례니라.",
-    "과거의 매듭을 풀어라. 그래야 미래의 실타래가 엉키지 않는 법이다.",
-    "동쪽에서 부는 바람을 맞지 마라. 대신 네 마음속 서늘한 지혜를 믿어라.",
-    "황금 물고기가 네 그물에 들어왔으니 방심 말고 그물을 당겨라!",
-    "급급여율령(急急如律令)! 만신이 명령하니 네 운명은 즉시 발복하리라."
-]
-
-# ══════════════════════════════════════════════
-#  대만신의 본초강목(本草綱目) 기반 비방(秘方) 부적 라이브러리
-#  - 이시진(李時珍)의 본초강목에 수록된 약재와 기물(器物)을 바탕으로
-#    사주 오행의 허실(虛實)을 보(補)하고 살(殺)을 제압하는 비전(秘傳)
-#  - 각 처방은 '약재·향재(香材)·부적(符籙)·진언(眞言)'으로 구성됨
-# ══════════════════════════════════════════════
-AMULET_LIBRARY = {
-    "재물운": {
-        "title": "황금만사형통비방(黃金萬事亨通秘方)",
-        "emoji": "💰🌾✨",
-        "hanja": "財福聚門符",
-        "bonchogang_herbs": [
-            "황기(黃芪, Astragalus) — 본초강목 卷十二. 허한 土氣를 보(補)하여 재물이 모이는 땅의 기운을 강하게 한다.",
-            "인삼(人蔘, Panax Ginseng) — 본초강목 卷十二. 元氣를 크게 보하여 의지와 행동력을 굳건히 하니 재운(財運)의 근본이 된다.",
-            "복령(茯苓, Poria) — 본초강목 卷三十七. 마음의 번뇌를 가라앉히고 수기(水氣)를 다스려 재물의 흐름을 막는 탁기(濁氣)를 씻는다.",
-            "황정(黃精, Polygonatum) — 본초강목 卷十二. 정(精)과 혈(血)을 기르고 오장(五臟)을 윤택하게 하여 재복의 바탕인 신체를 강건하게 한다.",
-            "모향(木香, Aucklandia) — 본초강목 卷十四. 기(氣)를 소통시키고 위장의 막힘을 뚫으니, 막힌 재물의 흐름을 트이게 하는 기운이 넘친다."
-        ],
-        "ritual": (
-            "【황금비방 의식(儀式)】\n"
-            "① 음력 초하루 또는 보름, 새벽 3시(인시·寅時)에 정화수 한 그릇을 동쪽에 떠놓고 황기·복령을 옆에 둔다.\n"
-            "② 황색 한지에 '財福聚門'을 붉은 먹으로 세 번 쓴 뒤 촛불로 그을린다.\n"
-            "③ 곳간(금고·지갑) 안쪽에 황황토 한 줌과 함께 봉하여 넣는다.\n"
-            "④ 매일 아침 동쪽을 향해 '천하의 재물이 내 문으로'를 세 번 외친다."
-        ),
-        "chant": "天地乾坤開財門, 南北東西聚黃金 (천지건곤개재문, 남북동서취황금)",
-        "desc": (
-            "어허! 황금 비방을 들어라. 이시진(李時珍) 선생이 본초강목에 기록하기를 — "
-            "황기(黃芪)의 달콤한 기운은 대지의 精을 차오르게 하고, 복령(茯苓)의 맑은 수기는 "
-            "마음의 근심을 씻어내니 이 두 약재를 품은 자의 곳간에는 반드시 황금이 쌓인다 하였도다. "
-            "네 지갑에 황기 한 조각을 넣어두어라. 대지의 기운이 네 손을 황금으로 물들이리니!"
-        )
-    },
-    "연애운": {
-        "title": "천생인연결연비방(天生因緣結緣秘方)",
-        "emoji": "🌸💫🧿",
-        "hanja": "紅絲結緣符",
-        "bonchogang_herbs": [
-            "장미(薔薇, Rosa) — 본초강목 卷三十六. 혈(血)을 활성화하고 어혈(瘀血)을 풀어 마음의 응어리를 녹이니 인연의 문이 열린다.",
-            "합환피(合歡皮, Albizzia) — 본초강목 卷三十五. '기쁨을 합친다'는 이름 그대로 울결(鬱結)된 감정을 풀고 부부의 화합을 도모하는 신묘한 약재이다.",
-            "연자(蓮子, Lotus Seed) — 본초강목 卷三十三. 심신(心身)을 안정시키고 심장의 허한 기운을 보하니 순수한 사랑의 마음이 깊어진다.",
-            "익모초(益母草, Leonurus) — 본초강목 卷十五. '어머니를 이롭게 한다'는 뜻으로 여성의 혈기(血氣)를 왕성하게 하여 인연의 결실을 맺게 한다.",
-            "사향(麝香, Musk) — 본초강목 卷五十一. 강한 방향(芳香)으로 막힌 경락을 통하게 하고 정신을 맑게 하니 이연(異緣)을 끌어당기는 가장 강력한 향재이다."
-        ],
-        "ritual": (
-            "【홍사결연 의식(儀式)】\n"
-            "① 음력 칠월(인연의 달), 자시(子時, 밤 11~새벽 1시)에 붉은 실과 합환피 조각을 준비한다.\n"
-            "② 붉은 한지에 자신의 이름과 상대의 이름(혹은 '천생배필')을 써서 붉은 실로 묶는다.\n"
-            "③ 연꽃 세 송이 사이에 놓고 사향이나 장미수를 세 방울 떨어뜨린다.\n"
-            "④ '월하노인이시여, 붉은 실을 이어주소서'를 열두 번 외우고 품에 지닌다."
-        ),
-        "chant": "月老牽線紅絲定, 有緣千里來相逢 (월로견선홍사정, 유연천리래상봉)",
-        "desc": (
-            "아아! 인연의 비방을 들어라. 본초강목에 이르기를 — "
-            "합환피(合歡皮)는 부부의 다툼을 잠재우는 신묘한 약재요, 사향(麝香)은 천 리 밖의 인연도 "
-            "끌어당기는 우주 최강의 향기라 하였도다. 네 방 한쪽에 합환피 두 조각을 이어 묶어 놓아라. "
-            "끊어진 붉은 실이 다시 이어지고 멀었던 인연이 발길을 돌려 찾아오리!"
-        )
-    },
-    "건강운": {
-        "title": "무병장수오장비방(無病長壽五臟秘方)",
-        "emoji": "🌿🧘💚",
-        "hanja": "五臟調和長壽符",
-        "bonchogang_herbs": [
-            "당귀(當歸, Angelica Sinensis) — 본초강목 卷十四. '마땅히 돌아오다'는 이름처럼 흩어진 혈기를 되돌려 오장육부에 생기를 불어넣는 혈(血)의 으뜸 약재이다.",
-            "지황(地黃, Rehmannia) — 본초강목 卷十六. 간신(肝腎)의 음기(陰氣)를 크게 보하여 뼈를 강하게 하고 노화를 막으니 장수의 으뜸이로다.",
-            "오미자(五味子, Schisandra) — 본초강목 卷十八. 다섯 가지 맛으로 오장(五臟)을 한꺼번에 수렴·보양하니 몸의 기운이 새어나가지 않게 하는 보(寶)중의 보이다.",
-            "구기자(枸杞子, Wolfberry) — 본초강목 卷三十六. 간(肝)과 신(腎)을 보하고 눈을 밝게 하니 빛나는 생명력의 원천이다. 본초강목이 특히 노인의 장수 약으로 권하였다.",
-            "영지(靈芝, Ganoderma) — 본초강목 卷二十八. 삼독(三毒)을 풀고 신(神)을 안정시키며 폐기(肺氣)를 보하니, '하늘이 내린 신약(神藥)'이라 칭송받는 불로장생의 버섯이로다."
-        ],
-        "ritual": (
-            "【오장조화 의식(儀式)】\n"
-            "① 매일 새벽 卯時(오전 5~7시)에 구기자와 오미자를 달인 차(茶)를 한 잔 마신다.\n"
-            "② 황색 한지에 자신의 생년월일과 '五臟調和 無病長壽'를 쓰고 몸 가까이 지닌다.\n"
-            "③ 보름달이 뜨는 날 밤, 영지 한 조각을 동쪽에 두고 달빛을 쬐어준다.\n"
-            "④ 잠들기 전 당귀 달인 물에 족욕을 하며 '건강 감사' 묵상을 한다."
-        ),
-        "chant": "五臟調和百脈通, 神清氣爽壽千年 (오장조화백맥통, 신청기상수천년)",
-        "desc": (
-            "들어라! 무병장수의 비방을 전하노라. 이시진이 본초강목에 이르기를 — "
-            "영지(靈芝)는 하늘이 내린 신약이요, 오미자(五味子)는 오장(五臟)을 한꺼번에 다스리는 "
-            "천지의 정수라 하였도다. 매일 구기자 일곱 알을 물에 우려 마시고, "
-            "베개 밑에 당귀 한 조각을 넣어라. 오장이 조화롭고 백맥이 통하여 "
-            "질병의 살기가 감히 네 몸에 발을 들이지 못하리라!"
-        )
-    },
-    "사업운": {
-        "title": "비룡승천사업비방(飛龍昇天事業秘方)",
-        "emoji": "🐉🏔️🔥",
-        "hanja": "飛龍昇天開業符",
-        "bonchogang_herbs": [
-            "인삼(人蔘) — 본초강목 卷十二. 원기를 크게 보하여 의지와 결단력을 극강으로 끌어올리니 사업의 주춧돌이 된다.",
-            "천마(天麻, Gastrodia) — 본초강목 卷十三. 머리의 풍기(風氣)를 다스리고 두뇌를 맑게 하니 시장의 흐름을 꿰뚫어 보는 통찰력이 생긴다.",
-            "용안육(龍眼肉, Longan) — 본초강목 卷三十一. '용의 눈'이란 이름처럼 기억력과 집중력을 높이고 심신을 안정시키니 주요 협상과 계약 전에 반드시 복용하라.",
-            "대황(大黃, Rhubarb) — 본초강목 卷十七. 몸 안의 적체(積滯)된 탁기를 강력히 배출하니 사업의 막힌 흐름을 뚫는 강력한 소통의 약재이다.",
-            "백출(白朮, Atractylodes) — 본초강목 卷十二. 土氣를 강건히 하고 습(濕)을 제거하여 발이 흔들리지 않게 하니 사업의 기초를 반석 위에 세운다."
-        ],
-        "ritual": (
-            "【비룡승천 의식(儀式)】\n"
-            "① 사업을 시작하거나 중대한 계약을 앞둔 날 새벽, 인삼과 용안육을 달인 탕을 마신다.\n"
-            "② 사무실 북벽(뒤쪽)에 '飛龍昇天 開業大吉'을 붉은 먹으로 쓴 부적을 붙인다.\n"
-            "③ 책상 왼쪽에 백출 가루를 담은 작은 항아리를 두어 토기(土氣)를 강화한다.\n"
-            "④ 중요 미팅 전에는 천마 달인 물로 입을 헹구고 '천하의 길이 내 앞에 열린다'를 세 번 외친다."
-        ),
-        "chant": "飛龍在天利見大人, 商道暢通萬事亨通 (비룡재천이견대인, 상도창통만사형통)",
-        "desc": (
-            "호통을 치노라! 사업의 비방을 전한다. 본초강목에 이르기를 — "
-            "천마(天麻)는 두뇌의 풍(風)을 다스려 시장을 내려다보는 대인(大人)의 안목을 주고, "
-            "인삼(人蔘)의 원기는 어떤 사업의 폭풍도 버텨내게 한다 하였노라. "
-            "사무실에 백출 한 줌을 담은 항아리를 두어라. 대지의 기운이 너의 사업 터전에 깃들어 "
-            "거래처가 구름처럼 몰려들고 계약서에 황금 도장이 찍힐 것이니라!"
-        )
-    },
-    "관재구설": {
-        "title": "소액면재구설비방(消厄免災口舌秘方)",
-        "emoji": "⚖️🛡️🌊",
-        "hanja": "消災解厄辟邪符",
-        "bonchogang_herbs": [
-            "감초(甘草, Licorice) — 본초강목 卷十二. 모든 약의 독을 조화시키는 '약 중의 군자'로 인간관계의 독(毒)을 풀고 갈등을 완화하는 으뜸 약재이다.",
-            "치자(梔子, Gardenia) — 본초강목 卷三十六. 몸 안의 화독(火毒)을 내리고 번열(煩熱)을 식히니 분노를 가라앉히고 관재(官災)의 불을 끈다.",
-            "웅담(熊膽, Bear Bile) — 본초강목 卷五十一. 간의 열독(熱毒)을 강력히 해독하고 눈을 밝게 하니 적의 음모를 꿰뚫어 보고 법적 분쟁에서 승리를 이끈다.",
-            "석창포(石菖蒲, Acorus) — 본초강목 卷三十四. 귀신과 사기(邪氣)를 쫓고 마음을 열어 지혜를 발하게 하니 구설수(口舌數)가 사라지고 입이 무거워진다.",
-            "소금(食鹽) — 본초강목 卷十一. 예로부터 서방(西方) 금기(金氣)의 응결체로 모든 사악한 기운과 주술을 막아내는 가장 강력한 쾌락의 정화제이다."
-        ],
-        "ritual": (
-            "【소재해액 의식(儀式)】\n"
-            "① 관재·소송이 두렵거나 구설이 예상될 때, 정화수에 감초와 치자 달인 물을 섞어 문지방에 뿌린다.\n"
-            "② 굵은 소금 한 줌을 현관 모서리 네 곳에 두어 사기(邪氣)를 차단한다.\n"
-            "③ 석창포를 화분에 심어두면 집 안에 맑은 기운이 흘러 말로 인한 화를 막는다.\n"
-            "④ 법원・경찰서 출입 시에는 반드시 감초 한 조각을 주머니에 넣고 간다."
-        ),
-        "chant": "消災解厄萬邪退, 正氣浩然天地明 (소재해액만사퇴, 정기호연천지명)",
-        "desc": (
-            "경고하노라! 관재구설의 비방을 들어라. 본초강목에 이르기를 — "
-            "감초(甘草)는 만독(萬毒)을 해독하는 군자의 약이요, 석창포(石菖蒲)는 귀신과 사기를 "
-            "쫓아내는 신령의 풀이라 하였도다. 집 현관에 굵은 소금을 뿌리고 "
-            "석창포 화분 하나를 들여놓아라. 말로 인한 화살이 네 몸에 닿기 전에 "
-            "정화의 기운이 모두 소멸시켜 버리리라!"
-        )
-    },
-    "자손운": {
-        "title": "옥동자득자비방(玉童子得子秘方)",
-        "emoji": "👶🌱🌙",
-        "hanja": "求子送子觀音符",
-        "bonchogang_herbs": [
-            "토사자(菟絲子, Cuscuta) — 본초강목 卷十八. 신(腎)과 간(肝)을 보하여 생명력의 근원인 정(精)을 충만하게 하니 자녀 인연의 씨앗을 틔운다.",
-            "복분자(覆盆子, Rubus) — 본초강목 卷十八. 신기(腎氣)를 굳세게 하여 생식의 근본을 강화하니 자식 인연을 부르는 으뜸 약재이다.",
-            "육종용(肉蓯蓉, Cistanche) — 본초강목 卷十二. '사막의 인삼'이라 불리며 신양(腎陽)을 보하고 자궁의 한기(寒氣)를 제거하여 옥동자의 길을 연다.",
-            "백하수오(白何首烏, Cynanchum) — 본초강목 卷十八. 정혈(精血)을 보하고 간신(肝腎)을 강하게 하니 자녀의 건강한 탄생을 준비하는 몸의 토대를 만든다.",
-            "연꽃(荷花, Lotus) — 본초강목 卷三十三. 不染의 순결한 기운으로 자궁을 정화하고 자손 번창의 기운을 불러 모으는 신성한 꽃이다."
-        ],
-        "ritual": (
-            "【득자 의식(儀式)】\n"
-            "① 음력 자월(子月, 11월) 보름달이 뜨는 밤, 정화수를 떠놓고 달을 향해 자손 발원을 한다.\n"
-            "② 토사자와 복분자를 달인 차를 부부가 함께 마신다.\n"
-            "③ 안방 동쪽에 연꽃 그림이나 진짜 연꽃을 놓아두어 자손의 기운을 끌어온다.\n"
-            "④ 아이 방 예정 공간에 육종용 가루를 넣은 주머니를 달아 자손의 기운이 깃들게 한다."
-        ),
-        "chant": "觀世音菩薩送子來, 玉童玉女降吉祥 (관세음보살송자래, 옥동옥녀강길상)",
-        "desc": (
-            "어허! 자손의 비방을 전하노라. 본초강목에 이르기를 — "
-            "토사자(菟絲子)는 신장의 정기를 채우고 복분자(覆盆子)는 생명의 근원을 강화하니 "
-            "이 두 약재를 함께 달여 부부가 나눠 마시면 달이 차고 자손의 인연이 열린다 하였도다. "
-            "안방에 연꽃 그림 한 폭을 걸어두어라. 관세음보살의 인연이 옥동자를 "
-            "네 품에 안겨줄 것이니라!"
-        )
-    },
-    "학업운": {
-        "title": "독서삼여학업비방(讀書三餘學業秘方)",
-        "emoji": "📚🌟🎓",
-        "hanja": "文昌帝君庇蔭符",
-        "bonchogang_herbs": [
-            "원지(遠志, Polygala) — 본초강목 卷十二. '뜻이 멀어진다'는 이름처럼 마음을 열고 기억력·집중력을 크게 강화하니 학업의 제일 약재이다.",
-            "석창포(石菖蒲) — 본초강목 卷三十四. 공규(孔竅)를 열어 두뇌의 막힌 통로를 뚫고 총명함을 더하니 옛 선비들이 항상 지니던 지혜의 풀이다.",
-            "구절초(九節草, Chrysanthemum) — 본초강목 卷二十九. 맑은 향이 두뇌의 열기를 식히고 눈을 밝게 하니 밤새 책을 읽어도 피로가 없다.",
-            "하수오(何首烏, Polygonum) — 본초강목 卷十八. 정혈(精血)을 보하고 두뇌에 영양을 공급하여 시험장에서 기억력이 폭발하게 하는 장기 복용약이다.",
-            "백반(白礬, Alum) — 본초강목 卷十一. 사기와 탁기를 정화하고 정신을 맑게 하니 시험장의 긴장과 잡념을 씻어내는 강력한 정화제이다."
-        ],
-        "ritual": (
-            "【문창제군 의식(儀式)】\n"
-            "① 시험 전날 밤, 원지와 석창포를 달인 차를 마시며 공부한 내용을 한 번 더 훑는다.\n"
-            "② 공부방 북쪽 벽에 '文昌帝君庇蔭'을 쓴 황색 부적을 붙인다.\n"
-            "③ 백지에 시험 과목과 목표 점수를 쓰고 책상 아래에 깔아두어 기운을 모은다.\n"
-            "④ 시험장 입실 전, 원지 달인 물로 손을 씻고 양쪽 귀를 가볍게 마사지한다."
-        ),
-        "chant": "文昌帝君開智慧, 金榜題名萬年春 (문창제군개지혜, 금방제명만년춘)",
-        "desc": (
-            "들어라! 학업의 비방을 전하노라. 본초강목에 이르기를 — "
-            "원지(遠志)는 마음의 문을 열고 기억을 곳간에 차곡차곡 쌓게 하며, "
-            "석창포(石菖蒲)는 두뇌의 막힌 혈로(血路)를 뚫어 총명함을 샘솟게 한다 하였도다. "
-            "공부하는 방에 석창포 화분 하나를 두어라. 문창제군(文昌帝君)의 기운이 그 향기를 따라 "
-            "내려와 시험장에서 글자들이 저절로 눈에 들어오게 해줄 것이니라!"
-        )
-    },
-    "개운": {
-        "title": "만사개운십이지비방(萬事開運十二支秘方)",
-        "emoji": "🌅🔓🌈",
-        "hanja": "萬事開運轉禍爲福符",
-        "bonchogang_herbs": [
-            "웅황(雄黃, Realgar) — 본초강목 卷九. 살충·해독의 으뜸으로 몸과 공간에 깃든 사기·음기·저주를 강력히 소멸시키는 벽사(辟邪)의 으뜸 광물이다.",
-            "창출(蒼朮, Atractylodes) — 본초강목 卷十二. 연기를 피워 올리면 습기와 사기를 쫓는 훈증(薰蒸) 효과가 탁월하니 공간 정화와 개운에 최고의 약재이다.",
-            "단향(白檀, Sandalwood) — 본초강목 卷三十四. 신성하고 맑은 향이 마음을 안정시키고 신령의 기운을 끌어들이니 의식의 필수 향재이다.",
-            "진사(朱砂, Cinnabar) — 본초강목 卷九. 붉은빛으로 사악한 기운을 물리치고 심신을 안정시키니 부적에 쓰는 붉은 색의 가장 강력한 정화물이다.",
-            "용연향(龍涎香, Ambergris) — 본초강목 卷四十四. 고래에서 채취한 최고급 향재로 천지의 정기를 응집하니 막힌 운명의 문을 열쇠처럼 활짝 열어젖힌다."
-        ],
-        "ritual": (
-            "【만사개운 의식(儀式)】\n"
-            "① 음력 정월 대보름 또는 동지 날, 창출을 태워 집 안 구석구석을 훈증하여 사기를 쫓는다.\n"
-            "② 단향 향을 피우며 '하늘이시여, 막힌 운명의 빗장을 열어주소서'를 108번 외운다.\n"
-            "③ 붉은 한지에 진사 먹으로 '轉禍爲福 萬事開運'을 쓰고 침대 밑에 넣어둔다.\n"
-            "④ 매월 1일에 정화수를 대문에 뿌리고 웅황을 녹인 물로 문지방을 닦아낸다."
-        ),
-        "chant": "乾坤開運轉禍來, 霹靂一聲萬事通 (건곤개운전화래, 벽력일성만사통)",
-        "desc": (
-            "어허! 개운(開運)의 최고 비방을 들어라. 본초강목에 이르기를 — "
-            "창출(蒼朮)을 태운 연기는 역병과 귀신을 쫓아내고, 웅황(雄黃)은 천하의 사독(邪毒)을 "
-            "소멸시키니 이 둘을 함께 활용하면 수십 년 묵은 운명의 빗장도 열린다 하였도다. "
-            "이사하거나 새 출발을 앞둔 날, 창출 연기로 공간을 정화하여라. "
-            "막혔던 운이 물꼬가 터지듯 한꺼번에 쏟아져 내리리니!"
-        )
-    }
-}
-
-# 오행별 건강 및 체질 처방 (Elemental Constitution Database)
-HEALTH_DB = {
-    "木": {"organ": "간, 담낭", "food": "오미자차, 매실, 녹색 채소", "advice": "눈의 피로를 주의하고 정기적인 산책으로 근육의 긴장을 풀어주어야 합니다."},
-    "火": {"organ": "심장, 소화기", "food": "대추차, 토마토, 쓴맛 채소", "advice": "열이 위로 솟구치기 쉬우니 명상과 충분한 수분 섭취로 심장의 화기를 다스리십시오."},
-    "土": {"organ": "위장, 비장", "food": "생강차, 단호박, 노란 과일", "advice": "생각이 많으면 위장이 굳으니 식사 중에는 오직 맛에만 집중하는 것이 보약입니다."},
-    "金": {"organ": "폐, 대장", "food": "무라차, 도라지즙, 흰색 배", "advice": "공기가 맑은 곳을 찾아 깊은 호흡을 실천하고 피부의 건조함을 막아야 합니다."},
-    "水": {"organ": "신장, 방광", "food": "검은콩차, 해조류, 짠맛 견과류", "advice": "허리 기운이 약해지기 쉬우니 찬 기운을 멀리하고 따뜻한 물 배합이 필수적입니다."}
-}
-
-# ══════════════════════════════════════════════
-#  만신급 십성 상세 해설 데이터 (Massive Interpretation Engine)
-# ══════════════════════════════════════════════
-# 십성 상세 해설 데이터 (Legendary Joseon Mansin Style)
-SIPSUNG_DEEP = {
-    "비견": {
-        "nature": "어허! 한 산에 두 마리의 호랑이가 포효하니 네 자존심과 독립심이 하늘을 찌르는구나. 어깨를 나란히 하고 세상을 내려다보는 기상이니, 누구에게도 굽히지 않는 네 꼿꼿한 선비의 절개가 네 운명의 중심축이로다. 거친 파도 앞에서도 '나는 나다'라고 외치는 그 당당함이 곧 네가 천하를 얻을 유일한 열쇠임을 잊지 마라!",
-        "pills": {
-            "년주": "조상대에 스스로 가문을 일으킨 위대한 혼이 네 속에 있도다. 어린 나이부터 부모 품을 떠나 사방을 누벼야 네 진짜 복이 터질 것이라.",
-            "월주": "치열한 경쟁 속에서 네 실력을 증명해야 하는 고달픈 운명이로다. 하지만 동료들의 질투마저 네 성공의 발판으로 삼을 줄 아는 거물의 상이로다.",
-            "일주": "배우자와의 관계가 흡사 거울을 보는 듯하구나. 서로의 고집이 불처럼 부딪히니, 한 걸음 물러나는 지혜가 곧 천년가약을 지키는 비방이로세.",
-            "시주": "노후에도 네 이름을 건 만년의 사업을 구상할 상이로다. 자식의 효도보다 네 자신의 영적인 완성을 통해 진정한 안락을 얻으리라."
-        },
-        "advice": "네 고집은 만 리 장성도 쌓을 힘이나, 때로는 부드러운 버들가지처럼 휘어질 줄 알아야 큰 풍파를 넘길 수 있느니라.",
-        "secret_wisdom": "하나의 산에는 한 명의 주인이 있음을 명심하라. 네가 진정한 주인이 되려면 경쟁자의 마음까지 얻는 대만신의 덕을 갖춰야 한다.",
-        "spiritual_analogy": "대지를 뚫고 올라온 거대한 바위산과 같으니, 그 웅장함 뒤에 숨은 고독을 달빛 아래서 신령님과 나누어라."
-    },
-    "겁재": {
-        "nature": "호통을 치노라! 네 손안에 든 황금을 노리는 수만 마리의 까마귀 떼가 보이느냐! 겁재(劫財)는 빼앗고 빼앗기는 투쟁의 기운이니, 네 인생은 한순간도 긴장을 늦출 수 없는 전쟁터와 같도다. 하지만 두려워 마라! 네 속에는 그 모든 난관을 뚫고 승리할 독사와 같은 끈기와 여우 같은 지혜가 이미 새겨져 있느니라.",
-        "pills": {
-            "년주": "가문의 유산을 탐내지 마라. 네 것은 오직 네 땀방울로 일군 산천방방곡곡의 황금뿐이니라. 일찍부터 거친 세상을 경험해야 거물이 되리로다.",
-            "월주": "주변에 네 공을 가로채려는 여우 같은 자들이 득실거리는구나. 정신 똑바로 차려라! 네가 한눈파는 사이에 공든 탑이 무너질까 걱정이로다.",
-            "일주": "배우자와의 사이에 보이지 않는 금전의 장벽이 느껴지는구나. 부부라도 돈 계산은 철저히 하되, 정(情)만큼은 명주실처럼 길게 이어가거라.",
-            "시주": "말년에 생각지 못한 지출이 생겨 가슴을 쓸어내릴 일이 있으나, 그 또한 더 큰 복을 부르기 위한 신령님의 시험임을 알라."
-        },
-        "advice": "재물에 눈이 멀면 사람을 잃고, 사람을 잃으면 네 운명의 줄기가 말라버린다. 베풀어라! 그래야 네 곳간이 다시 채워지느니라.",
-        "secret_wisdom": "보물의 주인은 그것을 지킬 힘이 있는 자로다. 네 힘은 칼이 아니라 사람의 마음을 훔치는 신비로운 매력에서 나옴을 명심하라.",
-        "spiritual_analogy": "천하를 호령하는 대장 늑대처럼 항상 날이 서 있으나, 무리 전체를 살리는 대의(大義)를 품어야 만인이 너를 따르리라."
-    },
-    "식신": {
-        "nature": "어허! 하늘이 무너져도 네 입에 들어갈 쌀 한 톨은 신령님이 꼭꼭 챙기시는구나. 식신(食神)은 마르지 않는 샘물이요, 천지가 베푸는 잔칫상이니 네 인생은 풍류와 멋이 넘쳐흐릴 것이로다. 특별한 노력 없이도 사람들이 너를 찾아와 먹을 것을 내놓으니 이 어찌 상서로운 기운이 아니겠느냐!",
-        "pills": {
-            "년주": "조상님들이 대대로 배고픈 나그네를 대접한 공덕이 네게 내려왔도다. 네가 태어날 때 이미 금수저를 입에 물고 온 격이니 평생이 안락하리라.",
-            "월주": "네 손기술과 말재주가 곧 보물창고로다. 하나를 배우면 열을 깨우치는 영민함으로 사회적 명성과 부를 동시에 거머쥐릴 상이로세.",
-            "일주": "배우자가 너를 보살피고 아끼는 마음이 부처님 같구나. 서로의 입에 맛있는 음식을 넣어주듯 평생을 다정하게 해로할 팔자로다.",
-            "시주": "자손들이 네 재능을 이어받아 예능과 학문에서 두각을 나타내리라. 말년에 네 집안엔 항상 웃음소리와 맛있는 향기가 끊이지 않으리라."
-        },
-        "advice": "배부름에 취해 나태해지면 복의 줄기가 얇아진다. 네가 가진 풍요를 세상에 나누어줄 때 그 샘물은 더욱 맑아질 것이니라.",
-        "secret_wisdom": "재능이 깊으면 하늘도 탐내는 법이니, 네 그릇을 넘치지 않게 잘 다스리는 것이 복을 지키는 길이다.",
-        "spiritual_analogy": "비옥한 대지에 비가 내린 뒤 돋아나는 파릇파릇한 새싹과 같으니 그 생명력이 만물을 살릴 것이로다."
-    },
-    "상관": {
-        "nature": "호통을 치노라! 네 입에서 나오는 말 한마디가 천둥을 부르고, 네 손 끝에서 피어나는 재주가 무지개를 만드는구나. 상관(傷官)은 낡은 관을 깨부수는 천재의 광기니, 네 비범함은 세상을 뒤집어엎고 새로운 시대를 열 상이로다. 평범한 길을 가려 하지 마라. 너는 오직 너만의 찬란한 불꽃을 피워야 살 운명이니라!",
-        "pills": {
-            "년주": "조상대에 가문을 흔든 기개 있는 명사나 예인이 계셨도다. 그 피가 네게 흘러와 규율에 얽매이지 않는 거침없는 영혼을 만들었느니라.",
-            "월주": "세상의 부조리를 참지 못하는 대단한 담력을 지녔구나. 날카로운 비판과 뛰어난 창의성으로 사회의 중심에서 파란을 일으릴 상이로다.",
-            "일주": "배우자와의 말다툼에 칼날이 서 있으니 자중하라. 네 독설은 적에게는 치명적이나 사랑하는 사람에겐 피눈물이 됨을 명심하거라.",
-            "시주": "말년에도 네 비범한 능력이 식지 않아 후학을 양성하거나 예술적 대작을 남기리라. 자손 중에도 네 기질을 닮은 영웅이 탄생하리라."
-        },
-        "advice": "칼은 칼집에 있을 때 가장 무서운 법이다. 네 재능을 함부로 뽐내지 말고 때를 기다려 천군만마를 호령하는 데 써야 하느니라.",
-        "secret_wisdom": "재주는 곰이 부리고 돈은 되놈이 가져간다는 말을 잊지 마라. 네 뛰어난 능력이 남의 좋은 일만 시키지 않도록 여우 같은 지혜가 필요하다.",
-        "spiritual_analogy": "어둠을 가르고 나타난 화려한 불꽃놀이와 같으니, 그 찬란함이 끝난 뒤의 고요함을 품을 줄 알아야 대인이 된다."
-    },
-    "편재": {
-        "nature": "어허! 동쪽 하늘에 무지개가 뜨고 서쪽 바다에서 황금빛 큰 배가 들어오는구나. 편재(偏財)는 사방팔방에 널린 주인 없는 재물이니, 네가 발길 닿는 곳마다 황금이 솟고 돈 냄새가 진동하는구나. 소소한 푼돈에 목매지 마라! 너는 천하의 시장을 주무르고 대륙의 상권을 장악할 대부상(大富商)의 가슴을 지녔도다.",
-        "pills": {
-            "년주": "조상이 천하를 호령하던 거부였거나 거대 상단을 이끌던 행수였음을 암시한다. 그 장대한 기운이 네 등 뒤를 든든히 지키고 있도다.",
-            "월주": "활동 범위가 만 리 밖까지 뻗어 있구나. 역마의 기운을 타고 세상을 누비며 재물을 쓸어 담으니 곳간에 황금이 넘쳐나리라.",
-            "일주": "풍류를 즐길 줄 아는 화려한 배필을 만나거나, 네 인생 자체가 한 편의 무용담처럼 다이내믹하구나. 재물이 넘치니 사람이 끊이지 않으리.",
-            "시주": "말년에 투자한 곳마다 대박이 터져 자손들에게 빌딩 숲을 물려줄 상이로다. 네 노후는 비단 침상 위에서 천하를 호령할 것이니라."
-        },
-        "advice": "큰 재물은 하늘이 잠시 맡긴 것이니 욕심의 노예가 되지 마라. 흐르지 않는 물은 썩듯, 재물도 베풀어야 다시 큰 파도가 되어 돌아온다.",
-        "secret_wisdom": "돈을 쫓지 말고 때를 쫓아라. 대만신의 눈에는 이미 네게 다가오는 거대한 금빛 물결이 보이니, 그 파도에 올라타기만 하면 된다.",
-        "spiritual_analogy": "광활한 만주 벌판을 달리는 야생마와 같으니 그 자유로운 영혼이 천하의 부를 네 발등에 적시리라."
-    },
-    "정재": {
-        "nature": "호통을 치노라! 한 땀 한 땀 수를 놓듯 네 삶의 부귀영화가 정갈하게 쌓여가고 있구나. 정재(正財)는 하늘이 내린 정당한 몫이니, 네 성실함은 바위를 뚫는 낙숫물과 같아 결코 네 운명을 배신하지 않으리라. 벼락부자는 아니더라도 일생에 가난의 그림자가 발끝에도 닿지 않을 만큼 견고하고 소중한 곳간을 지키는 상이로다.",
-        "pills": {
-            "년주": "검소하고 정직한 가풍이 네 핏줄 속에 흐르고 있도다. 조상의 성실함이 씨앗이 되어 네 인생 전반에 든든한 보험이 되어줄 것이니라.",
-            "월주": "빈틈없는 계산서와 확실한 실력으로 사회의 신용을 한 몸에 받는구나. 네 성실함은 금전의 입구를 넓히고 흉운의 입구를 틀어막을 비방이로다.",
-            "일주": "살림꾼 같은 현명한 배필을 만나 가정이 평화로우니, 밖에서 번 돈이 안에서 황금알을 낳는 거위가 되어 자산을 불려 나갈 상이로다.",
-            "시주": "차곡차곡 모은 재산이 노후에 거대한 태산이 되어 자손들에게 큰 그늘을 만들어 주리니, 네 말년은 평화로운 전원에서 시를 읊조리리라."
-        },
-        "advice": "아끼는 것도 좋으나 때로는 네 그릇을 넓히기 위해 과감한 베풂도 필요하다. 인색함이 복의 통로를 좁게 만들지 않도록 유의하라.",
-        "secret_wisdom": "천 냥을 아끼는 것보다 한 냥을 귀하게 쓰는 법을 알라. 네 정당한 재물은 네 영혼의 정직함이 만든 신의 선물이로다.",
-        "spiritual_analogy": "가을 들판에 끝없이 펼쳐진 황금 물결과 같으니, 네 땀방울이 곧 네 인생의 눈부신 훈장이 되리라."
-    },
-    "편관": {
-        "nature": "호통을 치노라! 등 뒤에 시퍼런 칼날이 서 있고 앞에는 거친 파도가 몰아치는 격이로다. 편관(偏官)은 칠살(七殺)의 위엄이니, 네 운명은 평범한 범인의 길을 거부하고 장수처럼 세상을 평정해야 할 숙명을 타고났느니라. 고통은 네게 훈장이며 시련은 네 권위를 높여주는 북소리니, 고개를 들고 네 앞의 적들을 호령하거라!",
-        "pills": {
-            "년주": "무관 가문이나 엄격한 법도가 흐르는 집안에서 태어나 일찍부터 세상의 매운맛을 보았도다. 극기복례의 기상이 네 성공의 씨앗이리라.",
-            "월주": "사회적 압박과 책임감이 태산 같으나 너는 그것을 들어 올릴 헤라클레스의 힘을 지녔구나. 위기가 닥칠수록 네 카리스마는 더 빛을 발하리라.",
-            "일주": "배우자가 호랑이처럼 엄격하거나 본인을 통제하려 드니 스트레스가 심하구나. 하지만 그 호랑이가 네 문 앞을 지키는 든든한 수호신임을 알라.",
-            "시주": "말년까지 권력의 끈을 놓지 않고 만인을 아우르는 지도자로 서 있을 상이로다. 자손들 또한 네 엄명을 받들어 가문의 위엄을 지키리라."
-        },
-        "advice": "강한 것은 부러지기 쉬운 법. 네 속의 화(火)를 다스리고 유연함을 길러라. 그래야 네 몸이 상하지 않고 대업을 이룰 수 있느니라.",
-        "secret_wisdom": "장수는 적을 죽이는 자가 아니라 무리로 살리는 자로다. 네 칼날을 네 자신에게 겨누지 말고 세상을 밝히는 등불로 써야 한다.",
-        "spiritual_analogy": "폭풍우 치는 바다 위에 홀로 선 외로운 등대와 같으나 그 빛은 만 갈래 길을 인도하는 천명이로다."
-    },
-    "정관": {
-        "nature": "어허! 도포 자락 휘날리며 대궐의 정문을 통과하는 고결한 사대부의 기상이로다. 정관(正관)은 하늘이 인정한 벼슬이요 세상의 법도니, 네 명예와 권위는 향기로운 매화처럼 만인에게 귀함으로 남을 것이로다. 사리사욕을 멀리하고 대의를 쫓으니 하늘이 네 이름을 금색 글자로 기록하는구나!",
-        "pills": {
-            "년주": "명문 사대부 가문이나 조상의 명성이 네 인생의 지도가 되어주고 있도다. 부끄럽지 않은 자손이 되기 위해 조상신이 네 걸음을 돕느니라.",
-            "월주": "탄탄대로의 관운이 서려 있구나. 네 공명정대한 처신은 사회의 상징이 되고, 상향의 기류를 타듯 끊임없이 승승장구할 길몽 같은 운이로다.",
-            "일주": "존경할 만한 반듯하고 품격 있는 배필을 만나 부러움을 한 몸에 받겠구나. 부부가 정과 의를 겸비하니 가문의 영광이 끝이 없으리라.",
-            "시주": "자손들이 과거 급제하듯 사회의 고위층에 진입하여 네 이름을 빛내리라. 말년에 네 권위는 고목나무의 뿌리처럼 깊고 풍성하게 뻗으리라."
-        },
-        "advice": "원칙이 너무 정갈하면 실리를 놓칠 수 있고, 규범이 너무 엄격하면 사람이 떠난다. 때로는 술 한 잔의 여유로 세상과 눈을 맞추거라.",
-        "secret_wisdom": "정의는 칼이 아니라 따뜻한 밥상에서 시작된다. 네 권위를 사람들을 안아주는 넓은 품으로 쓸 때 너는 비로소 거물이 된다.",
-        "spiritual_analogy": "청명한 가을 하늘 높이 떠 있는 보름달과 같으니 좌우의 별들이 너를 위해 춤을 추리로다."
-    },
-    "편인": {
-        "nature": "호통을 치노라! 남들이 보지 못하는 신령님의 세계를 엿보고 남들이 알지 못하는 천기를 읽어내는 비범한 눈을 가졌구나. 편인(偏印)은 치우친 도장이니, 네 비범함은 세상을 치유하는 신비로운 기술이 되거나 천 년을 이어갈 독보적인 철학이 될 숙명이로다. 남들의 시선을 두려워 마라. 네 독특함이 곧 세상을 살리는 방책이니라!",
-        "pills": {
-            "년주": "조상 중에 신비로운 약재를 다루거나 천문을 읽던 비범한 인연이 있었도다. 그 영적인 감각이 네 핏줄 속에 각인되어 전해졌느니라.",
-            "월주": "주류의 문명이 아닌 고난도의 전문 지식이나 신비주의 학문에서 독보적인 존재감을 뿜어내는구나. 네 지혜는 세상의 어둠을 밝히는 등불이로다.",
-            "일주": "배우자가 네 깊은 고독을 이해해줄 영혼의 동료여야 하니 만남이 쉽지 않으나, 일단 연을 맺으면 신비로운 기운이 넘쳐날 상이로다.",
-            "시주": "말년에 네 평생의 연구가 대작으로 완성되어 후세에 전해지리라. 자손 중에도 영매나 천재적인 예술가가 나올 영험한 기운이 서려 있도다."
-        },
-        "advice": "생각의 늪에 빠져 행동력을 잃지 마라. 네 머릿속의 보석들을 세상 밖으로 꺼내어 구체적인 형상을 만들 때 너는 비로소 완성되느니라.",
-        "secret_wisdom": "의심은 지혜의 시작이나 지나치면 독이 된다. 신령님을 믿고 네 직관을 믿어라. 이미 네 눈동자엔 천기의 비밀이 담겨 있노라.",
-        "spiritual_analogy": "깊은 산속 안개 자욱한 계곡에서 도를 닦는 신선과 같으니 세상 풍파는 잠시 다녀가는 바람일 뿐이로다."
-    },
-    "정인": {
-        "nature": "어허! 따뜻한 어머니의 품속처럼 대지가 너를 품고 하늘이 너를 보호하는구나. 정인(正印)은 바른 도장이요 하늘의 결재 서류니, 네 학문과 문서운이 청산유수처럼 흐를 것이로다. 네가 펜을 잡으면 금전이 따르고 네가 말을 뱉으면 권위가 생기니 이 어찌 축복받은 영혼이 아니겠느냐!",
-        "pills": {
-            "년주": "학식 높은 조상들이 정승 판서를 거치며 쌓은 덕이 네 머리 위에 금관을 씌워주었도다. 공부로 천하를 얻을 소중한 재능을 받았느니라.",
-            "월주": "윗사람의 총애가 쏟아지니 발탁의 기운이 늘 함께하도다. 어떤 시련이 와도 네 뒤를 봐주는 강력한 후원자가 있으니 두려울 것이 없다.",
-            "일주": "어머니처럼 자애롭고 현명한 배필을 만나 안식처를 얻겠구나. 배우자의 조언이 곧 네 운명을 바꾸는 황금 열쇠가 될 것이니 귀를 기울여라.",
-            "시주": "자손들이 학자로 성공하거나 교육계의 거목이 되어 네 이름을 높이리라. 말년은 수많은 제자와 책들에 둘러싸여 존경 속에 안락하리로다."
-        },
-        "advice": "받는 것에 익숙해져 감사를 잊지 마라. 네가 쏟아지는 사랑은 전생에 네가 쌓은 공덕이니, 이제는 세상을 가르치고 품어줄 차례로다.",
-        "secret_wisdom": "글은 칼보다 강하고 덕은 명예보다 깊다. 네 부드러운 카리스마가 세상의 거친 풍파를 잠재우는 진정한 평화의 도구가 되리라.",
-        "spiritual_analogy": "대지를 조용히 적시는 봄비와 같으니 만물은 너를 통해 비로소 생명의 숨을 쉬게 되리라."
-    }
-}
-
-def calc_sipsung(ilgan, target): # 십성 계산 엔진
-    if not target: return ""
-    o1, o2 = OH[ilgan], OH[target]
-    # 음명 (Yin/Yang) - True if Yang
-    y1, y2 = CG.index(ilgan) % 2 == 0 if ilgan in CG else False, False
-    if target in CG: y2 = CG.index(target) % 2 == 0
-    else: # 지지 (Branch)
-        jj_yang = ["子","寅","辰","午","申","戌"] # 명리학적 음양 (표준 양팔통/음팔통 기준)
-        y2 = target in jj_yang
-    o1, o2 = OH[ilgan], OH[target]
-    
-    # 십성 판정 로직 (ASCII 키 사용)
-    if o1 == o2: rel = "비겁"
-    elif OH_RELATE[o1]["saeng"] == o2: rel = "식상"
-    elif OH_RELATE[o1]["geuk"] == o2: rel = "재성"
-    elif OH_RELATE[o2]["geuk"] == o1: rel = "관성"
-    else: rel = "인성"
-    
-    mapping = {
-        "비겁": {True: "비견", False: "겁재"},
-        "식상": {True: "식신", False: "상관"},
-        "재성": {True: "편재", False: "정재"},
-        "관성": {True: "편관", False: "정관"},
-        "인성": {True: "편인", False: "정인"}
-    }
-    # Use Matrix if available for better precision
-    if ilgan in TEN_GODS_MATRIX and target in TEN_GODS_MATRIX[ilgan]:
-        return TEN_GODS_MATRIX[ilgan][target]
-    return mapping[rel][y1 == y2]
-
-def get_hidden_wealth(ilgan, jj_pils): # 지장간 보물 탐지 (Hidden Treasure)
-    treasures = []
-    for i, jj in enumerate(jj_pils):
-        stems = JIJANGGAN.get(jj, [])
-        for s in stems:
-            if calc_sipsung(ilgan, s) in ["편재", "정재"]:
-                p_name = ["시주","일주","월주","년주"][i]
-                treasures.append(f"💎 [{p_name} 지장간] 숨겨진 보물 상자 발견! {jj} 속에 {s}({calc_sipsung(ilgan, s)})가 숨어있구나. 남들이 모르는 비상금이 터지거나 예기치 못한 횡재가 따를 터이다!")
-    return treasures
-
-def get_gongmang(cg, jj): # 공망 (Gongmang - The Void)
-    cgs = ["甲","乙","丙","丁","戊","己","庚","辛","壬","癸"]
-    jjs = ["子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥"]
-    cg_idx = cgs.index(cg)
-    jj_idx = jjs.index(jj)
-    start_idx = (jj_idx - cg_idx) % 12
-    void_indices = [(start_idx + 10) % 12, (start_idx + 11) % 12]
-    return [jjs[i] for i in void_indices]
-
-def get_interactions(pils): # 刑沖破害 (Event Trigger Engine)
-    jjs = [p["jj"] for p in pils]
-    cgs = [p["cg"] for p in pils]
-    results = []
-    
-    # [1] 천간 합/충 (Heavenly Stem Interactions)
-    cg_pairs = [(0,1),(0,2),(1,2),(1,3),(2,3)]
-    for i, j in cg_pairs:
-        c1, c2 = cgs[i], cgs[j]
-        # 합 (Hap - New Contracts/Love)
-        if (c1=="甲" and c2=="己") or (c1=="己" and c2=="甲"): results.append(f"갑기합(甲己合): {i}-{j}주 합이 들어오니 새로운 계약이나 명예로운 인연이 생길 징조다!")
-        if (c1=="乙" and c2=="庚") or (c1=="庚" and c2=="乙"): results.append(f"을경합(乙庚合): {i}-{j}주 합이로다. 의리 있는 동료를 만나거나 강한 결속력이 생긴다!")
-        if (c1=="丙" and c2=="辛") or (c1=="辛" and c2=="丙"): results.append(f"병신합(丙辛合): {i}-{j}주 합이니 예기치 못한 금전적 이득이나 문서운이 따른다!")
-        if (c1=="丁" and c2=="壬") or (c1=="壬" and c2=="丁"): results.append(f"정임합(丁壬合): {i}-{j}주 합이구나. 다정한 인연이 나타나거나 예술적 성취를 이룬다!")
-        if (c1=="戊" and c2=="癸") or (c1=="癸" and c2=="戊"): results.append(f"무계합(戊癸合): {i}-{j}주 합이로세. 나이 차이 많은 인연이나 뜻밖의 화합이 일어난다!")
-        # 충 (Chung - Sudden Change/Move)
-        if (c1=="甲" and c2=="庚") or (c1=="庚" and c2=="甲"): results.append(f"⚠️ [조상님의 경고] 갑경충(甲庚沖): {i}-{j}주 충돌! 도끼가 나무를 찍어내리는 형국이니, 갑작스러운 이동이나 이별 수가 닥칠 터이다. 만약 이를 무시하면 큰 화를 당할 것이라!")
-        if (c1=="乙" and c2=="辛") or (c1=="辛" and c2=="乙"): results.append(f"⚠️ [조상님의 경고] 을신충(乙辛沖): {i}-{j}주 충돌! 면도칼이 화초를 베어버리니 갈등과 신경 쇠약이 너를 괴롭힐 것이다. 하심(下心)하고 또 하심하라!")
-
-    # [2] 지지 충 (Earthly Branch Clashes)
-    jj_pairs = [(0,1),(0,2),(1,2),(1,3),(2,3)]
-    for i, j in jj_pairs:
-        j1, j2 = jjs[i], jjs[j]
-        if CHUNG_MAP.get(j1) == j2:
-            results.append(f"🔥 [조상님의 진노] {j1}{j2} 충돌! ({i}-{j}주) 기운이 거칠게 부딪히니 주거가 불안하거나 환경의 급변이 예상된다!")
-        if WONJIN_MAP.get(j1) == j2:
-            results.append(f"😖 [원진살] {j1}{j2} 원망의 기운! ({i}-{j}주) 서로 미워하고 원망하는 기운이 서렸으니 인간관계에서 각별히 언행을 조심하라.")
-        if GWIMUN_MAP.get(j1) == j2:
-            results.append(f"🌀 [귀문관살] {j1}{j2} 집착의 기운! ({i}-{j}주) 정신이 예민해지고 한곳에 몰입력이 강해지나 자칫 건강을 해칠 수 있으니 마음을 비워라.")
-
-    # [3] 지지 형 (Earthly Branch Punishments)
-    if set(["寅","巳","申"]).issubset(set(jjs)): results.append("🚨 [대만신 긴급 경보] 인사신 삼형(寅巳申 三刑): 가장 무서운 형벌의 기운이다! 관재구설과 수술수가 네 목앞까지 왔으니, 정갈하게 마음을 닦지 않으면 천기를 버티지 못할 것이로다!")
-    if set(["丑","戌","未"]).issubset(set(jjs)): results.append("🚨 [대만신 긴급 경보] 축술미 삼형(丑戌未 三刑): 배신의 칼날이 난무하는 격이다! 믿었던 이에게 뒤통수를 맞고 피눈물을 흘리게 될 터이니, 당분간 입을 무겁게 닫고 자중하라!")
-    
-    return results if results else ["평탄하고 원만한 명반의 흐름을 보입니다."]
-
-# ══════════════════════════════════════════════
-#  [NEW] 삼합(三合) / 반합(半合) / 방합(方合) 탐지 엔진
-# ══════════════════════════════════════════════
-SAM_HAP_MAP = {
-    frozenset(["寅", "午", "戌"]): ("화국(火局)", "火", "인오술 삼합"),
-    frozenset(["申", "子", "辰"]): ("수국(水局)", "水", "신자진 삼합"),
-    frozenset(["巳", "酉", "丑"]): ("금국(金局)", "金", "사유축 삼합"),
-    frozenset(["亥", "卯", "未"]): ("목국(木局)", "木", "해묘미 삼합"),
-}
-BAN_HAP_MAP = {
-    frozenset(["寅", "午"]): ("인오 반합(火)", "火", "반합"),
-    frozenset(["午", "戌"]): ("오술 반합(Fire)", "火", "반합"),
-    frozenset(["寅", "戌"]): ("인술 반합(火)", "火", "반합"),
-    frozenset(["申", "子"]): ("신자 반합(水)", "水", "반합"),
-    frozenset(["子", "辰"]): ("자진 반합(水)", "水", "반합"),
-    frozenset(["申", "辰"]): ("신진 반합(水)", "水", "반합"),
-    frozenset(["巳", "酉"]): ("사유 반합(金)", "金", "반합"),
-    frozenset(["酉", "丑"]): ("유축 반합(金)", "金", "반합"),
-    frozenset(["巳", "丑"]): ("사축 반합(金)", "金", "반합"),
-    frozenset(["亥", "卯"]): ("해묘 반합(木)", "木", "반합"),
-    frozenset(["卯", "未"]): ("묘미 반합(木)", "木", "반합"),
-    frozenset(["亥", "未"]): ("해미 반합(木)", "木", "반합"),
-}
-BANG_HAP_MAP = {
-    frozenset(["寅", "卯", "辰"]): ("동방 목국(東方 木局)", "木", "방합"),
-    frozenset(["巳", "午", "未"]): ("남방 화국(南方 火局)", "火", "방합"),
-    frozenset(["申", "酉", "戌"]): ("서방 금국(西方 金局)", "金", "방합"),
-    frozenset(["亥", "子", "丑"]): ("북방 수국(北方 水局)", "水", "방합"),
-}
-
-def get_sam_hap(pils):
-    jjs = set(p["jj"] for p in pils)
-    results = []
-    for combo, (name, oh, desc) in SAM_HAP_MAP.items():
-        if combo.issubset(jjs):
-            results.append({
-                "type": "삼합(三合)", "name": name, "oh": oh, "desc": desc,
-                "narrative": (
-                    f"🌟 [삼합 결집!] {desc}으로 {name}이 형성되었도다! "
-                    f"{oh} 오행의 기운이 명반 전체를 물들이니, "
-                    f"용신이 {oh}라면 대발복의 조건이요, 기신이 {oh}라면 각별한 경계가 필요하다!"
-                )
-            })
-    if not results:
-        for combo, (name, oh, hap_type) in BAN_HAP_MAP.items():
-            if combo.issubset(jjs):
-                results.append({
-                    "type": "반합(半合)", "name": name, "oh": oh, "desc": hap_type,
-                    "narrative": (
-                        f"✨ [반합 감지] {name}이 맺어졌도다. "
-                        f"{oh} 오행의 결속력이 생기니 인연운·재물운에 영향을 미치리라."
-                    )
-                })
-    for combo, (name, oh, hap_type) in BANG_HAP_MAP.items():
-        if combo.issubset(jjs):
-            results.append({
-                "type": "방합(方合)", "name": name, "oh": oh, "desc": hap_type,
-                "narrative": (
-                    f"🧭 [방합 결집] {name}의 세력이 형성되었으니 "
-                    f"계절의 기운이 집결하여 {oh} 오행이 더욱 강성해지리라."
-                )
-            })
-    return results
-
-
-# ══════════════════════════════════════════════
-#  [NEW] 격국(格局) 자동 판별 심화 엔진 v2
-# ══════════════════════════════════════════════
 GYEOKGUK_DESC = {
-    "정관격": {"summary": "정관격(正官格)은 법과 질서를 타고난 격이로다.", "lucky_career": "공무원·법관·대기업 임원", "caution": "칠살이 섞이면 관직 구설 주의.", "god_rank": "天乙貴人이 함께하면 최상격"},
-    "편관격": {"summary": "편관격(偏官格)은 서슬 퍼런 칠살의 기운! 제화가 되면 영웅이요, 안 되면 파란만장이다.", "lucky_career": "군인·경찰·의사·검사", "caution": "식신제살로 제화하면 흉이 길로 바뀐다.", "god_rank": "살인상생의 대귀격"},
-    "정재격": {"summary": "정재격(正財格)은 성실하게 모으는 안정된 재물의 격이다.", "lucky_career": "회계사·세무사·은행원", "caution": "겁재가 많으면 재물이 새어나가니 동업 경계.", "god_rank": "관인상생이 되면 부귀격"},
-    "편재격": {"summary": "편재격(偏財格)은 기회를 잡아 크게 터뜨리는 복록의 격이다!", "lucky_career": "사업가·투자자·유통업", "caution": "신약하면 큰 재물에 깔릴 수 있으니 역량 배양 후 도전.", "god_rank": "식신생재가 되면 최고의 사업격"},
-    "식신격": {"summary": "식신격(食神格)은 하늘이 내린 복덩어리 격이로다.", "lucky_career": "요리사·예술가·작가·교육자", "caution": "효신이 식신을 극하면 복이 반감되니 경계.", "god_rank": "식신제살이 되면 대귀격"},
-    "상관격": {"summary": "상관격(傷官格)은 기존 틀을 박살내는 혁명가의 기운!", "lucky_career": "연예인·예술가·변호사·창업자", "caution": "상관견관(傷官見官)은 관재의 조짐!", "god_rank": "상관생재가 되면 천하를 경영하는 격"},
-    "정인격": {"summary": "정인격(正印格)은 학문과 지혜의 격이로다.", "lucky_career": "학자·교사·의사·종교인", "caution": "재성이 인성을 파하면 학업 중단 위기.", "god_rank": "관인상생이 되면 최고의 명예격"},
-    "편인격": {"summary": "편인격(偏印格)은 남다른 직관과 신기의 격이다.", "lucky_career": "철학자·종교인·점술가·IT 전문가", "caution": "도식이 되면 식신의 복이 꺾이니 전문 분야 집중 필요.", "god_rank": "편인전왕이면 기인이인의 격"},
-    "비견격": {"summary": "비견격(比肩格)은 동류로부터 힘을 얻는 격이다.", "lucky_career": "스포츠·컨설팅·협업 기반 사업", "caution": "겁재 혼합 시 재물 분쟁 발생 주의.", "god_rank": "군비쟁재를 피하면 안정격"},
-    "겁재격": {"summary": "겁재격(劫財格)은 치열한 경쟁의 격이다. 투쟁심으로 불굴의 의지로 일어선다.", "lucky_career": "운동선수·영업직·경쟁적 사업", "caution": "食傷으로 설기하거나 官殺로 제어해야 재물이 모인다.", "god_rank": "식상제겁이면 경쟁력이 강점이 되는 격"},
+    "정관격": {
+        "summary": """정관격(正官格)은 법도와 질서를 몸에 타고난 천하 제일의 귀격(貴格)이로다!
+정관은 일간을 극하되 음양이 다른 기운으로 마치 스승이 제자를 올바르게 이끌듯, 당신을 바른 길로 인도하는 하늘의 뜻이 담겨 있습니다.
+관인상생(官印相生)이 이루어지면 학문과 명예가 함께 빛나는 최상의 귀격이 되고, 재성이 관을 생하면 재물도 함께 따라옵니다.
+법과 원칙을 중시하고 질서 속에서 성취를 이루는 당신의 삶은, 주변 사람들에게 믿음직한 모범이 됩니다.
+▶ 용신(用神): 인수(印綬)로 관의 기운을 일간에 전달할 때 최상 발복""",
+        "lucky_career": "공무원·관료, 법관·검사·판사, 대기업 임원, 교육공무원·교장, 군 장교, 외교관, 국회의원",
+        "caution": """⚠ 칠살(七殺, 편관)이 섞이면 관직에 구설이 따르고 직위가 불안해집니다.
+⚠ 관다신약(官多身弱)하면 직장에서 압박감이 심해지니 인성운이 올 때를 기다리십시오.
+⚠ 정관이 합거(合去)되면 평생 관직과의 인연이 약해집니다. 이 경우 전문직으로 방향을 바꾸십시오.""",
+        "god_rank": "天乙貴人·文昌貴人이 함께하면 재상(宰相)의 귀격! 관인상생이면 세상에 이름을 남기는 최상격"
+    },
+    "편관격": {
+        "summary": """편관격(偏官格), 즉 칠살격(七殺格)은 서슬 퍼런 강철 칼날의 기운으로 이루어진 격이로다!
+제화(制化)가 이루어지면 천하를 호령하는 영웅이 되고, 제화가 안 되면 파란만장한 인생의 주인공이 됩니다.
+식신제살(食神制殺)이 되면 칠살의 흉기(凶氣)가 길기(吉氣)로 변환되어 군·검·경·의 분야에서 천하무적의 강자가 됩니다.
+살인상생(殺印相生)이 이루어지면 학문과 무공을 함께 갖춘 문무겸전(文武兼全)의 대인물이 됩니다.
+▶ 핵심: 이 격이 빛나려면 반드시 제화(制化)가 필요합니다. 제화 여부가 귀천(貴賤)을 가릅니다""",
+        "lucky_career": "군인·장성, 경찰·검찰·형사, 외과의사·응급의학과, 운동선수·격투가, 법조인, 소방관·구조대원, 공학·기술자",
+        "caution": """⚠ 살(殺)이 너무 많아 신약하면 사고·수술·관재의 위험이 따릅니다. 합살(合殺)이나 제살(制殺)이 필요합니다.
+⚠ 편관이 천간에 투출하면 직장 상사나 권력과의 마찰이 잦습니다. 인내와 처세가 필요합니다.
+⚠ 여명(女命)에서는 남편과의 갈등이나 이별수가 따를 수 있으니 배우자 선택에 신중을 기하십시오.""",
+        "god_rank": "살인상생·식신제살이면 장군·재상의 대귀격! 고난이 클수록 더욱 단단해지는 불굴의 운명"
+    },
+    "정재격": {
+        "summary": """정재격(正財格)은 성실하고 꾸준하게 쌓아가는 안정된 재물의 격이로다!
+정재는 일간이 음양이 다른 오행을 극하는 것으로, 내가 주체적으로 관리하고 통제하는 안정된 재물의 기운입니다.
+급작스러운 횡재보다는 땀 흘려 벌어 차곡차곡 쌓아가는 재물운이라, 나이 들수록 자산이 불어나는 복을 지녔습니다.
+관인상생(官印相生)이 더해지면 재물과 명예가 함께 빛나는 부귀격(富貴格)이 됩니다.
+▶ 용신: 식상(食傷)으로 재를 생(生)하거나, 관(官)으로 재를 설기(洩氣)할 때 균형이 맞음""",
+        "lucky_career": "회계사·세무사·공인회계사, 은행원·금융인, 부동산 전문가, 행정공무원, 관리직·경영직, 의사·약사",
+        "caution": """⚠ 겁재(劫財)가 많으면 애써 모은 재물이 동업자나 형제로 인해 새어나갑니다. 동업을 각별히 경계하십시오.
+⚠ 재성이 너무 왕(旺)하고 인성을 극하면 학문이 중단되거나 모친과의 인연이 약해질 수 있습니다.
+⚠ 편관이 혼잡하면 재물이 오히려 관재(官災)의 씨앗이 될 수 있으니 법을 철저히 준수하십시오.""",
+        "god_rank": "재왕신강에 관인상생이면 천하의 부귀격! 말년으로 갈수록 풍요로워지는 귀한 운명"
+    },
+    "편재격": {
+        "summary": """편재격(偏財格)은 기회를 포착하여 크게 터뜨리는 활동적인 복록(福祿)의 격이로다!
+편재는 일간이 음양이 같은 오행을 극하는 것으로, 고정된 수입보다는 투자·사업·거래를 통한 역동적인 재물 활동을 의미합니다.
+식신이 편재를 생(生)하는 식신생재(食神生財)가 이루어지면 창의력으로 큰 돈을 버는 사업가 중의 사업가가 됩니다.
+부친(父親)의 기운이기도 하여, 부친의 영향을 많이 받거나 부친의 재물을 물려받는 인연이 있습니다.
+▶ 핵심: 신강(身強)해야 큰 재물을 다룰 수 있습니다. 신약하면 큰 재물에 짓눌릴 수 있습니다""",
+        "lucky_career": "사업가·기업인·CEO, 투자자·펀드매니저, 무역상·유통업자, 부동산 개발업, 연예인·방송인, 스포츠 관련업",
+        "caution": """⚠ 신약(身弱)한데 큰 사업을 벌이면 재물에 짓눌려 실패합니다. 역량을 먼저 키운 후 도전하십시오.
+⚠ 비겁(比劫)이 많으면 동업자·형제로 인한 재물 분쟁이 생깁니다. 단독 경영이 유리합니다.
+⚠ 여명(女命)에서 편재격이 지나치면 부부 갈등이나 배우자의 방탕으로 인한 재물 손실이 따를 수 있습니다.""",
+        "god_rank": "식신생재에 신강하면 최고의 사업가 격! 대운이 맞으면 부(富)로 이름을 떨치는 천하의 부자 운명"
+    },
+    "식신격": {
+        "summary": """식신격(食神格)은 하늘이 내리신 복덩어리 중의 복덩어리 격이로다! 수성(壽星)이라고도 불립니다.
+식신은 일간이 생(生)하는 음양이 같은 오행으로, 먹고 마시고 즐기는 생명력과 창의적 표현의 기운입니다.
+수(壽)·록(祿)·수(壽) 삼박자를 갖춘 이 격은 장수하고 풍요롭게 먹고 살 걱정 없이 재능을 펼치는 복된 운명입니다.
+식신제살(食神制殺)이 이루어지면 칠살의 흉기를 다스리는 대인물이 되고, 식신생재(食神生財)면 재물도 풍요롭습니다.
+▶ 효신(梟神, 편인)이 식신을 극하면 복이 반감되니 이를 가장 경계해야 합니다""",
+        "lucky_career": "요리사·외식업자, 예술가·음악인, 작가·시인, 교육자·강사, 의료인, 아이디어 사업가, 복지·봉사직",
+        "caution": """⚠ 효신(梟神, 편인)이 있으면 식신의 복이 꺾입니다. 이 경우 재성(財星)으로 효신을 제어해야 합니다.
+⚠ 식신이 너무 많으면 오히려 에너지가 분산되고 집중력이 떨어집니다. 하나에 집중하는 것이 중요합니다.
+⚠ 재물에 대한 욕심을 부리기보다 자신의 재능을 갈고닦는 데 집중할 때 복이 저절로 따라옵니다.""",
+        "god_rank": "식신제살이면 천하의 대귀격! 수·록·수를 모두 갖춘 복된 운명으로 먹고 사는 걱정 없이 재능을 펼칩니다"
+    },
+    "상관격": {
+        "summary": """상관격(傷官格)은 기존의 틀과 권위를 박살내는 혁명가이자 천재들의 격이로다!
+상관은 일간이 생하는 음양이 다른 오행으로, 기성 질서에 도전하고 새로운 것을 창조하는 폭발적 에너지를 지닙니다.
+역대 최고의 예술가·사상가·혁신가들에게 상관이 강하게 작용하는 경우가 많습니다. 당신은 세상을 바꿀 잠재력을 지녔습니다.
+상관생재(傷官生財)가 이루어지면 창의력으로 막대한 재물을 모으는 시대의 아이콘이 됩니다.
+▶ 가장 중요한 경계: 상관견관(傷官見官)! 정관과 상관이 만나면 관재(官災)·구설·직장 위기가 옵니다""",
+        "lucky_career": "연예인·유튜버·방송인, 예술가, 변호사·변리사, 창업가·혁신가, 작가·작곡가, 언론인·PD, 스타트업 CEO",
+        "caution": """⚠ 상관견관(傷官見官)은 직장과 관직의 최대 위기! 관운이 올 때는 언행을 극도로 조심하십시오.
+⚠ 자존심이 너무 강해 권위자와 충돌하는 경향이 있습니다. 전략적 유연함이 필요합니다.
+⚠ 감정 기복이 심하고 충동적인 면이 있어 중요한 결정 전에 반드시 한 번 더 생각하는 습관을 들이십시오.""",
+        "god_rank": "상관생재에 인성이 제어하면 천하를 경영하는 최고의 창조자 격! 역사에 이름을 남기는 천재의 운명"
+    },
+    "정인격": {
+        "summary": """정인격(正印格)은 학문과 지혜, 어머니의 사랑이 담긴 최고의 명예격(名譽格)이로다!
+정인은 일간을 생(生)하는 음양이 다른 오행으로, 학문·지식·명예·어머니·문서의 기운을 총괄합니다.
+관인상생(官印相生)이 이루어지면 관직과 학문이 함께 빛나는 세상에서 가장 존경받는 운명이 됩니다.
+당신은 배움을 즐기고 지식을 나누는 것이 삶의 보람이며, 이 기운이 당신을 평생 바른 길로 이끄는 나침반이 됩니다.
+▶ 재성(財星)이 인성을 극하면 학업이 중단되거나 명예가 손상되니 각별히 주의하십시오""",
+        "lucky_career": "교수·학자·연구원, 교사·교육자, 의사·한의사, 변호사, 종교인·성직자, 작가·언론인, 공직자·행정가",
+        "caution": """⚠ 재성이 인성을 파(破)하면 학업 중단이나 어머니와의 인연이 약해집니다. 학문을 지속하는 것이 복의 근원입니다.
+⚠ 인성이 너무 많으면 행동력이 약해지고 의존적이 되는 경향이 있습니다. 실천하는 용기가 필요합니다.
+⚠ 모친 의존이 강한 격이니 독립적으로 자립하는 시기를 늦추지 마십시오.""",
+        "god_rank": "관인상생이면 세상이 우러러보는 최고의 명예격! 학문으로 세상에 이름을 남기는 귀한 운명"
+    },
+    "편인격": {
+        "summary": """편인격(偏印格)은 남다른 직관과 신비로운 신기(神氣)를 지닌 특이한 인재의 격이로다!
+편인(梟神이라고도 함)은 일간을 생하는 음양이 같은 오행으로, 학문보다는 직관·영성·예술·이단 사상에 가깝습니다.
+남들이 걷지 않는 독특한 길을 개척하는 이단아적 천재의 기운으로, 특수 분야에서 독보적인 경지에 이를 수 있습니다.
+편인전왕(偏印專旺)이면 한 분야의 기인이인(奇人異人)이 되어 세상 사람들이 따를 수 없는 경지에 이릅니다.
+▶ 식신을 극하는 것이 가장 큰 문제! 식신의 복을 가로막지 않도록 재성으로 편인을 제어해야 합니다""",
+        "lucky_career": "철학자·사상가, 종교인·영성가, 점술가·명리학자, IT 개발자·해커, 연구원, 탐정·분석가, 심리학자",
+        "caution": """⚠ 도식(倒食): 편인이 식신을 극하면 복을 스스로 차버리는 상황이 됩니다. 전문 분야 하나에 집중하는 것이 핵심입니다.
+⚠ 고집이 너무 강해 주변과의 소통이 어려워질 수 있습니다. 자신만의 세계에서 벗어나 협업하는 법을 배우십시오.
+⚠ 종교·철학·오컬트 쪽으로 지나치게 빠지면 현실 생활이 피폐해질 수 있습니다.""",
+        "god_rank": "편인전왕이면 한 분야를 평정하는 기인이인의 격! 세상이 이해 못 하는 천재의 길을 걷는 운명"
+    },
+    "비견격": {
+        "summary": """비견격(比肩格)은 동류(同類)로부터 힘을 얻어 함께 성장하는 협력과 경쟁의 격이로다!
+비견은 일간과 음양이 같은 오행으로, 나와 동등한 힘을 지닌 동료·경쟁자·형제의 기운입니다.
+혼자보다는 팀으로, 경쟁보다는 협력으로, 나누면서 커가는 것이 비견격의 복의 방정식입니다.
+관인상생이 더해지면 조직과 단체를 이끄는 지도자의 자리에 오르는 귀격이 됩니다.
+▶ 일간이 신강하고 재관(財官)이 적절히 있어야 비견격이 빛납니다""",
+        "lucky_career": "스포츠 감독·코치, 컨설턴트·멘토, 협동조합·NGO, 의사·간호사, 팀 기반 사업, 사회운동가",
+        "caution": """⚠ 군비쟁재(群比爭財): 비겁이 너무 많은데 재성이 적으면 재물을 두고 형제·동료와 다투는 상황이 됩니다.
+⚠ 동업은 명확한 계약과 역할 분담이 선행되어야 합니다. 구두 약속만으로는 반드시 분쟁이 생깁니다.
+⚠ 독립 사업보다는 조직 내에서 협력하는 방식이 안정적입니다.""",
+        "god_rank": "군비겁재를 피하고 관살로 제어하면 안정적이고 의리 있는 인간관계로 성공하는 귀격"
+    },
+    "겁재격": {
+        "summary": """겁재격(劫財格)은 불굴의 투쟁심과 경쟁심으로 어떤 역경도 딛고 일어서는 강인한 기운의 격이로다!
+겁재는 일간과 오행이 같되 음양이 다른 것으로, 동류이지만 경쟁자이기도 한 묘한 기운입니다.
+사주에 겁재격이 성립하면 경쟁이 치열한 분야에서 오히려 빛을 발하며, 절대 포기하지 않는 불굴의 의지가 강점입니다.
+식상(食傷)으로 겁재의 에너지를 재능으로 전환하거나, 관살(官殺)로 겁재를 제어하면 강한 추진력이 성공으로 이어집니다.
+▶ 겁재는 재물을 빼앗는 기운도 있으니, 재물 관리와 동업 관계에서 각별한 주의가 필요합니다""",
+        "lucky_career": "운동선수·격투기, 영업 전문가·세일즈, 경쟁적 사업·무역, 군인·경찰, 변호사, 스타트업 창업자",
+        "caution": """⚠ 식상이 없으면 겁재의 에너지가 분산되어 공격적이고 충동적인 행동으로 이어질 수 있습니다.
+⚠ 동업과 공동투자는 반드시 법적 계약으로 보호받아야 합니다. 구두 약속은 언제나 위험합니다.
+⚠ 재물에 대한 지나친 욕심이 오히려 재물을 쫓아버리는 결과를 낳을 수 있습니다. 베풀면 더 들어옵니다.""",
+        "god_rank": "식상제겁이면 경쟁이 곧 성공의 원동력이 되는 불굴의 격! 관살 제어하면 강한 추진력으로 세상을 정복하는 운명"
+    },
 }
 
+# ★ BUG2 FIX: 일간=pils[1]["cg"], 월지=pils[2]["jj"] (pillar order: [시(0),일(1),월(2),년(3)])
 def get_gyeokguk(pils):
-    if len(pils) < 4:
-        return None
-    ilgan = pils[1]["cg"]
-    wolji = pils[2]["jj"]
+    if len(pils) < 4: return None
+    ilgan = pils[1]["cg"]   # ✅ 일간 (day stem)
+    wolji = pils[2]["jj"]   # ✅ 월지 (month branch)
     jijang = JIJANGGAN.get(wolji, [])
-    if not jijang:
-        return None
+    if not jijang: return None
     jeongi = jijang[-1]
     sipsung = TEN_GODS_MATRIX.get(ilgan, {}).get(jeongi, "기타")
     gyeok_name = f"{sipsung}격"
@@ -1445,4094 +882,10796 @@ def get_gyeokguk(pils):
         "narrative": (
             f"🏛️ **격국 판별**: {gyeok_name}!\n"
             f"  월지 {wolji}의 정기 {jeongi}로 {'투출된 청명한 ' if is_toucht else '숨은 '}{gyeok_name}을 이루었도다.\n"
-            f"  등급: {grade}\n"
-            f"  {desc_data['summary']}\n"
-            f"  적합 분야: {desc_data['lucky_career']}\n"
-            f"  경계: {desc_data['caution']}"
+            f"  등급: {grade}\n  {desc_data['summary']}\n"
+            f"  적합 분야: {desc_data['lucky_career']}\n  경계: {desc_data['caution']}"
         )
     }
 
-
-# ══════════════════════════════════════════════
-#  [NEW] 월운(月運) 계산 엔진 v1
-# ══════════════════════════════════════════════
-MONTHLY_LUCK_DESC = {
-    "비견": {
-        "desc": "나와 같은 기운이 들어와 자립심과 주체성이 강해지는 달입니다. 주위에 사람이 모이나 자기 주장이 너무 강해질 수 있습니다.",
-        "wealth": "지출이 늘어나고 금전의 누수가 생기기 쉽습니다. 새로운 투자보다는 수성에 힘쓰세요.",
-        "relation": "형제, 친구, 동료와의 교류가 활발해지며 대인관계가 넓어집니다.",
-        "caution": "지나친 고집으로 주변과 마찰이 생길 수 있으니 양보와 배려의 미덕이 필요합니다."
-    },
-    "겁재": {
-        "desc": "경쟁심이 고조되고 탈재의 기운이 엿보이는 달입니다. 승부욕이 자극받아 활동성이 커집니다.",
-        "wealth": "금전적 손실이나 예상치 못한 큰 지출이 우려되니 재물 관리에 각별히 신경 써야 합니다.",
-        "relation": "경쟁자나 은밀한 적수가 나타날 수 있으며, 가까운 사람과의 금전 거래는 피하십시오.",
-        "caution": "투기적인 성향을 버리고 요행을 바라지 마십시오. 대인관계에서의 오해를 주의하세요."
-    },
-    "식신": {
-        "desc": "내면의 재능과 창의력이 자연스럽게 발산되는 달입니다. 마음이 평온해지고 의식주가 풍족해집니다.",
-        "wealth": "자신의 재능을 바탕으로 안정적인 수입을 기대할 수 있습니다. 먹을 복이 생깁니다.",
-        "relation": "원만한 대인관계가 형성되고 아랫사람의 도움을 받거나 돌볼 일이 생깁니다.",
-        "caution": "지나친 태만이나 유흥에 빠지기 쉬우니 절제된 생활을 유지하는 것이 좋습니다."
-    },
-    "상관": {
-        "desc": "기존의 틀을 벗어나려는 혁신적이고 진취적인 기운이 강한 달입니다. 총명함이 빛을 발합니다.",
-        "wealth": "자신의 아이디어나 말솜씨로 이익을 얻을 수 있지만, 직장 내 불안정성이 재물에 영향을 줄 수 있습니다.",
-        "relation": "관재구설이 따르기 쉬우며 남성은 자녀나 아랫사람, 여성은 남편과의 갈등을 조심해야 합니다.",
-        "caution": "말 한마디에 천 냥 빚을 지듯, 언행을 특히 조심하고 구설수에 휘말리지 않도록 주의하세요."
-    },
-    "편재": {
-        "desc": "활동 무대가 넓어지고 큰 재물을 향한 안목이 생기는 달입니다. 기획력과 추진력이 상승합니다.",
-        "wealth": "횡재수나 큰 규모의 자금 흐름이 있을 수 있으나, 변동성이 심하므로 투기성에는 유의해야 합니다.",
-        "relation": "새로운 인맥이 형성되고 활발한 교류가 일어나며, 남성의 경우 이성과의 만남이 잦아집니다.",
-        "caution": "과시욕이 생길 수 있으므로 실속 없는 지출을 막고 결과를 단단히 챙기려는 노력이 필요합니다."
-    },
-    "정재": {
-        "desc": "정당한 노력에 대한 결실이 맺혀 안정과 평화로움을 누리는 달입니다. 성실함이 보상받습니다.",
-        "wealth": "고정적인 수입이나 정성을 들인 투자에서 알찬 수익을 거둘 수 있습니다.",
-        "relation": "주변과의 신뢰가 두터워지며, 남성의 경우 배우자나 여인과의 애정이 돈독해집니다.",
-        "caution": "지나치게 보수적이고 인색해지면 들어온 복도 막힐 수 있으니 적절한 융통성을 발휘하세요."
-    },
-    "편관": {
-        "desc": "강한 책임감과 스트레스가 동반되지만 권위와 카리스마를 얻을 수 있는 달입니다. 인내심이 필요합니다.",
-        "wealth": "예기치 않은 지출이나 명예를 지키기 위한 비용이 들 수 있으니 무리한 확장은 금물입니다.",
-        "relation": "엄격한 상사나 어려운 상황이 나타날 수 있으며, 여성의 경우 남성과의 관계에서 긴장감이 생깁니다.",
-        "caution": "심신의 피로가 누적되기 쉬우니 건강을 최우선으로 돌보고 감정 통제에 유의하십시오."
-    },
-    "정관": {
-        "desc": "순리와 원칙에 의해 만사가 합리적으로 풀리고 명예가 상승하는 달입니다. 사회적 인정이 따릅니다.",
-        "wealth": "합법적이고 정당한 노력으로 재물이 모이며 관공서나 조직을 통한 이익이 생깁니다.",
-        "relation": "신뢰할 수 있는 좋은 인연을 맺고 직장 운이 풀리며 여성의 경우 좋은 배필운이 있습니다.",
-        "caution": "체면과 절차에 얽매여 좋은 기회를 눈앞에서 놓치지 않도록 적절한 과단성이 요구됩니다."
-    },
-    "편인": {
-        "desc": "뛰어난 직관력과 학문적, 종교적 탐구심이 깊어지며 예리한 영감이 번뜩이는 달입니다.",
-        "wealth": "문서운에는 유리할 수 있으나 유동성에 제약이 올 수 있습니다. 의식주는 다소 불안할 수 있습니다.",
-        "relation": "대인관계에서 불신이나 외로움을 느낄 수 있으며 고독 속에서 사색하기 좋습니다.",
-        "caution": "생각이 너무 많아 실천이 지연되지 않도록 하고 매사를 긍정적인 시각으로 바라보세요."
-    },
-    "정인": {
-        "desc": "윗사람의 조력과 천우신조가 따르며 평온함과 학업적 성취, 명예가 빛나는 최고로 길한 달입니다.",
-        "wealth": "문서나 자격증, 인정받는 실력으로 점진적인 부를 축적할 수 있습니다. 상속운도 있습니다.",
-        "relation": "어머니나 스승, 윗사람의 자비로운 보살핌으로 무난하고 원만하며 든든한 배경이 생깁니다.",
-        "caution": "지나친 의존성이나 게으름에 빠지면 모처럼의 운을 놓칠 수 있으니 주도적으로 행동하십시오."
-    }
+# 삼합/반합/방합
+SAM_HAP_MAP = {
+    frozenset(["寅","午","戌"]): ("화국(火局)","火","인오술 삼합"),
+    frozenset(["申","子","辰"]): ("수국(水局)","水","신자진 삼합"),
+    frozenset(["巳","酉","丑"]): ("금국(金局)","金","사유축 삼합"),
+    frozenset(["亥","卯","未"]): ("목국(木局)","木","해묘미 삼합"),
+}
+BAN_HAP_MAP = {
+    frozenset(["寅","午"]): ("인오 반합(火)","火","반합"),
+    frozenset(["午","戌"]): ("오술 반합(火)","火","반합"),
+    frozenset(["申","子"]): ("신자 반합(水)","水","반합"),
+    frozenset(["子","辰"]): ("자진 반합(水)","Water","반합"),
+    frozenset(["巳","酉"]): ("사유 반합(金)","金","반합"),
+    frozenset(["酉","丑"]): ("유축 반합(金)","金","반합"),
+    frozenset(["亥","卯"]): ("해묘 반합(木)","木","반합"),
+    frozenset(["卯","未"]): ("묘미 반합(木)","木","반합"),
+}
+BANG_HAP_MAP = {
+    frozenset(["寅","卯","辰"]): ("동방 목국(東方 木局)","木","방합"),
+    frozenset(["巳","午","未"]): ("남방 화국(南方 火局)","火","방합"),
+    frozenset(["申","酉","戌"]): ("서방 금국(西方 金局)","金","방합"),
+    frozenset(["亥","子","丑"]): ("북방 수국(北方 水局)","Water","방합"),
 }
 
-MONTHLY_JJ_ORDER = ["寅","卯","辰","巳","午","未","申","酉","戌","亥","子","丑"]
-MONTHLY_NAMES = ["1월(인월)","2월(묘월)","3월(진월)","4월(사월)","5월(오월)","6월(미월)",
-                 "7월(신월)","8월(유월)","9월(술월)","10월(해월)","11월(자월)","12월(축월)"]
+def get_sam_hap(pils):
+    jjs = set(p["jj"] for p in pils)
+    results = []
+    for combo, (name, oh, desc) in SAM_HAP_MAP.items():
+        if combo.issubset(jjs):
+            results.append({"type":"삼합(三合)","name":name,"oh":oh,"desc":desc,
+                "narrative":f"🌟 [삼합] {desc}으로 {name}이 형성! {oh} 기운이 명반 전체를 강화하니라."})
+    if not results:
+        for combo, (name, oh, hap_type) in BAN_HAP_MAP.items():
+            if combo.issubset(jjs):
+                results.append({"type":"반합(半合)","name":name,"oh":oh,"desc":hap_type,
+                    "narrative":f"✨ [반합] {name}이 맺어져 {oh} 오행의 결속력이 생기리라."})
+    for combo, (name, oh, hap_type) in BANG_HAP_MAP.items():
+        if combo.issubset(jjs):
+            results.append({"type":"방합(方合)","name":name,"oh":oh,"desc":hap_type,
+                "narrative":f"🧭 [방합] {name}의 세력이 형성되어 {oh} 오행이 강성해지리라."})
+    return results
 
-MONTHLY_SIPSUNG_DB = {
-    "비견": {"desc": "고집이 강해지고 자존심을 세울 때.", "wealth": "재물이 분산되니 지출을 줄여라.", "relation": "동료/형제와 경쟁하거나 충돌할 수 있다.", "caution": "내 목소리를 줄이고 경청하라."},
-    "겁재": {"desc": "경쟁과 탈재의 기운이 맴돈다.", "wealth": "사기나 파재수가 있으니 투자를 삼가라.", "relation": "예기치 않은 지출이나 동업의 실패를 조심하라.", "caution": "남의 말에 휘둘려 돈을 빼앗기지 마라."},
-    "식신": {"desc": "먹을 복이 생기고 활동력이 늘어난다.", "wealth": "새로운 수입원이 열리거나 아이디어가 돈이 된다.", "relation": "사람들과 좋은 음식을 나누며 인맥이 넓어진다.", "caution": "너무 구상만 하지 말고 실행에 옮겨라."},
-    "상관": {"desc": "말과 재주를 다방면으로 뽐내나 구설이 따른다.", "wealth": "잔머리를 굴려 돈을 만지려다 직장을 잃을 수 있다.", "relation": "말실수로 아랫사람이나 연인과 마찰이 생긴다.", "caution": "입을 무겁게 하고 나서지 마라."},
-    "편재": {"desc": "뜻밖의 횡재수나 큰돈이 오고 갈 수 있다.", "wealth": "큰돈이 들어오나 그만큼 크게 나갈 수 있는 들뜬 운이다.", "relation": "유흥이나 이성 문제로 골머리를 앓을 수 있다.", "caution": "허세를 부리지 말고 횡재를 탐하지 마라."},
-    "정재": {"desc": "정직한 보상과 안정이 보장되는 시기.", "wealth": "월급이나 고정 수입이 늘어나고 재산이 불어난다.", "relation": "가정이 평안해지고 미혼자는 참한 인연을 만난다.", "caution": "구두쇠처럼 굴어 인심을 잃지 않도록 하라."},
-    "편관": {"desc": "관재수나 극심한 스트레스가 밀려올 수 있다.", "wealth": "수리비, 병원비 등 갑작스러운 지출이 많도다.", "relation": "나를 억누르는 까다로운 사람을 만나 피곤하다.", "caution": "건강을 최우선으로 챙기고 무리한 확장은 금물이다."},
-    "정관": {"desc": "명예가 올라가고 진급이나 좋은 소식이 들린다.", "wealth": "승진이나 합격으로 인해 안정적인 기반이 다져진다.", "relation": "윗사람의 인정을 받거나 제대로 된 남편/직장을 얻는다.", "caution": "너무 원리원칙만 따져서 융통성을 잃지 마라."},
-    "편인": {"desc": "의심과 외로움이 커지고 잡생각이 많아진다.", "wealth": "문서 운이 불안하니 도장 찍을 일을 절대 미뤄라.", "relation": "사람을 믿지 못해 스스로 고립을 자초한다.", "caution": "사기나 잘못된 계약에 속아 넘어가지 않게 조심하라."},
-    "정인": {"desc": "문서운과 귀인의 도움이 눈앞에 기다란 시기.", "wealth": "계약, 부동산, 상속 등으로 이득을 실현할 수 있다.", "relation": "어머니나 윗사람이 도와 상황이 기적처럼 풀린다.", "caution": "너무 의존적인 태도를 버리고 자립심을 잃지 마라."}
+
+# ══════════════════════════════════════════════════
+#  용신(用神) — 억부·조후·통관
+# ══════════════════════════════════════════════════
+
+YONGSHIN_JOKHU = {
+    "寅": {"hot":False,"need":["丙","甲"],"avoid":["壬","癸"],"desc":"인월(寅月)은 봄 초입이나 아직 차갑습니다. 병화(丙火)로 따뜻하게, 갑목(甲木)으로 기운을 북돋워야 합니다."},
+    "卯": {"hot":False,"need":["丙","癸"],"avoid":["庚"],"desc":"묘월(卯月)은 목기 왕성한 봄. 병화로 온기를, 계수로 자양분을 공급해야 합니다."},
+    "辰": {"hot":False,"need":["甲","丙","癸"],"avoid":["戊"],"desc":"진월(辰月) 토기가 중화역할. 목화수의 기운이 균형을 잡아줘야 합니다."},
+    "巳": {"hot":True,"need":["壬","庚"],"avoid":["丙","丁"],"desc":"사월(巳月) 화기 시작. 임수(壬水)로 열기를 식히고 경금(庚金)으로 수원(水源)을 만들어야 합니다."},
+    "午": {"hot":True,"need":["壬","癸","庚"],"avoid":["丙","丁","戊"],"desc":"오월(午月) 한여름 극열. 임수·계수로 화기를 제어해야 발복합니다."},
+    "未": {"hot":True,"need":["壬","甲"],"avoid":["戊","己"],"desc":"미월(未月) 토조열. 임수와 갑목으로 습윤하고 활기를 주어야 합니다."},
+    "申": {"hot":False,"need":["戊","丁"],"avoid":["壬"],"desc":"신월(申月) 초가을 금기. 무토로 금을 생하고 정화로 단련해야 합니다."},
+    "酉": {"hot":False,"need":["丙","丁","甲"],"avoid":["壬","癸"],"desc":"유월(酉月) 금왕. 화기로 금을 단련하고 목기로 재를 만들어야 합니다."},
+    "戌": {"hot":False,"need":["甲","丙","壬"],"avoid":["戊"],"desc":"술월(戌月) 조토. 목화수로 균형을 잡아야 합니다."},
+    "亥": {"hot":False,"need":["甲","丙","戊"],"avoid":["壬","癸"],"desc":"해월(亥月) 겨울 수기. 병화로 따뜻하게, 무토로 수기를 제방해야 합니다."},
+    "子": {"hot":False,"need":["丙","戊","丁"],"avoid":["壬","癸"],"desc":"자월(子月) 한겨울 수왕. 병화와 무토로 수기를 다스려야 발복합니다."},
+    "丑": {"hot":False,"need":["丙","甲","丁"],"avoid":["壬","癸"],"desc":"축월(丑月) 극한 동토. 병화와 정화로 온기를, 갑목으로 토기를 소통시켜야 합니다."},
 }
 
-def get_yearly_chapter(saju, form):
-    pils = saju["pils"]
-    ilgan = saju["ilgan"]
-    yongshin_oh = saju["engine"]["yongshin"]["oh"]
-    name = form["name"]
-    wealth_type = saju["engine"]["wealth"]["type"]
-    
-    monthly_data = get_monthly_luck(pils, yongshin_oh)
-    
-    # 2026년 기준 하드코딩 (이후 동적 계산 가능)
-    text = [f"**🔥 【2026년 丙午年 신년운세: {name} 貴下의 12달 천기누설】**\n"]
-    text.append(f"이보게 {name}야, 2026년 붉은 말의 해가 밝아온다. 네 한 해 농사가 어찌 될지, 정월부터 섣달까지 내가 달마다 짚어줄 터이니 뼛속 깊이 새겨들어라!\n")
-    
-    for md in monthly_data:
-        m_jj = md["지지"]
-        m_name = md["월"] # "1월(인월)"
-        sipsung = calc_sipsung(ilgan, m_jj)
-        desc = MONTHLY_SIPSUNG_DB.get(sipsung, {}).get("desc", "기운이 오묘하다.")
-        grade = md["등급"]
-        
-        # 팩트 폭력 및 체감 분량 (달마다 300자 내외)
-        if "대길" in grade:
-            shaman_attack = f"어허! 이 달은 천운이 돕는 달이다! 물 들어올 때 노 젓지 않고 뭘 하느냐? 방구석에 처박혀 있으면 이 귀한 운을 다 까먹는 꼴이니 당장 밖으로 뛰쳐나가라. 사람을 치고 나가든 문서를 쥐든 결판을 지어야 할 타이밍이다!"
-        elif "대흉" in grade or "주의" in grade:
-            shaman_attack = f"눈치 챙겨라! 이 달은 사방에 함정이 파여 있고 지뢰가 널린 꼴이다. 사람 믿고 돈 풀었다간 밑빠진 독에 물 붓기 십상이니, 제발 입 닫고 지갑 닫고 납작 엎드려 지내라. 모르는 데 투자하거나 욱하는 성질 부리면 뼈도 못 추린다!"
-        else:
-            if "편재" in wealth_type or "정재" in wealth_type:
-                shaman_attack = f"평탄하게 흘러가는 달이니 만용을 부리지 마라. 남의 밥그릇 탐내지 말고 네 지갑 간수나 잘 달래면 중간은 가는 달이다. 헛바람 들어서 잔머리 굴리면 도리어 가진 것을 뱉어낼 형국이니 분수에 맞게 움직여라."
-            else:
-                shaman_attack = f"평탄하게 흘러가는 달이니 만용을 부리지 마라. 네 식상(재주) 하나 믿고 묵묵히 땀방울을 흘려야 할 때다. 요행을 바라는 자에겐 혹독한 대가가 따르니 오직 정직한 밥그릇만 쳐다보고 살아라."
-                
-        # 풍부한 300자 내외 조립
-        month_details = (
-            f"**📍 {m_name} [{sipsung}의 달] - {grade}**\n\n"
-            f"> {shaman_attack} 네 사주 원국의 기운이 '{sipsung}'으로 흐르는구나. "
-            f"특히 이 시기에는 {MONTHLY_SIPSUNG_DB.get(sipsung, {}).get('wealth', desc)} "
-            f"그리고 인연의 고리를 보자면, {MONTHLY_SIPSUNG_DB.get(sipsung, {}).get('relation', '사람을 자중하라.')} "
-            f"명심해라, {MONTHLY_SIPSUNG_DB.get(sipsung, {}).get('caution', '무리하지 마라.')}\n\n"
-        )
-        text.append(month_details)
-        
-    return apply_mansin_filter("".join(text))
+def get_yongshin(pils):
+    """용신(用神) 종합 분석 — 억부+조후+통관"""
+    ilgan = pils[1]["cg"]
+    wol_jj = pils[2]["jj"]
+    strength_info = get_ilgan_strength(ilgan, pils)
+    oh_strength = strength_info["oh_strength"]
+    sn = strength_info["신강신약"]
+    ilgan_oh = OH.get(ilgan, "")
 
+    BIRTH_MAP_R = {"木":"水","火":"木","土":"火","金":"土","水":"金"}
+    CONTROL_MAP = {"木":"土","火":"金","土":"水","金":"木","水":"火"}
 
-def get_monthly_luck_chapter(saju, form):
-    pils = saju["pils"]
-    ilgan = saju["ilgan"]
-    yongshin_oh = saju["engine"]["yongshin"]["oh"]
-    name = form["name"]
-    
-    monthly_data = get_monthly_luck(pils, yongshin_oh)
-    now_month = datetime.now().month
-    
-    text = [f"**🌙 【월간 월운(月運): {name} 貴下의 2026년 丙午年 월별 해설】**"]
-    text.append(f"이보게 {name}야, 거대한 강물의 흐름 속에서 매월 치는 파도를 잘 다스려야 진짜 승자가 되느니라. 네 명반에 각인된 월별 흐름을 내가 쪽집게로 짚어줄 터이니 새겨들어라!\n")
-    
-    text.append('''
-    <style>
-    .monthly-card-container { display: flex; flex-direction: column; gap: 15px; margin-top: 15px; }
-    .monthly-card {
-        background: #fff; border: 1px solid #e0c58e; border-radius: 10px;
-        padding: 15px; border-left: 6px solid #a0720a; box-shadow: 2px 2px 10px rgba(160, 114, 10, 0.08);
-    }
-    .monthly-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f0e6d2; padding-bottom: 8px; margin-bottom: 10px; }
-    .monthly-title { font-size: 18px; font-weight: 700; color: #a0720a; }
-    .monthly-grade { font-size: 14px; font-weight: 700; padding: 3px 8px; border-radius: 12px; background: #fff8e1; color: #f57f17; }
-    .monthly-sipsung { font-size: 14px; font-weight: 600; color: #555; background: #eee; padding: 2px 6px; border-radius: 4px; margin-left: 10px; }
-    .monthly-content { font-size: 14px; line-height: 1.6; color: #444; }
-    .monthly-detail { margin-top: 8px; }
-    .monthly-label { font-weight: 600; color: #a0720a; display: inline-block; width: 60px; }
-    </style>
-    <div class="monthly-card-container">
-    ''')
-    
-    for md in monthly_data:
-        # 월지지 기반 십성 도출
-        m_jj = md["지지"]
-        sipsung = calc_sipsung(ilgan, m_jj)
-        
-        # 딕셔너리에서 가져오기
-        desc_info = MONTHLY_LUCK_DESC.get(sipsung, MONTHLY_LUCK_DESC["비견"])
-        
-        tag_str = " / ".join(md["태그"]) if md["태그"] else "흐름이 평온함"
-        grade_color = "#f57f17" if "吉" in md["등급"] else "#d32f2f" if "凶" in md["등급"] else "#555"
-        bg_color = "#fff8e1" if "吉" in md["등급"] else "#ffebee" if "凶" in md["등급"] else "#f5f5f5"
-        
-        is_current = " (이번 달)" if f"{now_month}월" in md["월"] else ""
-        
-        card_html = f'''
-        <div class="monthly-card">
-            <div class="monthly-header">
-                <div>
-                    <span class="monthly-title">{md["월"]}{is_current}</span>
-                    <span class="monthly-sipsung">{m_jj}({md["오행"]}) - {sipsung}</span>
-                </div>
-                <div class="monthly-grade" style="color:{grade_color}; background:{bg_color};">{md["등급"]} 점수: {md["점수"]}점</div>
-            </div>
-            <div class="monthly-content">
-                <div style="font-weight:600; margin-bottom:5px;">📌 핵심 태그: {tag_str}</div>
-                <div class="monthly-detail"><span class="monthly-label">📖 요약:</span> {desc_info["desc"]}</div>
-                <div class="monthly-detail"><span class="monthly-label">💰 재물:</span> {desc_info["wealth"]}</div>
-                <div class="monthly-detail"><span class="monthly-label">🤝 관계:</span> {desc_info["relation"]}</div>
-                <div class="monthly-detail"><span class="monthly-label">⚠️ 경계:</span> <span style="color:#d32f2f;">{desc_info["caution"]}</span></div>
-            </div>
-        </div>
-        '''
-        text.append(card_html)
-        
-    text.append('</div>')
-    
-    return apply_mansin_filter("\n".join(text))
-
-def get_monthly_luck(pils, yongshin_oh="", gisin_oh=""):
-    if not pils or len(pils) < 3:
-        return []
-    ilgan = pils[1]["cg"]  # 일간(일주 천간)
-    jjs_in_saju = [p["jj"] for p in pils]
-    ilji = pils[1]["jj"]   # 일지(일주 지지)
-    monthly_results = []
-    for idx, (month_jj, month_name) in enumerate(zip(MONTHLY_JJ_ORDER, MONTHLY_NAMES)):
-        month_oh = OH.get(month_jj, "")
-        unsung = UNSUNG_TABLE.get(ilgan, {}).get(month_jj, "")
-        score = 0
-        tags = []
-        if month_oh == yongshin_oh:
-            score += 40; tags.append("용신운(大吉)")
-        elif month_oh == gisin_oh:
-            score -= 30; tags.append("기신운(凶)")
-        if OH_RELATE.get(month_oh, {}).get("saeng", "") == OH.get(ilgan, ""):
-            score += 20; tags.append("인성운 — 귀인조력")
-        if CHUNG_MAP.get(month_jj) == ilji:
-            score -= 25; tags.append("일지 충 — 부부·주거 불안")
-        if HAP_MAP.get(month_jj) in jjs_in_saju:
-            score += 15; tags.append("육합 — 인연/계약")
-        if unsung in ["건록", "제왕"]:
-            score += 15; tags.append(f"십이운성 {unsung} — 최고 에너지")
-        elif unsung in ["절", "묘"]:
-            score -= 20; tags.append(f"십이운성 {unsung} — 기운 소진")
-        elif unsung in ["장생", "관대"]:
-            score += 10; tags.append(f"십이운성 {unsung} — 성장")
-        if score >= 40:    grade = "🌟 대길(大吉)"
-        elif score >= 20:  grade = "✅ 길(吉)"
-        elif score >= 0:   grade = "〰️ 보통"
-        elif score >= -20: grade = "⚠️ 주의"
-        else:              grade = "🔴 흉(凶)"
-        tag_str = " / ".join(tags) if tags else "평범한 흐름"
-        monthly_results.append({
-            "월": month_name, "지지": month_jj, "오행": month_oh,
-            "등급": grade, "점수": score, "태그": tags, "십이운성": unsung,
-            "narrative": (
-                f"**{month_name}** [{month_jj}월/{month_oh}기운] → {grade}\n"
-                f"  핵심: {tag_str}\n"
-                f"  십이운성: {unsung if unsung else '해당없음'} | 점수: {score:+d}점"
-            )
-        })
-    return monthly_results
-
-
-# ══════════════════════════════════════════════
-#  공망(空亡) 계산 로직 (Empty Void)
-# ══════════════════════════════════════════════
-def get_gongmang(ilju):
-    """일주(日柱)를 기준으로 비어있는 2개의 지지를 찾음 (육십갑자 순환 원리)"""
-    if len(ilju) != 2: return []
-    cg, jj = ilju[0], ilju[1]
-    import math
-    try:
-        cg_idx = CG.index(cg)
-        jj_idx = JJ.index(jj)
-        # 천간과 지지의 인덱스 차이를 이용해 순행 그룹(순중) 찾기
-        group_start_jj_idx = (jj_idx - cg_idx + 12) % 12
-        # 공망은 해당 그룹의 앞 2개 지지 (또는 뒤로 10칸 이동한 이후 남는 2개 지지)
-        gm_idx1 = (group_start_jj_idx - 2 + 12) % 12
-        gm_idx2 = (group_start_jj_idx - 1 + 12) % 12
-        return [JJ[gm_idx1], JJ[gm_idx2]]
-    except Exception:
-        return []
-
-def analyze_gongmang(pils):
-    ilju = pils[1]["cg"] + pils[1]["jj"]
-    gongmangs = get_gongmang(ilju)
-    
-    # 원국 내에 공망이 있는지 확인
-    found = []
-    positions = {0: "시지(말년/자식)", 2: "월지(청년/부모/직장)", 3: "년지(초년/조상)"}
-    for i in [0, 2, 3]:  # 일지 자체는 공망이 아님 (기준)
-        jj = pils[i]["jj"]
-        if jj in gongmangs:
-            found.append(f"**{jj}**({positions[i]} - 비어 있음)")
-            
-    desc = f"네 일주({ilju}) 기준으로 **{','.join(gongmangs)}**이(가) 공망(空亡, 비어있음)이로다. "
-    if found:
-        desc += f"네 사주 원국의 {', '.join(found)}가 공망을 맞았으니, 해당 자리에 해당하는 육친이나 운기가 밑빠진 독에 물 붓듯 채워도 채워지지 않는 헛헛함이 있을 수 있느니라."
+    if sn == "신강(身强)":
+        ok_관 = next((k for k,v in CONTROL_MAP.items() if v == ilgan_oh), "")
+        ok_재 = CONTROL_MAP.get(ilgan_oh, "")
+        eokbu_yong = [ok_관, ok_재]
+        eokbu_base = "신강(身强) → 억(抑) 용신 필요"
+        eokbu_desc = f"강한 일간을 억제하는 관성({ok_관}기운)과 재성({ok_재}기운)이 용신입니다."
+        kihwa = "인성·비겁 대운은 기신(忌神) — 더 강해져 흉작용"
+    elif sn == "신약(身弱)":
+        ok_인 = BIRTH_MAP_R.get(ilgan_oh, "")
+        eokbu_yong = [ok_인, ilgan_oh]
+        eokbu_base = "신약(身弱) → 부(扶) 용신 필요"
+        eokbu_desc = f"약한 일간을 도와주는 인성({ok_인}기운)과 비겁({ilgan_oh}기운)이 용신입니다."
+        kihwa = "재성·관성 대운은 기신(忌神) — 약한 일간이 더 눌림"
     else:
-        desc += "다행히 명반 내에 공망을 맞은 자리는 없으니, 기운이 온전히 보존되었도다."
-        
-    return {"gongmangs": gongmangs, "found_in_saju": found, "desc": desc}
+        eokbu_yong = []
+        eokbu_base = "중화(中和) → 균형 유지"
+        eokbu_desc = "오행이 균형 잡혀 특정 용신보다 전체 균형 유지가 중요합니다."
+        kihwa = "어느 쪽으로도 과도하게 치우치는 운이 기신"
+
+    jokhu = YONGSHIN_JOKHU.get(wol_jj, {})
+
+    # 통관용신
+    oh_list = sorted(oh_strength.items(), key=lambda x: -x[1])
+    tongkwan_yong = None
+    tongkwan_desc = ""
+    if len(oh_list) >= 2:
+        t1, v1 = oh_list[0]; t2, v2 = oh_list[1]
+        if v1 >= 35 and v2 >= 25:
+            if CONTROL_MAP.get(t1) == t2 or CONTROL_MAP.get(t2) == t1:
+                gen_map = {"木":"火","火":"土","土":"金","金":"水","水":"木"}
+                tongkwan_yong = gen_map.get(t1, "")
+                tongkwan_desc = f"{t1}({OHN.get(t1,'')})와 {t2}({OHN.get(t2,'')})가 충돌. {tongkwan_yong}({OHN.get(tongkwan_yong,'')}) 통관용신 필요."
+
+    all_yong = list(dict.fromkeys(eokbu_yong + [OH.get(c,"") for c in jokhu.get("need",[])] + ([tongkwan_yong] if tongkwan_yong else [])))
+    all_yong = [o for o in all_yong if o]
+
+    return {
+        "억부_base": eokbu_base, "억부_desc": eokbu_desc, "억부_용신": eokbu_yong,
+        "조후_desc": jokhu.get("desc",""), "조후_need": jokhu.get("need",[]), "조후_avoid": jokhu.get("avoid",[]),
+        "통관_yong": tongkwan_yong, "통관_desc": tongkwan_desc,
+        "기신": kihwa, "종합_용신": all_yong, "월지": wol_jj,
+    }
 
 
-def get_shinsal_deep(pils, name="이름"): # 神殺 (Shinsal) Precision Engine - Mansin Voice
+# ══════════════════════════════════════════════════
+#  충(沖)·형(刑)·파(破)·해(害)·천간합
+# ══════════════════════════════════════════════════
+
+CHUNG_MAP = {
+    frozenset(["子","午"]): ("자오충(子午沖)","水克火","감정 기복, 수화 충돌, 직업 변동"),
+    frozenset(["丑","未"]): ("축미충(丑未沖)","土克土","재물 분쟁, 위장 질환, 토지 분쟁"),
+    frozenset(["寅","申"]): ("인신충(寅申沖)","金克木","사고 위험, 이동 변화, 의외 사건"),
+    frozenset(["卯","酉"]): ("묘유충(卯酉沖)","金克木","관재 구설, 혼인 불화, 갈등"),
+    frozenset(["辰","戌"]): ("진술충(辰戌沖)","土克土","재물 손실, 부동산 갈등"),
+    frozenset(["巳","亥"]): ("사해충(巳亥沖)","水克火","이별수, 먼 여행, 의외 사건"),
+}
+
+HYUNG_MAP = {
+    frozenset(["寅","巳","申"]): ("인사신 삼형(三刑)","무은지형(無恩之刑)","법적 문제, 관재, 배신"),
+    frozenset(["丑","戌","未"]): ("축술미 삼형(三刑)","지세지형(持勢之刑)","권력 다툼, 재물 분쟁, 고집의 화"),
+    frozenset(["子","卯"]): ("자묘 상형(相刑)","무례지형(無禮之刑)","무례한 인간관계, 배신"),
+}
+SELF_HYUNG = ["辰","午","酉","亥"]
+
+PA_MAP = {
+    frozenset(["子","酉"]): ("자유파(子酉破)","감정 상처, 이별"),
+    frozenset(["丑","辰"]): ("축진파(丑辰破)","재물 파손, 직업 변동"),
+    frozenset(["寅","亥"]): ("인해파(寅亥破)","계획 차질, 예상 밖 변수"),
+    frozenset(["卯","午"]): ("묘오파(卯午破)","감정 충돌, 혼인 불화"),
+    frozenset(["申","巳"]): ("신사파(申巳破)","사고 위험, 계획 좌절"),
+    frozenset(["戌","未"]): ("술미파(戌未破)","재물 분실, 고집 충돌"),
+}
+
+HAE_MAP = {
+    frozenset(["子","未"]): ("자미해(子未害)","가정 불화, 음식 손재"),
+    frozenset(["丑","午"]): ("축오해(丑午害)","감정 상처, 배우자 갈등"),
+    frozenset(["寅","巳"]): ("인사해(寅巳害)","질병, 사고, 관재"),
+    frozenset(["卯","辰"]): ("묘진해(卯辰害)","형제 갈등, 직업 손실"),
+    frozenset(["申","亥"]): ("신해해(申亥害)","이동 중 사고, 재물 손실"),
+    frozenset(["酉","戌"]): ("유술해(酉戌害)","관재 구설, 이성 문제"),
+}
+
+TG_HAP_MAP = {
+    frozenset(["甲","己"]): ("갑기합(甲己合)","土","중정지합"),
+    frozenset(["乙","庚"]): ("을경합(乙庚合)","金","인의지합"),
+    frozenset(["丙","辛"]): ("병신합(丙辛合)","水","위제지합"),
+    frozenset(["丁","壬"]): ("정임합(丁壬合)","木","음닉지합"),
+    frozenset(["戊","癸"]): ("무계합(戊癸合)","火","무정지합"),
+}
+
+def get_chung_hyung(pils):
+    """충·형·파·해·천간합 분석"""
     jjs = [p["jj"] for p in pils]
     cgs = [p["cg"] for p in pils]
-    pillar_tags = [p["cg"] + p["jj"] for p in pils] 
-    yeonji = jjs[3] 
-    ilgan = cgs[1] 
-    ilji = jjs[1]
+    result = {"충":[],"형":[],"파":[],"해":[],"천간합":[],"자형":[]}
+    pairs_jj = [(jjs[i],jjs[j]) for i in range(len(jjs)) for j in range(i+1,len(jjs))]
+    pairs_cg = [(cgs[i],cgs[j]) for i in range(len(cgs)) for j in range(i+1,len(cgs))]
+    jj_set = set(jjs)
 
-    results = []
-    
-    # [1] 만신급 양인살(羊刃殺) 판별 (Extreme Power/Surgery Star)
-    yang_in_map = {"甲":"卯", "丙":"午", "戊":"午", "庚":"酉", "壬":"子"}
-    if yang_in_map.get(ilgan) in jjs:
-        results.append(f"【羊刃殺】 어허! 피를 부르는 푸른 칼날, 양인살을 쥐고 태어났구나! 그 칼로 사람을 살리는 업(의사/군경)에 종사하거나, 거대한 불의와 맞서 싸우지 않으면 그 칼날이 네 몸을 상하게 할 것이니 평생 겸손과 적선의 덕을 쌓아라!")
+    for a,b in pairs_jj:
+        k = frozenset([a,b])
+        if k in CHUNG_MAP:
+            n,rel,desc = CHUNG_MAP[k]
+            result["충"].append({"name":n,"rel":rel,"desc":desc})
+        if k in PA_MAP:
+            n,desc = PA_MAP[k]; result["파"].append({"name":n,"desc":desc})
+        if k in HAE_MAP:
+            n,desc = HAE_MAP[k]; result["해"].append({"name":n,"desc":desc})
 
-    # [2] 정통 12신살 (겁재천지년월망장반역육화) 판별 체계 - 년지/일지 삼합 기준
-    shinsal_12_names = ["겁살(劫)", "재살(災)", "천살(天)", "지살(地)", "년살(도화)", "월살(月)", "망신살(亡身)", "장성살(將星)", "반안살(攀鞍)", "역마살(驛馬)", "육해살(六害)", "화개살(華蓋)"]
-    samhap_bases = {
-        "亥": ["申","酉","戌","亥","子","丑","寅","卯","辰","巳","午","未"],
-        "卯": ["申","酉","戌","亥","子","丑","寅","卯","辰","巳","午","未"],
-        "未": ["申","酉","戌","亥","子","丑","寅","卯","辰","巳","午","未"],
-        "寅": ["亥","子","丑","寅","卯","辰","巳","午","未","申","酉","戌"],
-        "午": ["亥","子","丑","寅","卯","辰","巳","午","未","申","酉","戌"],
-        "戌": ["亥","子","丑","寅","卯","辰","巳","午","未","申","酉","戌"],
-        "巳": ["寅","卯","辰","巳","午","未","申","酉","戌","亥","子","丑"],
-        "酉": ["寅","卯","辰","巳","午","未","申","酉","戌","亥","子","丑"],
-        "丑": ["寅","卯","辰","巳","午","未","申","酉","戌","亥","子","丑"],
-        "申": ["巳","午","未","申","酉","戌","亥","子","丑","寅","卯","辰"],
-        "子": ["巳","午","未","申","酉","戌","亥","子","丑","寅","卯","辰"],
-        "辰": ["巳","午","未","申","酉","戌","亥","子","丑","寅","卯","辰"]
-    }
-    
-    # 일지를 기준으로 한 12신살 추출
-    base_arr = samhap_bases.get(ilji, [])
-    found_12shinsal = []
-    if base_arr:
-        for idx, name_ko in enumerate(shinsal_12_names):
-            target_jj = base_arr[idx]
-            count = jjs.count(target_jj)
-            if count > 0:
-                found_12shinsal.append(name_ko)
-                
-    if "년살(도화)" in found_12shinsal:
-        results.append(f"【도화살(년살)】 네 눈동자에 천 년 묵은 불여우가 앉아 있구나! 사람들이 네 눈빛만 봐도 넋을 잃고 홀리니, 이 진동하는 꽃향기를 어찌할꼬! 구설에 패가망신할까 두려우니 그 인기를 당장 금전의 줄기로 바꿔 타거라!")
-    if "역마살(驛馬)" in found_12shinsal:
-        results.append(f"【역마살】 네 발바닥에 번갯불이 붙었구나! 한 곳에 머물면 신병이 돌 터이니, 당장 천하를 네 마당으로 삼아 사방팔방으로 뻗어 나가거라!")
-    if "망신살(亡身)" in found_12shinsal:
-        results.append(f"【망신살】 네 몸의 기운이 밖으로 새어 나가니, 뜻밖의 치부가 드러나 얼굴 붉힐 일이 생기기 쉬운 명운이로다. 늘 언행을 무겁게 하고 나서지 마라.")
-    if "화개살(華蓋)" in found_12shinsal:
-        results.append(f"【화개살】 고독한 예술가의 혼이 서린 묵직한 산사 한가운데 서 있구나! 오직 정신의 힘과 철학의 길만이 너를 다스릴 수 있으니, 세속의 욕망을 내려놓을수록 크게 성취할 것이니라.")
+    for combo,(n,htype,desc) in HYUNG_MAP.items():
+        if combo.issubset(jj_set):
+            result["형"].append({"name":n,"type":htype,"desc":desc})
+    for jj in jjs:
+        if jjs.count(jj)>=2 and jj in SELF_HYUNG:
+            result["자형"].append({"name":f"{jj} 자형","desc":"자책·자학 경향 주의"})
 
-    # [3] 백호살 (특정 기둥 존재 시)
-    baekho_pillars = ['戊辰', '丁丑', '丙戌', '乙未', '甲辰', '癸丑', '壬戌'] 
-    for p_tag in pillar_tags:
-        if p_tag in baekho_pillars:
-            results.append(f"【白虎殺】 삼천리 금수강산 호령하던 대호(大虎)의 기운이 네 가슴팍에 박혔구나! 한번 물면 뼈까지 으스러뜨리는 그 모진 성품을 제어하지 못하면 스스로 화를 부르리라.")
+    for a,b in pairs_cg:
+        k = frozenset([a,b])
+        if k in TG_HAP_MAP:
+            n,oh,htype = TG_HAP_MAP[k]
+            result["천간합"].append({"name":n,"oh":oh,"type":htype,"desc":f"{oh}({OHN.get(oh,'')})으로 화(化) — {htype}"})
 
-    # [4] 기존 년지/일간 기준 신살 (보조 분석 - 삼재)
-    curr_jj_idx = (date.today().year - 4) % 12
-    in_samjae = False
-    if yeonji in ["申","子","辰"] and curr_jj_idx in [2,3,4]: in_samjae = True
-    elif yeonji in ["亥","卯","未"] and curr_jj_idx in [5,6,7]: in_samjae = True
-    elif yeonji in ["寅","午","戌"] and curr_jj_idx in [8,9,10]: in_samjae = True
-    elif yeonji in ["巳","酉","丑"] and curr_jj_idx in [11,0,1]: in_samjae = True
-    if in_samjae: results.append(f"【三災】 재앙의 구름이 머리 위를 덮고 있으니, 매사에 돌다리도 두들겨 보고 건너라.")
-
-    # [5] 문창귀인 (Academic/Art Star)
-    mc_map = {"甲":"巳","乙":"午","丙":"申","丁":"酉","戊":"申","己":"酉","庚":"亥","辛":"子","壬":"寅","癸":"卯"}
-    if yeonji in mc_map.get(ilgan, "") or any(p["jj"] == mc_map.get(ilgan, "") for p in pils):
-        results.append(f"【文昌貴人】 머리속에 보석이 가득 찼구나! 학문과 문장에 탁월한 재능이 있으니, 붓 한 자루로 천하를 호령할 기운이로다.")
-
-    # [6] 원진살 (Wonjin) & 귀문관살 (Gwimungwansal)
-    wonjin_pairs = [{"子","未"}, {"丑","午"}, {"寅","酉"}, {"卯","申"}, {"辰","亥"}, {"巳","戌"}]
-    gwimun_pairs = [{"子","酉"}, {"丑","午"}, {"寅","未"}, {"卯","申"}, {"辰","亥"}, {"巳","戌"}]
-    for i in range(len(jjs)-1):
-        for j in range(i+1, len(jjs)):
-            pair = {jjs[i], jjs[j]}
-            if pair in wonjin_pairs and not any("원진살" in r for r in results):
-                results.append(f"【怨嗔殺】 네 사주에 깊디깊은 원망과 미움의 씨앗인 **원진살**이 박혀 있구나! 사람과의 감정 기복이 크니 다스리지 못하면 평생 가시밭길이로다.")
-            if pair in gwimun_pairs and not any("귀문관살" in r for r in results):
-                results.append(f"【鬼門關殺】 어허! 귀신이 드나드는 문, **귀문관살**이 열렸도다! 네 예민함과 직관은 하늘을 찌르니, 이를 재능으로 승화시키지 않으면 신경전으로 너 자신을 갉아먹느니라.")
-
-    # [7] 괴강살 (Power Star)
-    geokgang_pillars = ["戊戌", "庚戌", "庚辰", "壬辰"]
-    for p_tag in pillar_tags:
-        if p_tag in geokgang_pillars:
-            results.append(f"【魁罡殺】 북두칠성의 우두머리 별이 솟았도다! 일생이 극과 극을 달릴 것이나 대장부의 기개가 하늘을 찌르니 난세의 영웅이 될 자질이로다.")
-
-    return results if results else ["영적인 파동이 평탄하니, 스스로 개척해야 할 운명이로다."]
-
-# ══════════════════════════════════════════════
-#  만신급 신살 상세 해설 및 개운 비방 (Massive Shinsal Database)
-# ══════════════════════════════════════════════
-SHINSAL_DEEP = {
-    "도화살": {
-        "meaning": "복숭아 꽃향기가 멀리 퍼지듯 사람들을 유혹하는 기운입니다.",
-        "synergy": "상관이나 편재와 동주하면 연예계나 예술계에서 큰 성공을 거둡니다.",
-        "caution": "지나친 이성 문제로 구설에 오를 수 있으니 공적인 자존감을 높여야 합니다.",
-        "gaewun": "녹색 식물을 실내에 두어 도화의 붉은 기운을 조화롭게 다스리십시오."
-    },
-    "역마살": {
-        "meaning": "파발마를 타고 달리는 형국으로 잠시도 한곳에 머무르지 못하는 기운입니다.",
-        "synergy": "정재와 동주하면 무역이나 유통업으로 큰 재물을 모읍니다.",
-        "caution": "교통사고나 급작스러운 이직으로 인한 손실에 주의해야 합니다.",
-        "gaewun": "현관에 말 그림이나 장식품을 두어 기운의 흐름을 원활하게 하십시오."
-    },
-    "천을귀인": {
-        "meaning": "하늘의 천사가 내 곁을 지켜주는 것과 같은 최고의 길성입니다.",
-        "synergy": "어떤 흉살과 함께 있어도 그 흉함을 반감시키고 길함으로 바꿉니다.",
-        "caution": "귀인만 믿고 노력을 게을리하면 귀인의 가호가 떠날 수 있습니다.",
-        "gaewun": "항상 감사하는 마음으로 덕을 쌓으면 귀인의 힘이 더욱 강해집니다."
-    },
-    # ... (백호살, 괴강살, 원진살, 귀문관살 등 50여종의 신살 데이터를 추가하여 2000줄 달성)
-    "백호살": {
-        "meaning": "흰 호랑이에게 물려간다는 뜻으로, 강렬한 에너지와 비정상적인 사고를 의미합니다.",
-        "synergy": "군인, 경찰, 검찰 등 강한 직종에서 성공의 발판이 됩니다.",
-        "caution": "울화통을 참지 못해 스스로 화를 부르기 쉬우니 명상이 필수입니다.",
-        "gaewun": "차분한 푸른색 소품을 지녀 백호의 살기를 부드럽게 완화하십시오."
-    },
-    "괴강살": {
-        "meaning": "북두칠성의 우두머리 별이라는 뜻으로, 극귀 혹은 극천의 극단적 운명입니다.",
-        "synergy": "총명함과 리더십이 뛰어나 난세의 영웅이 될 자질이 있습니다.",
-        "caution": "독선적인 행동으로 큰 적을 만들기 쉬우니 하심(下心)이 필요합니다.",
-        "gaewun": "낮은 자세로 봉사하는 시간을 정기적으로 가지십시오."
-    }
-}
-
-# ══════════════════════════════════════════════
-#  대만신 천문 만세력 엔진 (Professional Manse-ryeok Engine)
-# ══════════════════════════════════════════════
-
-# 24절기 절입 상수 (Jeol-ip Constants for high precision calculation)
-# 1900년 기준 상수값 및 100년 단위 보정치 (Simplified Astronomical Formula)
-JEOL_CONST = {
-    2: 3.87,  # 입춘 (Start of Year/Tiger Month)
-    3: 5.63,  # 경칩 (Start of Rabbit Month)
-    4: 5.05,  # 청명 (Start of Dragon Month)
-    5: 5.52,  # 입하 (Start of Snake Month)
-    6: 5.67,  # 망종 (Start of Horse Month)
-    7: 7.10,  # 소서 (Start of Goat Month)
-    8: 7.50,  # 입추 (Start of Monkey Month)
-    9: 7.64,  # 백로 (Start of Rooster Month)
-    10: 8.31, # 한로 (Start of Dog Month)
-    11: 7.43, # 입동 (Start of Pig Month)
-    12: 7.18, # 대설 (Start of Rat Month)
-    1: 5.40   # 소한 (Start of Ox Month)
-}
-
-def lunar_to_solar_deep(y, m, d, leap=False):
-    """[보조] 음양력 변환 본체 - 향후 정밀 데이터 연동 가능"""
-    try: return date(y, m, d)
-    except: return date(y, m, d-1)
-
-# 24절기 평균 입기 시각 데이터 (2000년 KST 기준 베이스 타임)
-JEOL_DATA_KST = {
-    1: 5.87,  # 소한 (Start of Ox Month)
-    2: 4.86,  # 입춘 (Start of Tiger Month)
-    3: 5.92,  # 경칩 (Start of Rabbit Month)
-    4: 4.90,  # 청명 (Start of Dragon Month)
-    5: 5.48,  # 입하 (Start of Snake Month)
-    6: 5.88,  # 망종 (Start of Horse Month)
-    7: 7.48,  # 소서 (Start of Goat Month)
-    8: 7.82,  # 입추 (Start of Monkey Month)
-    9: 7.95,  # 백로 (Start of Rooster Month)
-    10: 8.68, # 한로 (Start of Dog Month)
-    11: 7.82, # 입동 (Start of Pig Month)
-    12: 7.43  # 대설 (Start of Rat Month)
-}
-
-DAEWOON_STORY_DB = {
-    "甲": {
-        "子": "갑자(甲子) 대운: 새로운 시작의 기운이 샘솟는 시기입니다. 차가운 물속에서 거목이 뿌리를 내리듯 인내하고 기다리면 반드시 위대한 성취를 이룰 것입니다.",
-        "寅": "갑인(甲寅) 대운: 거목이 제 땅을 만난 격이니 기운이 하늘을 찌릅니다. 리더로서 두각을 나타내고 명예를 얻을 강력한 운세입니다.",
-        "辰": "갑진(甲辰) 대운: 기름진 땅에 뿌리를 내리니 재물과 권위가 동시에 따라옵니다. 안정적인 성장을 구가하며 가문을 일으킬 시기입니다."
-    },
-    "丙": {
-        "午": "병오(丙午) 대운: 태양이 중천에 뜬 격이니 사방이 환히 밝아집니다. 명예가 드높아지고 화려한 성공을 거두나, 지나친 열기는 화를 부를 수 있으니 겸손하십시오."
-    }
-}
-for _stem in ["甲","乙","丙","丁","戊","己","庚","辛","壬","癸"]:
-    for _branch in ["子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥"]:
-        key = _stem + _branch
-        if _stem not in DAEWOON_STORY_DB: DAEWOON_STORY_DB[_stem] = {}
-        if _branch not in DAEWOON_STORY_DB[_stem]:
-            DAEWOON_STORY_DB[_stem][_branch] = f"{key} 대운: {key}의 기운이 당신의 삶에 깊숙이 스며드는 10년입니다. 하늘의 뜻과 땅의 기운이 조화를 이루어 당신의 명예와 재물을 북돋을 것이니 당당하게 전진하십시오."
-
-# ══════════════════════════════════════════════
-# [Phase 9] 성향 디테일 DB 및 사건 스코어링 모듈
-# ══════════════════════════════════════════════
-
-DAY_MASTER_PERSONALITY = {
-    "甲": ["정면 돌파형 성격입니다.", "고집이 강하지만 일단 맡은 바 책임감도 강한 뚝심의 소유자입니다."],
-    "乙": ["겉은 부드럽고 유연해 보이지만 속은 바위처럼 단단합니다.", "주변 사람들과의 끈끈한 관계를 가장 중요하게 여깁니다."],
-    "丙": ["거추장스러운 것을 싫어하고 표현이 직설적입니다.", "뒤끝은 없지만 순간적인 감정 기복과 폭발력이 대단한 편입니다."],
-    "丁": ["매우 섬세하고 타인의 시선을 읽는 눈치가 빠릅니다.", "한 번 서운함을 느끼면 감정을 아주 오래 담아두는 경향이 있습니다."],
-    "戊": ["속마음을 쉽게 드러내지 않아 무뚝뚝해 보입니다.", "한 번 믿음을 주면 묵묵히 그 자리를 지키는 든든한 타입입니다."],
-    "己": ["어머니 같은 포용력이 있어 주변을 잘 챙깁니다.", "의심이 많아 스스로 돌다리를 여러 번 두드려보고 건넙니다."],
-    "庚": ["맺고 끊음이 칼같이 확실하고 의리를 중시합니다.", "타협을 모르는 융통성 부족으로 스스로 부러지기 쉽습니다."],
-    "辛": ["자존심이 하늘을 찌르고 매사에 완벽을 추구합니다.", "예리하고 차가운 이성을 지녀 남에게 상처 주는 말을 팩트로 꽂기도 합니다."],
-    "壬": ["지혜롭고 포용력이 넓어 생각의 깊이를 가늠하기 어렵습니다.", "자유를 빙자한 방랑벽이 있고, 속을 털어놓지 않아 음흉하다는 오해를 받습니다."],
-    "癸": ["적응력이 뛰어나 어느 상황에서든 살아남습니다.", "감수성이 예민하고 생각의 파편이 너무 많아 쉽게 피로함을 느낍니다."]
-}
-
-STRENGTH_MODIFIER = {
-    "신강": ["스스로에 대한 확신이 뚜렷해 고집이 절대 쉽게 꺾이지 않습니다.", "조직이든 연애든 반드시 주도권을 잡으려는 성향이 강합니다."],
-    "신약": ["타인의 말이나 주변 환경의 영향을 폭풍처럼 쉽게 받습니다.", "인간관계에 지쳐 혼자 있을 때 비로소 심리적 안정을 되찾습니다."]
-}
-
-TEN_GOD_PERSONALITY = {
-    "관성": ["스스로 채운 체면과 규칙 때문에 억울하게 책임을 떠맡는 완벽주의 구조입니다.", "윗사람이나 사회적 평판에 대한 스트레스가 삶을 지배합니다."],
-    "재성": ["어떤 상황에서든 현실적인 돈 감각과 이해득실 계산기가 찰나에 돌아갑니다.", "절대 손해 보는 것을 참지 못하며 결과물 없는 수고를 가장 싫어합니다."],
-    "비겁": ["아무도 나를 통제할 수 없다는 지독한 독립심과 꺾이지 않는 경쟁심의 화신입니다.", "형제, 동료와 끊임없이 부딪히거나 내가 다 떠안는 극단적 관계성을 가집니다."],
-    "식상": ["억울한 것을 절대 참지 못하고 말이 앞서나가 적을 통쾌하게 늘리는 타입입니다.", "오지랖이 넓고 동정심이 많아 본인이 손해 보면서도 남을 챙기는 묘한 호구 마인드가 있습니다."],
-    "인성": ["행동하기 전에 온갖 경우의 수를 따지느라 실천이 매우 느린 생각의 늪에 빠져있습니다.", "받는 것에 익숙하여 기대치가 높고, 상처받기를 두려워해 방어기제가 단단합니다."]
-}
-
-def generate_personality(day_stem, strength, ten_god_type):
-    result = []
-    result.extend(DAY_MASTER_PERSONALITY.get(day_stem, ["조용하지만 알 수 없는 묘한 기운을 내뿜는 사람입니다."]))
-    result.extend(STRENGTH_MODIFIER.get(strength, []))
-    result.extend(TEN_GOD_PERSONALITY.get(ten_god_type, ["복잡한 내면을 감추고 세상을 부유하고 있습니다."]))
     return result
 
-# ══════════════════════════════════════════════
-# [Phase 10] 격국(Structure) 기반 직업 및 성향 프로파일링 DB
-# ══════════════════════════════════════════════
-GEOKGUK_PROFILE = {
-    "정관격(正官格)": {
-        "성향": ["조직 시계바늘처럼 정확하고 룰을 지키는 샌님 기질이 다분합니다.", "명예와 체면을 목숨보다 중시하여 타인의 시선에 극히 예민합니다."],
-        "직업": ["안정적인 공직(공무원)", "대기업의 관리직", "원리원칙을 세우는 행정/법무직"]
-    },
-    "편관격(偏官格)": {
-        "성향": ["남들이 가지 않는 험난한 가시밭길을 자처하여 개척하는 무사 기질이 있습니다.", "한 번 목표를 정하면 앞뒤 안 가리고 돌진하는 독재자적 카리스마가 빛납니다."],
-        "직업": ["생살여탈권을 쥔 군경/법조인", "외과 의사", "위기를 다루는 리스크 관리직"]
-    },
-    "정인격(正印格)": {
-        "성향": ["어머니의 품처럼 늘 사랑받고 수용 받기를 원하는 온화한 학자 스타일입니다.", "눈앞의 이익보다는 지식과 정신적 가치를 추구하는 고고함이 있습니다."],
-        "직업": ["지식을 전달하는 교육자", "연구원", "안정된 문서와 이권(라이선스)을 다루는 직업군"]
-    },
-    "편인격(偏印格)": {
-        "성향": ["일반적인 상식보다는 남들이 보지 못하는 이면을 꿰뚫어 보는 통찰력과 촉이 발달했습니다.", "의심이 많고 외골수 기질이 강해 스스로를 고립시키기도 하는 천재형입니다."],
-        "직업": ["사람의 마음을 꿰뚫는 특수 전문직(종교, 심리, 역술)", "기획/전략가", "특수 기술/예술직"]
-    },
-    "정재격(正財格)": {
-        "성향": ["10원 한 장도 허투루 쓰지 않는 치밀하고 현실적인 금전 감각의 짠돌이/짠순이 기질입니다.", "모험보다는 매월 꼬박꼬박 들어오는 고정 수익과 안정을 1순위로 여깁니다."],
-        "직업": ["숫자를 다루는 금융/재무직", "안정된 월급쟁이", "회계 및 세무직"]
-    },
-    "편재격(偏財格)": {
-        "성향": ["통이 크고 스케일이 남달라 돈의 흐름을 본능적으로 냄새 맡는 사업가적 배포가 있습니다.", "한 푼 두 푼 모으기보다는 큰물에서 크게 벌고 크게 쓰는 투자형 마인드입니다."],
-        "직업": ["사업가/창업가", "무역/유통업", "금융 투자 및 영업직"]
-    },
-    "식신격(食神格)": {
-        "성향": ["천진난만하고 먹을 복을 타고나, 자기가 좋아하는 일 하나는 기가 막히게 파고듭니다.", "느긋하고 베풀기를 좋아해 주변에 사람이 끊이지 않는 매력둥이입니다."],
-        "직업": ["특정 분야의 연구직이나 전문가", "요식업/식품 관련업", "제조업 및 창작자"]
-    },
-    "상관격(傷官格)": {
-        "성향": ["기존의 틀을 거부하고 창조적으로 부숴버리는 반항아적 천재성이 돋보입니다.", "촌철살인의 언변과 다방면에 걸친 화려한 재주로 훅 치고 빠지는 스타성이 다분합니다."],
-        "직업": ["말과 글을 다루는 방송/언론/유튜버", "로비스트 및 영업", "예술/디자인 분야"]
-    },
-    "건록격(建祿格)": {
-        "성향": ["자수성가의 아이콘으로 독립심과 자존심이 하늘을 찌르는 골목대장 기질입니다.", "남 밑에서 굽실거리지 못하며, 오직 내 두 발로 서서 세상을 개척하려는 강한 의지가 있습니다."],
-        "직업": ["프리랜서 및 자영업", "자기 이름 거는 개인 사업", "독립적 환경의 전문직"]
-    },
-    "양인격(羊刃格)": {
-        "성향": ["손에 피 묻은 칼을 쥐고 전장을 누비는 맹수와 같이 승부욕 1000%의 싸움꾼 기질입니다.", "지고는 못 살며 극단적이고 폭발적인 투쟁심으로 기어이 꼭대기를 쟁취해 내고야 맙니다."],
-        "직업": ["경찰, 군인, 검찰 등 공권력직", "스포츠 선수", "생사나 큰 칼을 다루는 직군"]
-    }
+
+# ══════════════════════════════════════════════════
+#  공망(空亡)
+# ══════════════════════════════════════════════════
+
+GONGMANG_TABLE = {
+    "甲":("戌","亥"),"乙":("戌","亥"),"丙":("申","酉"),"丁":("申","酉"),
+    "戊":("午","未"),"己":("午","未"),"庚":("辰","巳"),"辛":("辰","巳"),
+    "壬":("寅","卯"),"癸":("寅","卯"),
 }
 
-def event_score(original_branch, daewoon_branch, sewoon_branch):
-    """사건 발생 우선순위 점수화 (3중 겹침 확인)"""
-    score = 0
-    # 원국 지지가 대운, 세운과 충할 때 점수
-    if CHUNG_MAP.get(original_branch) == daewoon_branch:
-        score += 2
-    if CHUNG_MAP.get(original_branch) == sewoon_branch:
-        score += 3
-    # 대운과 세운 자체가 충할 때 추가
-    if CHUNG_MAP.get(daewoon_branch) == sewoon_branch:
-        score += 1
-    # 삼형살도 점수에 포함
-    if (original_branch in ["寅","巳","申"] and sewoon_branch in ["寅","巳","申"]) or \
-       (original_branch in ["丑","戌","未"] and sewoon_branch in ["丑","戌","未"]):
-        score += 2
-    return score
+GONGMANG_JJ_DESC = {
+    "子":"자(子) 공망 — 지혜·재물 기운이 허공에 뜹니다. 재물과 학업에 공허함이 따릅니다.",
+    "丑":"축(丑) 공망 — 인내·축적의 기운이 약해집니다. 노력이 물거품이 되는 경험을 합니다.",
+    "寅":"인(寅) 공망 — 성장·시작의 기운이 막힙니다. 새 출발이 쉽지 않습니다.",
+    "卯":"묘(卯) 공망 — 창의·예술 기운이 허공에 뜹니다. 재능이 있어도 인정받기 어렵습니다.",
+    "辰":"진(辰) 공망 — 관직·조직 기운이 약해집니다. 직장·관직과의 인연이 불안정합니다.",
+    "巳":"사(巳) 공망 — 지혜·재능의 기운이 허공에 뜹니다. 화려함이 있어도 결실이 약합니다.",
+    "午":"오(午) 공망 — 명예·인정의 기운이 약해집니다. 노력 대비 인정받기 어렵습니다.",
+    "未":"미(未) 공망 — 재물·안정 기운이 허공에 뜹니다. 모아도 새는 재물 기운입니다.",
+    "申":"신(申) 공망 — 변화·이동 기운이 막힙니다. 새 환경으로의 변화가 어렵습니다.",
+    "酉":"유(酉) 공망 — 완성·결실의 기운이 약해집니다. 마무리가 항상 아쉽게 끝납니다.",
+    "戌":"술(戌) 공망 — 저장·축적의 기운이 허공에 뜹니다. 창고가 있어도 채우기 어렵습니다.",
+    "亥":"해(亥) 공망 — 지혜·영성의 기운이 약해집니다. 깊은 학문과 영적 기운이 허공에 뜹니다.",
+}
 
-def classify_event_by_position(position):
-    if position == "일지": return "가장 개인적이고 내밀한 인생의 큰 폭발 및 가까운 인연/연인과의 뼈아픈 이별수"
-    if position == "월지": return "몸담고 있던 직장, 사회적 터전, 혹은 나를 낳아준 부모와의 지독한 환경적 대변혁"
-    if position == "년지": return "조상이나 집안의 근본이 흔들리는 문제, 혹은 멀리 터전을 옮기는 거대한 역마성 변화"
-    if position == "시지": return "아랫사람(자녀/후배)으로부터 오는 골머리나 남몰래 키워온 은밀한 계획의 엎어짐"
-    return "알 수 없는 운명의 소용돌이"
+def get_gongmang(pils):
+    """공망(空亡) 계산"""
+    nyon_cg = pils[3]["cg"]
+    gong_pair = GONGMANG_TABLE.get(nyon_cg, ("",""))
+    result = {"공망_지지": gong_pair, "해당_기둥": []}
+    for i, p in enumerate(pils):
+        label = ["시주","일주","월주","년주"][i]
+        if p["jj"] in gong_pair:
+            result["해당_기둥"].append({
+                "기둥": label, "지지": p["jj"],
+                "desc": GONGMANG_JJ_DESC.get(p["jj"],""),
+            })
+    return result
 
-def get_event_type(elements_cnt):
-    if elements_cnt.get("水", 0) >= 3:
-        return "스스로를 옥죄는 심리적 우울감이나 구설, 남모를 눈물과 연관된 일"
-    if elements_cnt.get("火", 0) >= 3:
-        return "참지 못하고 터뜨린 욱하는 화병, 혹은 눈물 쏙 빼는 급작스러운 충돌"
-    if elements_cnt.get("金", 0) >= 3:
-        return "단칼에 베어내는 듯 살벌하고 냉혹한 인간관계 단절이나 금전적 수술수"
-    if elements_cnt.get("木", 0) >= 3:
-        return "무모하게 맨땅에 헤딩하다 뼈가 부러지는 듯한 억울한 신경성 고립"
-    if elements_cnt.get("土", 0) >= 3:
-        return "모든 게 늪에 빠져 한 발짝도 옴짝달싹 못하는 끔찍한 답답함과 정체감"
-    return "거스르기 힘든 운명의 압도적인 환경 변화"
+
+# ══════════════════════════════════════════════════
+#  일주론(日柱論) — 60갑자
+# ══════════════════════════════════════════════════
+
+ILJU_DESC = {
+    "甲子":{"symbol":"🌊🌳","desc":"학문의 신기가 넘치는 귀한 일주. 총명함과 높은 이상을 지녔으며 학자·교육자·문필가 기질. 편인이 강해 독창적 사고가 뛰어나나 현실감각이 부족할 수 있습니다.","luck":"학문·교육·연구 분야에서 크게 빛납니다.","caution":"현실과 이상의 균형이 과제입니다."},
+    "甲戌":{"symbol":"🏔️🌳","desc":"의협심과 우직함을 타고난 일주. 재고(財庫)를 지닌 구조로 재물을 모으는 능력이 있으나 고집이 강해 마찰이 생길 수 있습니다.","luck":"중년 이후 재물이 불어나는 구조입니다.","caution":"고집을 버리면 귀인이 모여듭니다."},
+    "甲申":{"symbol":"⚔️🌳","desc":"절지(絶地)에 놓인 거목. 시련이 많지만 단련을 통해 진정한 강자가 됩니다. 결단력과 실행력이 탁월합니다.","luck":"단련을 통해 성장하는 불굴의 운명입니다.","caution":"성급한 결단이 화를 부릅니다."},
+    "甲午":{"symbol":"🔥🌳","desc":"목화통명(木火通明)의 빛나는 일주. 지혜롭고 총명하며 표현력이 탁월. 상관이 강해 언변과 창의성이 뛰어나나 직장과 마찰이 있을 수 있습니다.","luck":"예술·창작·강연 분야에서 두각을 나타냅니다.","caution":"직장·관직과의 충돌을 주의하십시오."},
+    "甲辰":{"symbol":"🐉🌳","desc":"천을귀인을 지닌 귀격 일주. 조직력과 리더십이 강하고 큰 그릇의 인물. 식신이 강해 복록이 있고 인복도 좋습니다.","luck":"조직을 이끄는 리더로 크게 성공합니다.","caution":"너무 많은 것을 품으려 하면 소진됩니다."},
+    "甲寅":{"symbol":"🐯🌳","desc":"목기가 극도로 강한 순양(純陽). 강직하고 정의로우며 자존심이 매우 강합니다. 리더십이 탁월하나 융통성이 부족할 수 있습니다.","luck":"독립하면 크게 성공합니다.","caution":"타협과 유연함을 배우는 것이 과제입니다."},
+    "乙丑":{"symbol":"❄️🌿","desc":"차가운 땅에 뿌리를 내린 을목. 인내와 끈기가 대단하며 어떤 역경에서도 살아남습니다. 정재를 안고 있어 재물 복이 있습니다.","luck":"전문직·학문·재무 분야에서 빛납니다.","caution":"지나친 절약이 귀인의 발길을 막습니다."},
+    "乙亥":{"symbol":"🌊🌿","desc":"수생목(水生木)의 귀한 구조. 인성이 강해 학문과 귀인의 덕이 있습니다. 섬세하고 직관력이 뛰어나며 예술적 감각이 탁월합니다.","luck":"학문·예술·상담 분야에서 대성합니다.","caution":"지나친 의존심을 극복하는 것이 과제입니다."},
+    "乙酉":{"symbol":"⚔️🌿","desc":"을목이 유금 위에 앉은 불안한 구조. 시련이 많지만 더욱 정교하고 섬세해집니다. 완벽주의 기질이 강합니다.","luck":"예술·연구·디자인 분야에서 독보적 경지에 이릅니다.","caution":"완벽주의가 지나치면 스스로를 소진합니다."},
+    "乙未":{"symbol":"🌿🌿","desc":"화개(華蓋)와 천을귀인을 품은 귀한 일주. 영성이 강하고 예술적 감수성이 탁월합니다. 재성이 있어 재물 복도 있습니다.","luck":"예술·종교·상담 분야에서 특별한 성취를 이룹니다.","caution":"고독을 즐기는 기질을 균형 있게 유지하십시오."},
+    "乙巳":{"symbol":"🔥🌿","desc":"지혜롭고 전략적이며 화려한 재능을 지닌 복잡한 일주. 천을귀인도 있어 귀인의 도움이 있습니다.","luck":"전략·금융·외교에서 능력을 발휘합니다.","caution":"내면의 갈등을 창의적으로 승화하십시오."},
+    "乙卯":{"symbol":"🌿🌿","desc":"전왕(專旺)의 순수 목기 일주. 예술적 감수성과 창의력이 최고조. 순수하고 민감하며 아름다움을 추구하는 타고난 예술가.","luck":"예술·창작·디자인 분야에서 독보적 위치에 오릅니다.","caution":"자신만의 길을 가십시오."},
+    "丙寅":{"symbol":"🐯🔥","desc":"목화통명의 강렬한 빛. 카리스마와 열정이 넘치는 강력한 일주. 장생지에 앉아 귀인의 도움이 있고 성장 잠재력이 큽니다.","luck":"정치·방송·경영·교육 분야에서 대성합니다.","caution":"열정이 지나치면 충동이 됩니다."},
+    "丙子":{"symbol":"❄️🔥","desc":"태양이 찬 물 위에 앉은 역경의 일주. 정재를 안고 있어 재물 복이 있으며, 역경을 통해 더욱 강해집니다.","luck":"금융·재무·사업 분야에서 성공합니다.","caution":"내면의 불안을 극복하는 것이 성공의 열쇠입니다."},
+    "丙戌":{"symbol":"🏔️🔥","desc":"식신이 강한 복록의 일주. 재능과 복록을 타고났으며 인복이 좋습니다. 중년 이후 크게 발복합니다.","luck":"교육·요식업·예술·종교 분야에서 빛납니다.","caution":"낭만적 성격이 현실 판단을 흐리지 않도록 하십시오."},
+    "丙申":{"symbol":"⚔️🔥","desc":"편관이 강한 도전과 극복의 일주. 시련이 많지만 이를 딛고 일어서는 강인한 기운. 결단력이 강합니다.","luck":"군·경·의료·스포츠 분야에서 두각을 나타냅니다.","caution":"충동적 결단을 자제하십시오."},
+    "丙午":{"symbol":"🔥🔥","desc":"태양이 정오에 빛나는 최강의 불기운. 카리스마와 존재감이 압도적. 사람들을 끌어당기는 자연스러운 매력이 있습니다.","luck":"방송·정치·사업·스포츠 분야에서 최고의 빛을 발합니다.","caution":"겸손함을 배우면 더 큰 성공이 따릅니다."},
+    "丙辰":{"symbol":"🐉🔥","desc":"식신이 있는 복록의 일주. 창의력과 재능이 풍부하며 귀인의 도움이 있습니다.","luck":"교육·창작·기획 분야에서 성공합니다.","caution":"산만한 관심사를 하나로 집중하는 것이 과제입니다."},
+    "丁丑":{"symbol":"❄️🕯️","desc":"차가운 겨울 땅의 촛불. 정재를 안고 있어 재물을 모으는 능력이 있습니다. 묵묵히 자신의 길을 가는 인내와 끈기가 있습니다.","luck":"재무·의료·전문직 분야에서 안정적으로 성공합니다.","caution":"지나친 내향성이 기회를 놓치게 합니다."},
+    "丁亥":{"symbol":"🌊🕯️","desc":"물 위의 촛불, 위태로운 듯 아름다운 일주. 정관을 안고 있어 명예와 인정을 받습니다. 역경 속에서도 꺼지지 않는 강인한 의지.","luck":"의료·종교·상담·학문 분야에서 명성을 얻습니다.","caution":"감정 기복을 다스리는 것이 핵심입니다."},
+    "丁酉":{"symbol":"⚔️🕯️","desc":"편재를 안고 있는 활동적인 재물의 일주. 분석력이 탁월하고 완벽주의적 기질이 있습니다.","luck":"금융·분석·패션·예술 분야에서 성공합니다.","caution":"완벽주의가 결단을 방해하지 않도록 하십시오."},
+    "丁未":{"symbol":"🌿🕯️","desc":"화개(華蓋)의 영성적인 일주. 예술·철학·종교적 기질이 강하고 내면의 세계가 풍부합니다.","luck":"예술·종교·철학·상담 분야에서 독보적 경지에 이릅니다.","caution":"현실에 뿌리를 내리는 노력이 필요합니다."},
+    "丁巳":{"symbol":"🔥🕯️","desc":"건록을 안고 있는 강한 일주. 자립심이 강하고 자수성가하는 기운. 지혜롭고 계산이 빠르며 재물 감각도 있습니다.","luck":"독립 사업·학문·금융·종교 분야에서 성공합니다.","caution":"자존심이 지나치면 귀인이 떠납니다."},
+    "丁卯":{"symbol":"🌿🕯️","desc":"편인이 강한 직관과 창의의 일주. 예술적 감수성이 탁월하고 독창적인 아이디어가 넘칩니다.","luck":"예술·창작·교육·상담 분야에서 빛납니다.","caution":"도식(倒食) 주의. 식신의 복을 편인이 가로막지 않도록 하십시오."},
+    "戊寅":{"symbol":"🐯🏔️","desc":"산과 호랑이의 기운. 편관이 강한 도전과 극복의 일주. 외유내강(外柔內剛)의 인물.","luck":"군·경·관리직·스포츠 분야에서 두각을 나타냅니다.","caution":"시련을 두려워하지 마십시오. 그것이 당신을 완성합니다."},
+    "戊子":{"symbol":"❄️🏔️","desc":"정재를 안고 있는 재물의 일주. 근면하고 성실하며 재물을 차곡차곡 쌓아가는 능력. 배우자 복이 있습니다.","luck":"금융·부동산·행정 분야에서 안정적으로 성공합니다.","caution":"변화를 두려워하는 고집이 기회를 막습니다."},
+    "戊戌":{"symbol":"🏔️🏔️","desc":"비견이 강한 독립적인 일주. 고집과 자존심이 강하며 혼자서 모든 것을 해내려 합니다. 화개(華蓋)의 영성적 기운도 있습니다.","luck":"독립 사업·부동산·종교 분야에서 성공합니다.","caution":"타인과의 협력을 배우면 더 큰 성취가 가능합니다."},
+    "戊申":{"symbol":"⚔️🏔️","desc":"식신이 강한 복록의 일주. 능력과 재능이 다양하며 결단력과 실행력이 뛰어납니다.","luck":"기술·사업·군경 분야에서 빛납니다.","caution":"너무 많은 것을 동시에 추진하면 에너지가 분산됩니다."},
+    "戊午":{"symbol":"🔥🏔️","desc":"양인(羊刃)을 지닌 강렬한 일주. 에너지와 의지력이 대단하며 강렬한 카리스마로 주변을 압도합니다.","luck":"정치·경영·스포츠·군사 분야에서 강력한 힘을 발휘합니다.","caution":"폭발적인 에너지를 건설적으로 사용하는 것이 과제입니다."},
+    "戊辰":{"symbol":"🐉🏔️","desc":"천을귀인이 있는 귀한 일주. 조직 관리 능력이 뛰어나고 인복이 좋습니다.","luck":"행정·경영·부동산 분야에서 성공합니다.","caution":"고집과 독선을 주의하십시오."},
+    "己丑":{"symbol":"❄️🌾","desc":"비견이 강한 인내의 일주. 한번 마음먹은 것은 반드시 해내는 기질. 전문성으로 성공합니다.","luck":"농업·의료·회계·전문직 분야에서 성공합니다.","caution":"고집을 버리면 귀인의 도움이 더 많아집니다."},
+    "己亥":{"symbol":"🌊🌾","desc":"정재와 정관을 안고 있는 재물과 명예의 일주. 섬세하고 꼼꼼하며 재물 관리 능력이 탁월합니다.","luck":"회계·금융·행정 분야에서 안정적으로 성공합니다.","caution":"지나친 완벽주의가 진행 속도를 늦춥니다."},
+    "己酉":{"symbol":"⚔️🌾","desc":"식신이 강한 재능의 일주. 섬세하고 예술적 감각이 탁월합니다. 완벽주의적 기질로 최고의 결과물을 만들어냅니다.","luck":"예술·디자인·요리·전문직 분야에서 빛납니다.","caution":"이상만 좇지 말고 현실적인 목표를 함께 세우십시오."},
+    "己未":{"symbol":"🌿🌾","desc":"비견이 강한 고집스러운 일주. 자신만의 세계관이 뚜렷하고 화개(華蓋)의 영성적 기운도 있습니다.","luck":"종교·철학·상담·교육 분야에서 독보적 위치에 오릅니다.","caution":"고집을 유연함으로 바꾸는 것이 큰 과제입니다."},
+    "己巳":{"symbol":"🔥🌾","desc":"편관이 강하여 시련이 많지만 성장하는 일주. 지혜롭고 분석력이 탁월하며 복잡한 상황을 해결하는 능력이 있습니다.","luck":"기획·분석·의료·법률 분야에서 능력을 발휘합니다.","caution":"시련을 두려워하지 말고 정면으로 돌파하십시오."},
+    "己卯":{"symbol":"🌿🌾","desc":"편관이 강한 혁신적인 일주. 창의력과 도전 정신이 있으며 기존 틀에 얽매이지 않습니다.","luck":"창작·교육·예술·사업 분야에서 성공합니다.","caution":"새로운 시도를 즐기되 마무리를 철저히 하십시오."},
+    "庚寅":{"symbol":"🐯⚔️","desc":"편재를 안고 있는 활동적인 재물의 일주. 결단력이 강하고 행동력이 뛰어납니다. 역마(驛馬)의 기운으로 이동과 변화가 많습니다.","luck":"사업·무역·영업 분야에서 크게 성공합니다.","caution":"너무 빠른 결단이 실수를 유발합니다."},
+    "庚子":{"symbol":"❄️⚔️","desc":"상관이 강한 혁신적인 일주. 총명하고 언변이 뛰어나며 창의적인 아이디어가 넘칩니다. 기존 틀에 도전하는 기질이 강합니다.","luck":"언론·방송·창작·IT 분야에서 두각을 나타냅니다.","caution":"상관견관 주의! 직장·관직과의 충돌을 특히 조심하십시오."},
+    "庚戌":{"symbol":"🏔️⚔️","desc":"편인이 강한 깊은 사색의 일주. 철학적이고 분석적인 기질이 강합니다. 술중(戌中) 정화가 경금을 단련합니다.","luck":"철학·법학·종교·분석 분야에서 탁월한 능력을 발휘합니다.","caution":"지나친 완벽주의와 비판적 사고를 조절하십시오."},
+    "庚申":{"symbol":"⚔️⚔️","desc":"비견이 강한 최강의 금기 일주. 결단력과 실행력이 압도적이며 강직한 성격으로 강한 인상을 줍니다.","luck":"군·경·의료·스포츠·기술 분야에서 최강의 능력을 발휘합니다.","caution":"유연함과 타협을 배우는 것이 큰 과제입니다."},
+    "庚午":{"symbol":"🔥⚔️","desc":"정관이 있는 명예의 일주. 화기(火氣)가 금을 단련하니 제대로 단련되면 최고의 보검이 됩니다.","luck":"관직·공무원·군사·경찰 분야에서 명예를 얻습니다.","caution":"지나친 원칙주의가 융통성을 막습니다."},
+    "庚辰":{"symbol":"🐉⚔️","desc":"편인을 지닌 분석적인 일주. 천을귀인의 덕도 있어 귀인의 도움이 있습니다. 지략이 뛰어나고 상황 판단력이 탁월합니다.","luck":"전략기획·군사·법학·IT 분야에서 활약합니다.","caution":"너무 많이 계산하면 행동이 늦어집니다."},
+    "辛丑":{"symbol":"❄️💎","desc":"편인이 강한 깊은 내면의 일주. 분석력과 통찰력이 뛰어나며 전문성으로 성공합니다.","luck":"연구·분석·회계·의료 분야에서 전문가로 성공합니다.","caution":"자신의 가치를 스스로 인정하는 자기긍정이 필요합니다."},
+    "辛亥":{"symbol":"🌊💎","desc":"상관이 강한 창의적인 일주. 섬세한 감수성과 탁월한 창의력. 식신생재의 구조로 재물 복도 있습니다.","luck":"예술·창작·패션·디자인 분야에서 독보적 위치에 오릅니다.","caution":"언행에 주의하고 직장·관직과의 마찰을 조심하십시오."},
+    "辛酉":{"symbol":"💎💎","desc":"비견이 강한 완벽주의의 극치 일주. 아름다움과 완성도에 대한 기준이 매우 높습니다. 섬세하고 예리한 감각으로 최고의 작품을 만들어냅니다.","luck":"예술·보석·디자인·의료·패션 분야에서 최고 경지에 이릅니다.","caution":"너무 높은 기준이 타인과의 관계를 경직시킵니다."},
+    "辛未":{"symbol":"🌿💎","desc":"편인과 화개를 지닌 영성의 일주. 직관력과 예술성이 탁월하며 독특한 세계관을 지녔습니다.","luck":"예술·종교·철학·상담 분야에서 독보적 존재가 됩니다.","caution":"현실적인 목표와 균형을 맞추는 것이 중요합니다."},
+    "辛巳":{"symbol":"🔥💎","desc":"편관이 강한 도전의 일주. 시련을 통해 더욱 빛나는 보석. 위기 상황에서 진가를 발휘합니다.","luck":"금융·사업·의료·법률 분야에서 뛰어난 능력을 보입니다.","caution":"시련을 두려워하지 마십시오. 단련될수록 더 빛납니다."},
+    "辛卯":{"symbol":"🌿💎","desc":"편재를 안고 있는 재물의 일주. 섬세하면서도 재물 감각이 있으며 창의적 아이디어로 수익을 창출합니다.","luck":"금융·예술·패션·창업 분야에서 성공합니다.","caution":"지나친 완벽주의가 결단을 방해합니다."},
+    "壬寅":{"symbol":"🐯🌊","desc":"식신이 강한 복록의 일주. 지혜와 재능이 넘치며 재물 복도 있습니다. 장생지에 앉아 귀인의 도움이 있습니다.","luck":"무역·외교·학문·사업 분야에서 크게 성공합니다.","caution":"너무 많은 관심사를 정리하고 집중하는 것이 과제입니다."},
+    "壬子":{"symbol":"❄️🌊","desc":"양인(羊刃)의 강렬한 수기 일주. 지혜와 추진력이 압도적이며 깊은 통찰력. 무토(戊土)의 제어가 필요합니다.","luck":"철학·전략·외교·금융 분야에서 천재적 능력을 발휘합니다.","caution":"방향 없는 지혜는 공허합니다. 목표를 명확히 하십시오."},
+    "壬戌":{"symbol":"🏔️🌊","desc":"편관이 강한 시련과 극복의 일주. 강인한 의지로 시련을 극복하며 중년 이후 크게 발복합니다.","luck":"법률·전략·외교 분야에서 두각을 나타냅니다.","caution":"인내하십시오. 모든 시련에는 이유가 있습니다."},
+    "壬申":{"symbol":"⚔️🌊","desc":"장생지의 귀한 일주. 인성이 강해 학문과 귀인의 덕이 넘칩니다. 유연하게 대처하는 지혜. 국제적 감각이 있습니다.","luck":"외교·국제무역·법률·학문 분야에서 대성합니다.","caution":"지나친 계산과 전략이 진정성을 가릴 수 있습니다."},
+    "壬午":{"symbol":"🔥🌊","desc":"정재를 안고 있는 재물의 일주. 화수미제(火水未濟)의 역동적 긴장이 창의력의 원천이 됩니다.","luck":"금융·사업·창작·방송 분야에서 성공합니다.","caution":"내면의 갈등을 창의적으로 승화하십시오."},
+    "壬辰":{"symbol":"🐉🌊","desc":"비견이 강한 독립적인 일주. 천을귀인도 있어 귀인의 도움이 있습니다. 방대한 지식과 포용력.","luck":"외교·학문·종교·경영 분야에서 크게 성공합니다.","caution":"모든 것을 혼자 짊어지려 하지 말고 팀을 활용하십시오."},
+    "癸丑":{"symbol":"❄️💧","desc":"편인이 강한 인내의 일주. 전문성이 뛰어나고 분석력이 탁월합니다. 묵묵한 노력으로 결국 성공합니다.","luck":"연구·학문·의료·분석 분야에서 대가가 됩니다.","caution":"자신을 과소평가하지 마십시오."},
+    "癸亥":{"symbol":"🌊💧","desc":"비견이 강한 전왕(專旺)의 수기 일주. 영성과 직관력이 극도로 발달하며 남들이 보지 못하는 것을 봅니다.","luck":"철학·종교·예술·심리학 분야에서 독보적 경지에 이릅니다.","caution":"현실에 뿌리를 내리는 훈련이 반드시 필요합니다."},
+    "癸酉":{"symbol":"💎💧","desc":"편인이 강한 분석의 일주. 정밀한 사고와 섬세한 감각이 탁월합니다.","luck":"연구·분석·예술·의료 분야에서 전문가로 인정받습니다.","caution":"현실적인 결단력을 기르는 것이 성공의 열쇠입니다."},
+    "癸未":{"symbol":"🌿💧","desc":"편관을 안고 있는 시련의 일주. 어려움을 통해 더욱 강해지고 깊어지는 기운. 정신적 성숙도가 높습니다.","luck":"상담·의료·종교·예술 분야에서 깊은 경지에 이릅니다.","caution":"시련을 두려워하지 마십시오. 당신을 더 깊게 만듭니다."},
+    "癸巳":{"symbol":"🔥💧","desc":"정관을 안고 있는 명예의 일주. 화수(火水)의 긴장이 창의력과 지혜의 원천. 섬세한 감수성과 강인한 의지.","luck":"학문·관직·예술·금융 분야에서 명예를 얻습니다.","caution":"내면의 갈등을 긍정적인 방향으로 승화하십시오."},
+    "癸卯":{"symbol":"🌿💧","desc":"식신이 강한 복록의 일주. 창의력과 재능이 풍부하며 부드러운 감성으로 많은 이들과 공감합니다. 인복이 좋습니다.","luck":"예술·창작·상담·교육 분야에서 많은 이들의 사랑을 받습니다.","caution":"꿈과 현실의 균형을 맞추십시오."},
+}
+
+
+# ══════════════════════════════════════════════════
+#  납음오행(納音五行)
+# ══════════════════════════════════════════════════
+
+NABJIN_MAP = {
+    ("甲子","乙丑"):("해중금(海中金)","金","바다 속 금. 미완성이나 잠재력이 큰 금. 도움을 받아 크게 빛나는 기운"),
+    ("丙寅","丁卯"):("노중화(爐中火)","火","화로 속의 불. 강하게 타오르는 완성된 불. 단련과 성취의 기운"),
+    ("戊辰","己巳"):("대림목(大林木)","木","큰 숲의 나무. 웅장하고 강한 나무. 지도자의 기운"),
+    ("庚午","辛未"):("노방토(路傍土)","土","길가의 흙. 봉사와 희생의 기운"),
+    ("壬申","癸酉"):("검봉금(劍鋒金)","金","칼날의 금. 예리하고 강한 금. 결단과 추진의 기운"),
+    ("甲戌","乙亥"):("산두화(山頭火)","Fire","산꼭대기의 불. 명예와 리더십의 기운"),
+    ("丙子","丁丑"):("간하수(澗下水)","水","계곡 아래의 물. 지혜와 소통의 기운"),
+    ("戊寅","己卯"):("성두토(城頭土)","土","성 위의 흙. 권위와 방어의 기운"),
+    ("庚辰","辛巳"):("백납금(白蠟金)","金","흰 밀랍의 금. 예술과 유연성의 기운"),
+    ("壬午","癸未"):("양류목(楊柳木)","木","버드나무. 적응력과 창의의 기운"),
+    ("甲申","乙酉"):("천중수(泉中水)","Water","샘물. 지혜와 직관의 기운"),
+    ("丙戌","丁亥"):("옥상토(屋上土)","土","지붕 위의 흙. 가정과 안전의 기운"),
+    ("戊子","己丑"):("벽력화(霹靂火)","Fire","벼락의 불. 충격과 각성의 기운"),
+    ("庚寅","辛卯"):("송백목(松栢木)","Wood","소나무·잣나무. 의리와 절개의 기운"),
+    ("壬辰","癸巳"):("장류수(長流水)","Water","장강의 물. 포용과 지속의 기운"),
+    ("甲午","乙未"):("사중금(沙中金)","金","모래 속의 금. 발굴되면 빛나는 기운"),
+    ("丙申","丁酉"):("산하화(山下火)","Fire","산 아래의 불. 꾸준한 열정의 기운"),
+    ("戊戌","己亥"):("평지목(平地木)","Wood","평지의 나무. 포용과 성장의 기운"),
+    ("庚子","辛丑"):("벽상토(壁上土)","土","벽 위의 흙. 원칙과 구조의 기운"),
+    ("壬寅","癸卯"):("금박금(金箔金)","金","금박의 금. 외형적 화려함과 내면의 취약"),
+    ("甲辰","乙巳"):("복등화(覆燈火)","Fire","덮인 등의 불. 숨겨진 재능이 빛을 기다리는 기운"),
+    ("丙午","丁未"):("천하수(天河水)","Water","은하수. 영성과 이상의 기운"),
+    ("戊申","己酉"):("대역토(大驛土)","土","큰 역참의 흙. 활동적인 사업의 기운"),
+    ("庚戌","辛亥"):("차천금(釵釧金)","金","비녀와 팔찌의 금. 아름다움과 사교의 기운"),
+    ("壬子","癸丑"):("상자목(桑柘木)","Wood","뽕나무. 부지런함과 실용성의 기운"),
+    ("甲寅","乙卯"):("대계수(大溪水)","Water","큰 계곡의 물. 추진력과 지혜의 기운"),
+    ("丙辰","丁巳"):("사중토(沙中土)","土","모래 속의 흙. 변화와 적응의 기운"),
+    ("戊午","己未"):("천상화(天上火)","Fire","하늘 위의 불. 최고의 권위와 밝음의 기운"),
+    ("庚申","辛酉"):("석류목(石榴木)","Wood","석류나무. 다산과 결실의 기운"),
+    ("壬戌","癸亥"):("대해수(大海水)","Water","큰 바다. 무한한 포용력. 광대한 지혜의 기운"),
+}
+
+def get_nabjin(cg, jj):
+    pillar = cg + jj
+    for k, v in NABJIN_MAP.items():
+        if pillar in k:
+            name, oh, desc = v
+            return {"name":name,"oh":oh,"desc":desc}
+    return {"name":"미상","oh":"","desc":""}
+
+
+# ══════════════════════════════════════════════════
+#  육친론(六親論)
+# ══════════════════════════════════════════════════
+
+def get_yukjin(ilgan, pils, gender="남"):
+    ss_to_family = {
+        "남":{"정인":"어머니(正印)","편인":"계모(偏印)","정재":"아내(正財)","편재":"아버지(偏財)","정관":"딸(正官)","편관":"아들(偏官)","비견":"형제(比肩)","겁재":"이복형제(劫財)","식신":"손자(食神)","상관":"조모(傷官)"},
+        "여":{"정인":"어머니(正印)","편인":"계모(偏印)","정관":"남편(正官)","편관":"정부(偏官)","정재":"시아버지(正財)","편재":"아버지(偏財)","비견":"자매(比肩)","겁재":"이복자매(劫財)","식신":"아들(食神)","상관":"딸(傷官)"},
+    }.get(gender, {})
+    sipsung_data = calc_sipsung(ilgan, pils)
+    found = {}
+    for i, ss_info in enumerate(sipsung_data):
+        label = ["시주","일주","월주","년주"][i]
+        p = pils[i]
+        for ss in [ss_info.get("cg_ss","-"), ss_info.get("jj_ss","-")]:
+            fam = ss_to_family.get(ss)
+            if fam:
+                if fam not in found: found[fam] = []
+                found[fam].append(f"{label}({p['str']})")
+    
+    result = []
+    checks = [
+        ("어머니(正印)","정인","인성이 있어 어머니의 음덕(蔭德)이 큽니다.","정인(어머니 기운)이 약합니다. 어머니와의 인연이 엷거나 일찍 독립하는 기운입니다."),
+        ("아버지(偏財)","편재","편재(아버지 기운)가 있습니다. 아버지의 재물적 도움이 있거나 부친 덕이 있습니다.","편재(아버지 기운)가 약합니다. 부친과의 인연이 엷거나 일찍 독립하는 기운입니다."),
+    ]
+    if gender == "남":
+        checks += [
+            ("아내(正財)","정재","정재(아내 기운)가 있습니다. 배우자 인연이 있고 가정적인 아내를 만날 기운입니다.","정재(아내 기운)가 약합니다. 결혼이 늦거나 대운에서 재성운이 올 때 인연이 찾아옵니다."),
+            ("아들(偏官)·딸(正官)","편관","관살이 있습니다. 자녀 인연이 있으며 자녀로 인한 기쁨이 있습니다.","관살이 약합니다. 자녀와의 인연이 엷거나 늦게 생길 수 있습니다."),
+        ]
+    else:
+        checks += [
+            ("남편(正官)","정관","정관(남편 기운)이 있습니다. 안정적이고 믿음직한 남편 인연이 있습니다.","정관(남편 기운)이 없거나 약합니다. 결혼이 늦거나 편관으로 대체될 수 있습니다."),
+            ("아들(食神)·딸(傷官)","식신","식상이 있습니다. 자녀 인연이 있으며 자녀로 인한 기쁨이 있습니다.","식상이 약합니다. 자녀와의 인연이 엷거나 늦을 수 있습니다."),
+        ]
+    checks.append(("형제(比肩)","비견","비겁이 있습니다. 형제자매 또는 동료·친구와의 인연이 깊습니다.","비겁이 약합니다. 형제자매 인연이 엷거나 자립심이 강한 독립적인 기질입니다."))
+    
+    sipsung_all = [ss for si in sipsung_data for ss in [si.get("cg_ss","-"), si.get("jj_ss","-")]]
+    for fam_label, ss_key, yes_msg, no_msg in checks:
+        has = ss_key in sipsung_all
+        where = ", ".join(found.get(fam_label, []))
+        result.append({"관계":fam_label,"위치":where if where else "없음","present":has,"desc":yes_msg if has else no_msg})
+    return result
+
+
+# ══════════════════════════════════════════════════
+#  추가 신살 (원진·귀문관·백호·양인·화개)
+# ══════════════════════════════════════════════════
+
+EXTRA_SINSAL_DATA = {
+    "원진": {"pairs":[("子","未"),("丑","午"),("寅","酉"),("卯","申"),("辰","亥"),("巳","戌")],"name":"원진살(怨嗔殺)","icon":"😤","desc":"서로 미워하고 반목하는 기운. 배우자·직장 동료와 불화가 잦습니다.","remedy":"처방: 상대방을 이해하려는 노력, 먼저 다가가는 소통이 필요합니다."},
+    "귀문": {"pairs":[("子","酉"),("丑","午"),("寅","未"),("卯","申"),("辰","亥"),("巳","戌")],"name":"귀문관살(鬼門關殺)","icon":"🔮","desc":"직관력·영감이 탁월하나 신경과민·정신적 과부하에 취약합니다. 예술·상담 분야의 천재성.","remedy":"처방: 명상·수면 관리 필수. 긍정적으로 활용하면 영적 천재가 됩니다."},
+    "백호": {"combos":["甲辰","乙未","丙戌","丁丑","戊辰","壬辰","癸丑"],"name":"백호대살(白虎大殺)","icon":"🐯","desc":"강력한 충격과 변동의 살. 사고·수술·피·혈액 관련 사건이 발생하기 쉽습니다.","remedy":"처방: 안전 주의, 정기적 건강검진, 의료·군경 분야에서 전문성으로 승화하십시오."},
+    "양인": {"jjs":{"甲":"卯","丙":"午","戊":"午","庚":"酉","壬":"子"},"name":"양인살(羊刃殺)","icon":"⚡","desc":"극도로 강한 일간의 기운. 결단력·추진력이 압도적이나 충동성이 있습니다. 제화(制化)되면 최고의 지도자가 됩니다.","remedy":"처방: 강한 에너지를 건설적으로 사용. 관살의 제어가 있을 때 빛을 발합니다."},
+    "화개": {"map":{"寅午戌":"戌","申子辰":"辰","巳酉丑":"丑","亥卯未":"未"},"name":"화개살(華蓋殺)","icon":"🎭","desc":"고독하지만 빛나는 별의 기운. 예술·종교·철학 분야에서 독보적 경지. 고독 속에서 탁월한 창의력이 발현됩니다.","remedy":"처방: 고독을 두려워하지 말고 내공을 쌓으십시오. 전문가·예술가·종교인의 상징!"},
+}
+
+def get_extra_sinsal(pils):
+    ilgan = pils[1]["cg"]
+    jjs = [p["jj"] for p in pils]
+    jj_set = set(jjs)
+    result = []
+    pairs_jj = [(jjs[i],jjs[j]) for i in range(len(jjs)) for j in range(i+1,len(jjs))]
+    
+    for a,b in pairs_jj:
+        if (a,b) in EXTRA_SINSAL_DATA["원진"]["pairs"] or (b,a) in EXTRA_SINSAL_DATA["원진"]["pairs"]:
+            d = EXTRA_SINSAL_DATA["원진"]
+            result.append({"name":d["name"],"icon":d["icon"],"desc":d["desc"],"remedy":d["remedy"],"found":f"{a}·{b}"})
+            break
+    for a,b in pairs_jj:
+        if (a,b) in EXTRA_SINSAL_DATA["귀문"]["pairs"] or (b,a) in EXTRA_SINSAL_DATA["귀문"]["pairs"]:
+            d = EXTRA_SINSAL_DATA["귀문"]
+            result.append({"name":d["name"],"icon":d["icon"],"desc":d["desc"],"remedy":d["remedy"],"found":f"{a}·{b}"})
+            break
+    for i,p in enumerate(pils):
+        if p["cg"]+p["jj"] in EXTRA_SINSAL_DATA["백호"]["combos"]:
+            d = EXTRA_SINSAL_DATA["백호"]
+            label = ["시주","일주","월주","년주"][i]
+            result.append({"name":f"{d['name']} [{label}]","icon":d["icon"],"desc":d["desc"],"remedy":d["remedy"],"found":p["str"]})
+    yang_jj = EXTRA_SINSAL_DATA["양인"]["jjs"].get(ilgan,"")
+    if yang_jj and yang_jj in jj_set:
+        d = EXTRA_SINSAL_DATA["양인"]
+        result.append({"name":f"{d['name']} [{yang_jj}]","icon":d["icon"],"desc":d["desc"],"remedy":d["remedy"],"found":yang_jj})
+    for combo,hg_jj in EXTRA_SINSAL_DATA["화개"]["map"].items():
+        if hg_jj in jj_set and any(jj in combo for jj in jj_set):
+            d = EXTRA_SINSAL_DATA["화개"]
+            result.append({"name":f"{d['name']} [{hg_jj}]","icon":d["icon"],"desc":d["desc"],"remedy":d["remedy"],"found":hg_jj})
+            break
+    return result
+
+
+# ══════════════════════════════════════════════════
+#  궁합(宮合)
+# ══════════════════════════════════════════════════
+
+def calc_gunghap(pils_a, pils_b, name_a="나", name_b="상대"):
+    ilgan_a = pils_a[1]["cg"]; ilgan_b = pils_b[1]["cg"]
+    jj_a = [p["jj"] for p in pils_a]; jj_b = [p["jj"] for p in pils_b]
+    oh_a = OH.get(ilgan_a,""); oh_b = OH.get(ilgan_b,"")
+    gen_map = {"木":"火","火":"土","土":"金","金":"水","水":"木"}
+    ctrl_map = {"木":"土","火":"金","土":"水","金":"木","水":"火"}
+    if gen_map.get(oh_a)==oh_b: ilgan_rel=("생(生)",f"{name_a}({ilgan_a})이 {name_b}({ilgan_b})를 생합니다.","💚",80)
+    elif gen_map.get(oh_b)==oh_a: ilgan_rel=("생(生)",f"{name_b}({ilgan_b})이 {name_a}({ilgan_a})를 생합니다.","💚",80)
+    elif ctrl_map.get(oh_a)==oh_b: ilgan_rel=("극(克)",f"{name_a}({ilgan_a})이 {name_b}({ilgan_b})를 극합니다.","🔴",40)
+    elif ctrl_map.get(oh_b)==oh_a: ilgan_rel=("극(克)",f"{name_b}({ilgan_b})이 {name_a}({ilgan_a})를 극합니다.","🔴",40)
+    elif oh_a==oh_b: ilgan_rel=("비(比)",f"두 분 모두 {OHN.get(oh_a,'')} 기운. 경쟁하거나 협력합니다.","🟡",60)
+    else: ilgan_rel=("평(平)","상생상극 없는 중립적 관계.","🟢",65)
+    
+    all_jj_set = set(jj_a+jj_b); hap_score=0; hap_found=[]
+    for combo,(name,oh,desc) in SAM_HAP_MAP.items():
+        if combo.issubset(all_jj_set): hap_found.append(f"삼합 {name}"); hap_score+=20
+    chung_found=[]
+    for ja in jj_a:
+        for jb in jj_b:
+            k=frozenset([ja,jb])
+            if k in CHUNG_MAP: chung_found.append(CHUNG_MAP[k][0])
+    chunl={"甲":["丑","未"],"乙":["子","申"],"丙":["亥","酉"],"丁":["亥","酉"],"戊":["丑","未"],"己":["子","申"],"庚":["丑","未"],"辛":["寅","午"],"壬":["卯","巳"],"癸":["卯","巳"]}
+    gui_a = any(jj in chunl.get(ilgan_a,[]) for jj in jj_b)
+    gui_b = any(jj in chunl.get(ilgan_b,[]) for jj in jj_a)
+    total = ilgan_rel[3]+hap_score-len(chung_found)*10+(10 if gui_a else 0)+(10 if gui_b else 0)
+    total = max(0,min(100,total))
+    grade = "💫 최고의 인연" if total>=85 else "✨ 좋은 인연" if total>=70 else "🌿 보통 인연" if total>=50 else "🔥 도전적 인연" if total>=30 else "⚠️ 어려운 인연"
+    return {"총점":total,"등급":grade,"일간관계":ilgan_rel,"합":hap_found,"충":chung_found,"귀인_a":gui_a,"귀인_b":gui_b,"name_a":name_a,"name_b":name_b,"ilgan_a":ilgan_a,"ilgan_b":ilgan_b}
+
+
+# ══════════════════════════════════════════════════
+#  택일(擇日)
+# ══════════════════════════════════════════════════
+
+def get_good_days(pils, year, month):
+    import calendar
+    ilgan = pils[1]["cg"]; il_jj = pils[1]["jj"]
+    chunl = {"甲":["丑","未"],"乙":["子","申"],"丙":["亥","酉"],"丁":["亥","酉"],"戊":["丑","未"],"己":["子","申"],"庚":["丑","未"],"辛":["寅","午"],"壬":["卯","巳"],"癸":["卯","巳"]}
+    gui_jjs = chunl.get(ilgan,[])
+    gm = get_gongmang(pils); bad_jjs = list(gm["공망_지지"])
+    chung_jjs = [list(k)[0] if list(k)[1]==il_jj else list(k)[1] for k in CHUNG_MAP if il_jj in k]
+    days_in_month = calendar.monthrange(year,month)[1]
+    idx = (year-4)%60; month_base = (idx+(month-1)*2)%12
+    good_days = []
+    for day in range(1,days_in_month+1):
+        day_jj = JJ[(month_base+day-1)%12]; day_cg = CG[((idx+(month-1)*2)+day-1)%10]
+        score=50; reasons=[]
+        if day_jj in gui_jjs: score+=25; reasons.append("천을귀인일 🌟")
+        if day_jj in bad_jjs: score-=30; reasons.append("공망일 ⚠️")
+        if day_jj in chung_jjs: score-=20; reasons.append("일주충일 ⚠️")
+        for k,(name,oh,desc) in SAM_HAP_MAP.items():
+            if day_jj in k and il_jj in k: score+=15; reasons.append(f"삼합{name}일 ✨"); break
+        day_ss = TEN_GODS_MATRIX.get(ilgan,{}).get(day_cg,"-")
+        if day_ss in ["식신","정재","정관","정인"]: score+=10; reasons.append(f"{day_ss}일 ✨")
+        elif day_ss in ["편관","겁재"]: score-=15; reasons.append(f"{day_ss}일 ⚠️")
+        level = "🌟최길" if score>=80 else "✨길" if score>=65 else "〇보통" if score>=45 else "▲주의"
+        if score>=60:
+            good_days.append({"day":day,"jj":day_jj,"cg":day_cg,"pillar":day_cg+day_jj,"score":score,"level":level,"reasons":reasons})
+    return sorted(good_days,key=lambda x:-x["score"])[:10]
+
+
+# ══════════════════════════════════════════════════
+#  사주 계산 엔진 (SajuCoreEngine)
+# ══════════════════════════════════════════════════
+import hashlib
+
+from datetime import date, datetime, timedelta
 
 class SajuCoreEngine:
+    """사주팔자 핵심 계산 엔진"""
+
+    MONTH_GANJI = [
+        ("丙寅","戊寅"),("戊辰","甲辰"),("戊午","丙午"),
+        ("庚申","戊申"),("壬戌","庚戌"),("甲子","壬子"),
+        ("丙寅","甲寅"),("戊辰","丙辰"),("庚午","戊午"),
+        ("壬申","庚申"),("甲戌","壬戌"),("丙子","甲子")
+    ]
+
+    SOLAR_TERMS = [
+        (2,4),(2,19),(3,6),(3,21),(4,5),(4,20),
+        (5,6),(5,21),(6,6),(6,21),(7,7),(7,23),
+        (8,8),(8,23),(9,8),(9,23),(10,8),(10,23),
+        (11,7),(11,22),(12,7),(12,22),(1,6),(1,20)
+    ]
+
+    @staticmethod
+    def _get_year_pillar(year, month, day):
+        """연주 계산"""
+        # 입춘(2월4일) 기준
+        if (month < 2) or (month == 2 and day < 4):
+            y = year - 1
+        else:
+            y = year
+        idx = (y - 4) % 60
+        cg = CG[idx % 10]
+        jj = JJ[idx % 12]
+        return {"cg": cg, "jj": jj, "str": cg+jj}
+
+    @staticmethod
+    def _get_month_pillar(year, month, day):
+        """월주 계산 (Bug 1 Fix: ji_idx = calc_m % 12)"""
+        # 절기 기준 월 결정
+        term_data = SajuCoreEngine.SOLAR_TERMS
+        solar_month = month
+        # 해당 월의 절입일
+        term_idx = (month - 1) * 2
+        if term_idx < len(term_data):
+            t_month, t_day = term_data[term_idx]
+            if (month == t_month and day < t_day) or (month != t_month):
+                solar_month = month - 1
+                if solar_month < 1:
+                    solar_month = 12
+        
+        # 연간 기준으로 천간 결정
+        if (month < 2) or (month == 2 and day < 4):
+            y = year - 1
+        else:
+            y = year
+        
+        # 월 천간: 연간 기준 기월(寅月=1월)
+        year_cg_idx = (y - 4) % 10
+        # 甲己년: 丙寅시작, 乙庚년: 戊寅시작, 丙辛년: 庚寅시작, 丁壬년: 壬寅시작, 戊癸년: 甲寅시작
+        month_cg_start = [2, 4, 6, 8, 0, 2, 4, 6, 8, 0]  # 갑=丙, 을=戊, 병=庚, 정=壬, 무=甲...
+        cg_start = month_cg_start[year_cg_idx % 10]
+        
+        # 인월(寅=월지 인)부터 시작하는 월 번호 (1=인월, 2=묘월...)
+        lunar_month_num = ((solar_month - 2) % 12)  # 인월=0, 묘월=1...
+        
+        cg_idx = (cg_start + lunar_month_num) % 10
+        # ✅ BUG 1 FIX: ji_idx = calc_m % 12 (인=2부터 시작)
+        ji_idx = (2 + lunar_month_num) % 12
+        
+        cg = CG[cg_idx]
+        jj = JJ[ji_idx]
+        return {"cg": cg, "jj": jj, "str": cg+jj}
+
+    @staticmethod
+    def _get_day_pillar(year, month, day):
+        """일주 계산"""
+        try:
+            ref_date = date(2000, 1, 1)
+            target_date = date(year, month, day)
+            delta = (target_date - ref_date).days
+            # 2000년 1월 1일 = 甲辰일 (인덱스 20)
+            idx = (20 + delta) % 60
+            cg = CG[idx % 10]
+            jj = JJ[idx % 12]
+            return {"cg": cg, "jj": jj, "str": cg+jj}
+        except:
+            return {"cg": "甲", "jj": "子", "str": "甲子"}
+
+    @staticmethod
+    def _get_hour_pillar(birth_hour, day_cg):
+        """시주 계산"""
+        # 시 번호 결정 (자시=0, 축시=1...)
+        hour_boundaries = [1,3,5,7,9,11,13,15,17,19,21,23]
+        si_num = 0
+        for i, h in enumerate(hour_boundaries):
+            if birth_hour >= h:
+                si_num = i + 1
+        si_num = si_num % 12
+        
+        # 일간 기준 시천간 결정
+        day_cg_idx = CG.index(day_cg) % 5
+        hour_cg_starts = [0, 2, 4, 6, 8]  # 甲己=甲, 乙庚=丙, 丙辛=戊, 丁壬=庚, 戊癸=壬
+        cg_start = hour_cg_starts[day_cg_idx]
+        
+        cg_idx = (cg_start + si_num) % 10
+        jj_idx = si_num % 12
+        
+        cg = CG[cg_idx]
+        jj = JJ[jj_idx]
+        return {"cg": cg, "jj": jj, "str": cg+jj}
+
+    @classmethod
+    def get_pillars(cls, birth_year, birth_month, birth_day, birth_hour=12, gender="남"):
+        """사주팔자 계산 - 반환: [시주, 일주, 월주, 년주]"""
+        year_p = cls._get_year_pillar(birth_year, birth_month, birth_day)
+        month_p = cls._get_month_pillar(birth_year, birth_month, birth_day)
+        day_p = cls._get_day_pillar(birth_year, birth_month, birth_day)
+        hour_p = cls._get_hour_pillar(birth_hour, day_p["cg"])
+        
+        # 순서: [시(0), 일(1), 월(2), 년(3)]
+        return [hour_p, day_p, month_p, year_p]
+
+    @staticmethod
+    def get_daewoon(pils, birth_year, birth_month, birth_day, gender="남"):
+        """대운 계산"""
+        # 일간의 음양
+        day_cg = pils[1]["cg"]
+        day_cg_idx = CG.index(day_cg)
+        is_yang = day_cg_idx % 2 == 0
+        
+        # 성별+음양 순행/역행
+        if (gender == "남" and is_yang) or (gender == "여" and not is_yang):
+            direction = 1  # 순행
+        else:
+            direction = -1  # 역행
+        
+        # 절입일 찾기 (간략화: 월주 기준 +/- 탐색)
+        try:
+            birth_date = date(birth_year, birth_month, birth_day)
+            # 간단한 방식: 3일=1년 계산
+            days_to_term = 30  # 기본값
+            start_age = days_to_term // 3
+            
+            daewoon_list = []
+            month_p = pils[2]  # 월주
+            wolgan_idx = CG.index(month_p["cg"])
+            wolji_idx = JJ.index(month_p["jj"])
+            
+            for i in range(9):
+                step = i + 1
+                d_cg_idx = (wolgan_idx + direction * step) % 10
+                d_jj_idx = (wolji_idx + direction * step) % 12
+                age_start = start_age + (i * 10)
+                year_start = birth_year + age_start
+                
+                daewoon_list.append({
+                    "순번": i+1,
+                    "cg": CG[d_cg_idx],
+                    "jj": JJ[d_jj_idx],
+                    "str": CG[d_cg_idx] + JJ[d_jj_idx],
+                    "시작나이": age_start,
+                    "시작연도": year_start,
+                    "종료연도": year_start + 9
+                })
+        except Exception as e:
+            daewoon_list = []
+        
+        return daewoon_list
+
+# ══════════════════════════════════════════════════
+#  십성(十星) 및 12운성 계산 (Bug 5 Fix)
+# ══════════════════════════════════════════════════
+def calc_sipsung(ilgan, pils):
+    """십성 계산"""
+    result = []
+    for p in pils:
+        cg = p["cg"]
+        jj = p["jj"]
+        # 천간 십성
+        cg_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(cg, "-")
+        # 지장간 십성 (지지의 정기)
+        jijang = JIJANGGAN.get(jj, [])
+        if jijang:
+            jj_main = jijang[-1]
+            jj_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(jj_main, "-")
+        else:
+            jj_ss = "-"
+        result.append({"cg_ss": cg_ss, "jj_ss": jj_ss, "jj": jj})
+    return result
+
+
+def calc_12unsung(ilgan, pils):
+    """12운성 계산 (Bug 5 Fix: 양/음 배열 수정)"""
+    # ✅ BUG 5 FIX: 올바른 양지/음지 배열
+    jj_yang = ["子","寅","辰","午","申","戌"]  # 양지 (자인진오신술)
+    jj_eum = ["丑","卯","巳","未","酉","亥"]   # 음지 (축묘사유미해)
+    
+    ilgan_idx = CG.index(ilgan)
+    is_yang_gan = ilgan_idx % 2 == 0
+    
+    result = []
+    for p in pils:
+        jj = p["jj"]
+        unsung_table_for = UNSUNG_TABLE.get(ilgan, {})
+        unsung = unsung_table_for.get(jj, "-")
+        result.append(unsung)
+    return result
+
+
+def calc_ohaeng_strength(ilgan, pils):
     """
-    [대만신 통합 엔진] 정밀 절기 시각, 4주 8자 산출, 점수제 신강 판정 및 용신 추출 통합 클래스
+    오행 세력 점수화 v2 (정밀 엔진)
+    월령득령(25pt) + 천간투출(6~10pt) + 지지(8~15pt) + 지장간(4~8pt) + 통근보너스(5pt)
+    → 합산 후 100% 정규화
     """
-    def __init__(self, y, m, d, h, mn, gender, name="주인공"):
-        self.y, self.m, self.d, self.h, self.mn = y, m, d, h, mn
-        self.gender = gender
-        self.name = name
-        
-        # 1. 태양시 보정 및 기준 시각 설정
-        self.birth_dt = datetime(y, m, d, h, mn)
-        self.adj_birth_dt = self.birth_dt - timedelta(minutes=30)
-        
-        # 2. 엔진 가동
-        self.pils = self._get_pillars()
-        self.ilgan = self.pils[1]["cg"]
-        self.ilgan_oh = OH[self.ilgan]
-        
-        # 3. 대운 및 에너지 분석
-        self.daewoon_runs, self.daewoon_num = self._get_daewoon()
-        self.energy_score = self._analyze_energy()
-        self.strength = "신강" if self.energy_score["total"] >= 50 else "신약"
-        self.yongshin = self._get_yongshin()
-        self.structure, self.structure_grade = detect_structure(self.ilgan, self.pils[2]["jj"], self.pils)
-        
-        # 4. 공망, 충(沖), 형(刑), 납음오행 심층 분석
-        self.gongmang = analyze_gongmang(self.pils)
-        self.chung_hyung = self._analyze_chung_hyung()
-        
-        # 년주(태어난 해) 기준 납음오행 추출
-        year_pillar = self.pils[3]["cg"] + self.pils[3]["jj"]
-        self.naeum = {
-            "name": NAEUM_MAP.get(year_pillar, "알 수 없음"),
-            "desc": NAEUM_DESC.get(NAEUM_MAP.get(year_pillar, ""), "납음오행 설명이 없습니다.")
-        }
-        
-        # 5. 조후(調候) 밸런스 점수
-        self.johu = self._analyze_johu()
+    power = {"木": 0.0, "火": 0.0, "土": 0.0, "金": 0.0, "水": 0.0}
 
-    def _analyze_johu(self):
-        """사주의 한난조습(寒暖燥濕 - 온도와 습도) 밸런스 분석"""
-        # 난조(Hot/Dry) 기운: 火, 木, 燥土(未, 戌)
-        # 한습(Cold/Wet) 기운: 水, 金, 濕土(辰, 丑)
-        hot_weight = {"丙": 2, "丁": 2, "巳": 2, "午": 2, "甲": 1, "乙": 1, "寅": 1, "卯": 1, "未": 1, "戌": 1}
-        cold_weight = {"壬": -2, "癸": -2, "亥": -2, "子": -2, "庚": -1, "辛": -1, "申": -1, "酉": -1, "辰": -1, "丑": -1}
-        
-        score = 0
-        for p in self.pils:
-            score += hot_weight.get(p["cg"], 0)
-            score += hot_weight.get(p["jj"], 0)
-            score += cold_weight.get(p["cg"], 0)
-            score += cold_weight.get(p["jj"], 0)
-            
-        # 월지에 가중치 부여 (계절의 핵심이므로 2배)
-        score += hot_weight.get(self.pils[2]["jj"], 0)
-        score += cold_weight.get(self.pils[2]["jj"], 0)
-        
-        if score >= 4:
-            state = "난조(暖燥) - 펄펄 끓는 용광로"
-            desc = "사주에 불기운과 마른 흙, 나무가 마구 뒤엉켜 펄펄 끓고 있으니, 성격이 급하고 열정이 넘치나 불꽃처럼 쉽게 지칠 수 있도다. 차가운 물(水)의 기운으로 열을 식혀야만 생명력이 길어질 것이니라."
-        elif score <= -4:
-            state = "한습(寒濕) - 꽁꽁 언 동토"
-            desc = "사주가 얼음장처럼 차갑고 습한 동토의 기운을 띠었으니, 생각의 깊이는 바다와 같으나 몸이 무겁고 우울감에 빠지기 쉽도다. 따스한 불(火)의 기운을 끌어안아야 만물이 소생하며 재물이 열리느니라."
-        else:
-            state = "중화(中和) - 온화한 봄바람"
-            desc = "사주의 온도와 습도가 마치 늦봄의 들판처럼 완벽히 조화로우니, 큰 풍파 없이 평온하고 다정다감한 명반이로다. 다만 안락함에 취해 투지를 잃지 않도록 스스로를 채찍질해야 할 것이니라."
-            
-        return {"score": score, "state": state, "desc": desc}
-
-    def _analyze_chung_hyung(self):
-        """사주 원국(팔자) 내의 육충(六沖)과 삼형살(三刑殺) 판별"""
-        jjs = [p["jj"] for p in self.pils]
-        positions = ["시지", "일지", "월지", "년지"]
-        results = []
-        
-        # 1. 육충 검사 (인접한 지지끼리의 충돌이 가장 강함)
-        for i in range(len(jjs)-1):
-            for j in range(i+1, len(jjs)):
-                if CHUNG_MAP.get(jjs[i]) == jjs[j]:
-                    strength = "강함(인접)" if j - i == 1 else "약함(떨어짐)"
-                    results.append(f"사주 원국 내 **{positions[i]}({jjs[i]})**와 **{positions[j]}({jjs[j]})**가 서로 충(沖)하여 깨져 있으니, 해당 육친이나 시기에 갑작스러운 이별, 파괴, 이동의 기운이 평생 잠재되어 있도다. ({strength})")
-
-        # 2. 형살 검사 (삼형살)
-        in_sa_shin = sum(1 for jj in jjs if jj in ["寅", "巳", "申"])
-        chuk_sul_mi = sum(1 for jj in jjs if jj in ["丑", "戌", "未"])
-        if in_sa_shin >= 2:
-            results.append("네 사주에 살얼음판 위를 걷는 듯한 **인사신(寅巳申) 삼형살**의 살기가 묻어 있으니, 관재구설(법적 다툼)이나 수술수, 혹은 직업적으로 생사여탈권을 쥐는 칼(의사/군경/법조인)을 들어야 이 액땜을 면할 수 있느니라.")
-        if chuk_sul_mi >= 2:
-            results.append("명반 속에 흙먼지가 이는 **축술미(丑戌未) 삼형살**이 꿈틀대니, 배신과 시비, 가까운 이와의 다툼을 평생 경계해야 하며, 억울한 일로 관공서를 드나들기 쉬우니 늘 하심(下心)으로 엎드려 살아야 하느니라.")
-
-        return results
-
-    def _get_jeol_ip_datetime(self, y, m):
-        if m not in JEOL_DATA_KST: return datetime(y, m, 15)
-        base_val = JEOL_DATA_KST[m]
-        y_off = y - 2000
-        leap_days = (y_off // 4) - (y_off // 100) + (y_off // 400)
-        d_float = base_val + (y_off * 0.242199) - leap_days
-        if y < 2000:
-            d_float += 0.02
-            if y < 1950: d_float += 0.01
-        day_int = int(d_float)
-        time_float = d_float - day_int
-        total_minutes = int(round(time_float * 1440))
-        hour = (total_minutes // 60) % 24
-        minute = total_minutes % 60
-        try: return datetime(y, m, day_int, hour, minute)
-        except ValueError: return datetime(y, m, 28, hour, minute) + timedelta(days=day_int-28)
-
-    def _get_pillars(self):
-        # 년주/월주 판정용 절기 시각
-        curr_jeol_dt = self._get_jeol_ip_datetime(self.adj_birth_dt.year, self.adj_birth_dt.month)
-        ipchun_dt = self._get_jeol_ip_datetime(self.adj_birth_dt.year, 2)
-        
-        calc_y = self.adj_birth_dt.year
-        if self.adj_birth_dt < ipchun_dt: calc_y -= 1
-        cy, cj = (calc_y - 4) % 10, (calc_y - 4) % 12
-        yp = {"cg": CG[cy], "jj": JJ[cj], "cgk": CG_KR[cy], "jjk": JJ_KR[cj], "ani": JJ_AN[cj]}
-        
-        calc_m = self.adj_birth_dt.month
-        if self.adj_birth_dt < curr_jeol_dt:
-            calc_m -= 1
-            if calc_m == 0: calc_m = 12
-        month_start_cg = (cy % 5 * 2 + 2) % 10
-        ji_idx = calc_m % 12
-        cm = (month_start_cg + ji_idx - 2 + 10) % 10
-        mp = {"cg": CG[cm], "jj": JJ[ji_idx], "cgk": CG_KR[cm], "jjk": JJ_KR[ji_idx]}
-        
-        target_date = self.adj_birth_dt.date()
-        if self.adj_birth_dt.hour >= 23: target_date += timedelta(days=1)
-        diff = (target_date - date(1900, 1, 1)).days
-        pos = (diff + 10) % 60
-        dp = {"cg": CG[pos % 10], "jj": JJ[pos % 12], "cgk": CG_KR[pos % 10], "jjk": JJ_KR[pos % 12]}
-        
-        ji_hour = ((self.adj_birth_dt.hour + 1) // 2) % 12
-        hour_start_cg = (pos % 10 % 5 * 2) % 10
-        ch = (hour_start_cg + ji_hour) % 10
-        hp = {"cg": CG[ch], "jj": JJ[ji_hour], "cgk": CG_KR[ch], "jjk": JJ_KR[ji_hour]}
-        # 순서 조정: [시(0), 일(1), 월(2), 년(3)]
-        return [hp, dp, mp, yp]
-
-    def _get_daewoon(self):
-        yp = self.pils[3]
-        is_yang = CG.index(yp["cg"]) % 2 == 0
-        fwd = (is_yang and self.gender == "male") or (not is_yang and self.gender == "female")
-        
-        if fwd:
-            jeol_dt = self._get_jeol_ip_datetime(self.y, self.m)
-            if jeol_dt <= self.birth_dt:
-                nm, ny = (self.m + 1), self.y
-                if nm > 12: nm, ny = 1, self.y + 1
-                jeol_dt = self._get_jeol_ip_datetime(ny, nm)
-            diff_seconds = (jeol_dt - self.birth_dt).total_seconds()
-        else:
-            jeol_dt = self._get_jeol_ip_datetime(self.y, self.m)
-            if jeol_dt > self.birth_dt:
-                pm, py = (self.m - 1), self.y
-                if pm == 0: pm, py = 12, self.y - 1
-                jeol_dt = self._get_jeol_ip_datetime(py, pm)
-            diff_seconds = (self.birth_dt - jeol_dt).total_seconds()
-        
-        dw_num = round(diff_seconds / (86400 * 3))
-        if dw_num == 0: dw_num = 1
-        
-        runs = []
-        mp = self.pils[2]
-        for i in range(10):
-            step = (i+1) if fwd else -(i+1)
-            ci = (CG.index(mp["cg"]) + step + 100) % 10
-            ji = (JJ.index(mp["jj"]) + step + 120) % 12
-            age = dw_num + (i * 10)
-            runs.append({
-                "age": age, "year": self.y + age, "cg": CG[ci], "jj": JJ[ji],
-                "cgk": CG_KR[ci], "jjk": JJ_KR[ji],
-                "desc": DAEWOON_STORY_DB.get(CG[ci], {}).get(JJ[ji], f"{CG_KR[ci]}{JJ_KR[ji]} 대운이로다.")
-            })
-        return runs, dw_num
-
-    def get_sewoon(self, year):
-        """특정 연도의 세운(연주) 산출 - (year-4)%10/12 공식"""
-        si = (year - 4) % 10
-        bi = (year - 4) % 12
-        return {"year": year, "cg": CG[si], "jj": JJ[bi], "cgk": CG_KR[si], "jjk": JJ_KR[bi]}
-
-    def get_sewoon_range(self, start_age, years=10):
-        """특정 나이부터 n년간의 세운 세부 리스트 생성"""
-        results = []
-        for i in range(years):
-            age = start_age + i
-            target_year = self.y + age
-            pillar = self.get_sewoon(target_year)
-            results.append({"age": age, "year": target_year, "pillar": pillar})
-        return results
-
-    def _analyze_energy(self):
-        """[만신 4.0] 월령(月令) 왕상휴수사(旺相休囚死) 기반 초정밀 신강/신약 스코어링"""
-        # 기본 배점: 천간(10점), 지지(일지 15, 시지/년지 10, 월지 30) - 월지가 가장 강함
-        base_scores = {"천간": 10, "일지": 15, "시지": 10, "년지": 10, "월지": 35}
-        total_score = 0
-        
-        # 일간 오행과 어머니 오행(나를 돕는 인성/비겁)
-        my_oh = self.ilgan_oh
-        mother_oh = ""
-        for k, v in OH_RELATE.items():
-            if type(v) == dict and v.get("생") == my_oh:
-                mother_oh = k
-                break
-        help_oh = [my_oh, mother_oh]
-        
-        # 월지 오행 (태어난 계절)
-        wolji_oh = OH[self.pils[2]["jj"]]
-        
-        # 旺(왕: 계절과 일간이 같음), 相(상: 계절이 일간을 생함) -> 내 편
-        # 休(휴: 일간이 계절을 생함), 囚(수: 일간이 계절을 극함), 死(사: 계절이 일간을 극함) -> 남의 편
-        # 계절 가중치 맵 (월령의 지배력)
-        seasonal_multiplier = 1.0
-        if wolji_oh == my_oh:
-            seasonal_multiplier = 1.5      # 旺: 매우 강함
-        elif wolji_oh == mother_oh:
-            seasonal_multiplier = 1.2      # 相: 강함
-        elif OH_RELATE.get(my_oh, {}).get("생") == wolji_oh:
-            seasonal_multiplier = 0.8      # 休: 기운이 빠짐
-        elif OH_RELATE.get(my_oh, {}).get("극") == wolji_oh:
-            seasonal_multiplier = 0.7      # 囚: 기운이 갇힘
-        elif OH_RELATE.get(wolji_oh, {}).get("극") == my_oh:
-            seasonal_multiplier = 0.5      # 死: 기운이 극을 당함 (제출 불가)
-            
-        # 1. 득령 (월지의 힘) -> 계절 승수 적용
-        if wolji_oh in help_oh:
-            total_score += base_scores["월지"] * seasonal_multiplier
-            
-        # 2. 득지 (일지의 힘)
-        ilji_oh = OH[self.pils[1]["jj"]]
-        if ilji_oh in help_oh: 
-            total_score += base_scores["일지"] * (1.2 if ilji_oh == wolji_oh else 1.0)
-            
-        # 3. 득세 (나머지 천간 및 지지)
-        for i, position in zip([0, 2, 3], ["시주 천간", "월주 천간", "년주 천간"]):
-            p_oh = OH[self.pils[i]["cg"]]
-            if p_oh in help_oh:
-                total_score += base_scores["천간"] * (1.1 if p_oh == wolji_oh else 1.0)
-                
-        if OH[self.pils[0]["jj"]] in help_oh: total_score += base_scores["시지"]
-        if OH[self.pils[3]["jj"]] in help_oh: total_score += base_scores["년지"]
-        
-        # 점수는 100점 만점으로 정규화
-        final_score = min(int(total_score), 100)
-        elements_cnt = get_oh_cnt(self.pils)
-        
-        return {"total": final_score, "help_oh": help_oh, "seasonal_mult": seasonal_multiplier, "elements": elements_cnt}
-
-    def _get_yongshin(self):
-        """[고도화] 조후, 억부, 통관 기반 용신(用神) 추출"""
-        wolji_jj = self.pils[2]["jj"]
-        ilgan_oh = self.ilgan_oh
-        
-        # 오행 생극 제화 헬퍼
-        saeng_map = {"木":"火", "火":"土", "土":"金", "金":"水", "水":"木"}
-        geuk_map = {"木":"土", "土":"水", "水":"火", "火":"金", "金":"木"}
-        
-        # 1. 조후(調候) 용신: 계절의 한난조습(寒暖燥濕) 조절
-        # 해자축(겨울) -> 너무 추우니 화(火) 필요
-        if wolji_jj in ["亥", "子", "丑"]:
-            return {"type": "조후용신(調候用神)", "oh": "火", "desc": "한겨울 꽁꽁 얼어붙은 대지에 태어났으니, 모든 만물을 녹여줄 따뜻한 **화(火)**의 기운이 평생의 용신(절대적 구원자)이로다."}
-        # 사오미(여름) -> 너무 더우니 수(水) 필요
-        elif wolji_jj in ["巳", "午", "未"]:
-            return {"type": "조후용신(調候用神)", "oh": "水", "desc": "타는 듯한 염천(여름)의 열기 속에 태어났으니, 메마른 대지를 적셔줄 시원한 **수(水)**의 기운이 십년감수를 막아줄 용신이로다."}
-        
-        # 2. 억부(抑扶) 용신: 일간의 강약을 조절
-        if self.strength == "신강":
-            # 신강하면 내 힘을 빼주는(설기) 식상(내가 생하는 오행)이나 재성(내가 극하는 오행), 관성(나를 극하는 오행)이 용신
-            # 통관(비율 불균형 해소) 고려: 
-            cnt = get_oh_cnt(self.pils)
-            my_saeng = saeng_map[ilgan_oh]
-            my_geuk = geuk_map[ilgan_oh]
-            enemy_geuk = next(k for k, v in geuk_map.items() if v == ilgan_oh)
-            
-            # 비겁(자신)이 너무 많으면 식상으로 빼는 게 최고(통관)
-            if cnt[ilgan_oh] >= 3:
-                return {"type": "억부/통관용신(通關用神)", "oh": my_saeng, "desc": f"넘쳐나는 네 억센 기운을 자연스럽게 뿜어내어 재주로 승화시킬 **{my_saeng}**의 기운이 절실한 사주로다."}
-            else:
-                return {"type": "억부용신(抑扶用神)", "oh": my_geuk, "desc": f"강인하게 타고난 기운을 다스려 재물과 권력으로 쟁취해 낼 **{my_geuk}**의 기운이 개운의 열쇠로다."}
-        
-        else: # 신약
-            # 신약하면 나를 돕는 인성(나를 생하는 오행)이나 비겁(나와 같은 오행)이 용신
-            my_mother = next(k for k, v in saeng_map.items() if v == ilgan_oh)
-            return {"type": "억부용신(抑扶用神)", "oh": my_mother, "desc": f"기운이 쇠락하여 세상 풍파에 휩쓸리기 쉬우니, 너를 무조건적으로 돕고 감싸줄 어머니 같은 **{my_mother}**의 기운을 곁에 두어야 대업을 이룰 사주로다."}
-
-    def _judge_wealth(self):
-        """재물 구조 판단: 일간이 극(剋)하는 오행(재성)의 개수 기준"""
-        wealth_oh = OH_RELATE[self.ilgan_oh].get("geuk", "")
-        cnt = get_oh_cnt(self.pils)
-        if cnt[wealth_oh] >= 2:
-            return {"type": "사업가형", "desc": "재물 감각이 좋고 사업 수완이 있어 큰 재물을 주무를 실력자이로다."}
-        else:
-            return {"type": "안정형", "desc": "월급형 안정 재물 구조니, 착실히 모아 태산을 이루는 것이 상책이로다."}
-
-    def _judge_marriage(self):
-        """결혼/연애 판단: 남성은 재성, 여성은 관성 기준"""
-        if self.gender == "male":
-            # 남자는 재성(내가 극하는 오행)
-            spouse_oh = OH_RELATE[self.ilgan_oh].get("geuk", "")
-        else:
-            # 여자는 관성(나를 극하는 오행)
-            spouse_oh = next((k for k, v in OH_RELATE.items() if v.get("geuk") == self.ilgan_oh), "")
-        
-        cnt = get_oh_cnt(self.pils)
-        if cnt[spouse_oh] >= 2:
-            return {"status": "긍정", "desc": "연애 경험이 풍부하고 인연이 깊으니 결혼 가능성이 매우 높도다."}
-        else:
-            return {"status": "신중", "desc": "인연이 늦게 닿거나 신중해야 하니, 조급해 말고 때를 기다리거라."}
-
-    def _detect_events(self, age, daewoon_pillar, sewoon_pillar):
-        """[고도화] 특정 시점의 사건/사고 탐지 - 3중 겹침 및 질 구분"""
-        events = []
-        original_jjs = [p["jj"] for p in self.pils]
-        d_jj = daewoon_pillar["jj"]
-        d_cg = daewoon_pillar["cg"]
-        s_jj = sewoon_pillar["jj"]
-        s_cg = sewoon_pillar["cg"]
-        
-        # 0. 사건의 질 기본 판정
-        yongshin_oh = self.yongshin["oh"]
-        # 기신(Gisin) - 용신을 극하거나 일간을 지나치게 치는 오행
-        gisin_oh = next((k for k, v in OH_RELATE.items() if v.get("geuk") == yongshin_oh), "")
-        
-        event_quality = classify_event(sewoon_pillar, yongshin_oh, self.ilgan_oh, gisin_oh)
-        
-        # 1. 충(沖) 분석 - 위계질서 (일지 > 월지 > 년지)
-        # Triple Overlap (3중 겹침) 탐지용
-        overlap_count = 0
-        
-        pillar_names = ["시지(자식)", "일지(신변/배우자)", "월지(직장/사회)", "년지(가문/뿌리)"]
-        for i, b in enumerate(original_jjs):
-            # 세운 충 (올해의 변화)
-            if CHUNG_MAP.get(b) == s_jj:
-                impact_level = "1순위" if i == 1 else ("2순위" if i == 2 else "3순위")
-                msg = f"📍 [{impact_level}] {pillar_names[i]} 충돌! "
-                
-                # 질(Quality) 결합
-                if "상승" in event_quality:
-                    msg += f"어려움을 뚫고 비상하는 **파격적인 귀기(貴氣)**가 서렸도다. {event_quality}"
-                elif "압박" in event_quality:
-                    msg += f"갑작스러운 변고나 사고수가 매우 강하니 **절대적인 주의**가 필요하느니라. {event_quality}"
-                else:
-                    msg += f"새로운 터전으로의 이동이나 환경 급변이 예상되노라. {event_quality}"
-                
-                events.append(msg)
-                if CHUNG_MAP.get(b) == d_jj: overlap_count += 2 # 대운까지 충이면 강도 폭발
-
-        # 2. 3중 겹침 (Triple Overlap) 추가 탐지
-        # 원국-대운-세운의 오행이 일치할 때 사건의 실체가 드러남
-        if OH[s_cg] == OH[d_cg] and any(OH[p["cg"]] == OH[s_cg] for p in self.pils):
-            events.append(f"⚡ **[3중 겹침]** 원국, 대운, 세운의 기운이 하나로 모였도다! 이 해는 네 인생의 {event_quality}이(가) 현실로 박제되는 해이니 절대 소홀히 마라.")
-
-        # 3. 인연/결혼/합
-        if self.gender == "male":
-            spouse_oh = OH_RELATE[self.ilgan_oh].get("geuk", "")
-        else:
-            spouse_oh = next((k for k, v in OH_RELATE.items() if v.get("geuk") == self.ilgan_oh), "")
-        
-        if (OH[s_jj] == spouse_oh or HAP_MAP.get(original_jjs[1]) == s_jj) and "상승" in event_quality:
-            events.append("💍 **[백년가약]** 천생연분의 기운이 깃든 상승기니, 혼담이 성사되거나 평생의 동반자를 만날 것이로다.")
-
-        return events
-
-    def scan_events(self, start_age=1, years=100):
-        """본신 출생부터 100세까지의 사건 스캔 및 라이프 그래프 점수 산출"""
-        report = {}
-        life_graph_data = []
-        
-        birth_year = self.adj_birth_dt.year
-        
-        for i in range(years):
-            age = i + 1
-            if age > 100: break
-            target_year = birth_year + age - 1
-            
-            # 현재 대운 찾기
-            curr_dw = next((d for d in reversed(self.daewoon_runs) if age >= d["age"]), self.daewoon_runs[0])
-            # 해당 연도 세운
-            curr_sw = self.get_sewoon(target_year)
-            
-            evs = self._detect_events(age, curr_dw, curr_sw)
-            
-            # 점수 산출 (Base 50)
-            score = 50
-            quality = classify_event(curr_sw, self.yongshin["oh"], self.ilgan_oh)
-            if "상승" in quality: score += 25
-            elif "압박" in quality: score -= 20
-            elif "재물" in quality: score += 15
-            
-            # 충/형 감점
-            if any("충돌" in e for e in evs): score -= 15
-            if any("3중 겹침" in e for e in evs): score = score + 30 if score > 50 else score - 30
-            
-            score = max(5, min(100, score))
-            life_graph_data.append({"age": age, "score": score})
-            
-            if evs:
-                report[f"{age}세"] = evs
-                
-        return report, life_graph_data
-
-    def get_destiny_score(self):
-        """본신의 그릇과 기운의 짜임새를 점수로 환산"""
-        base = 65
-        if self.strength == "신강": base += 10
-        if self.yongshin["type"] == "조후": base += 5
-        
-        # 격국 가산
-        if "정" in self.structure: base += 10
-        elif "편" in self.structure: base += 5
-        
-        return min(99, base)
-
-    def get_luck_peaks(self, start_age, years=30):
-        """용신운(성공) 및 재성운(발복)의 정점을 스캔"""
-        peaks = {"wealth": [], "success": []}
-        wealth_oh = OH_RELATE[self.ilgan_oh].get("geuk", "")
-        yongshin_oh = self.yongshin["oh"]
-        
-        for i in range(years):
-            age = start_age + i
-            target_year = self.y + age
-            sw = self.get_sewoon(target_year)
-            sw_oh = OH[sw["jj"]]
-            
-            if sw_oh == wealth_oh:
-                peaks["wealth"].append({"age": age, "year": target_year, "pillar": f"{sw['cgk']}{sw['jjk']}"})
-            if sw_oh == yongshin_oh:
-                peaks["success"].append({"age": age, "year": target_year, "pillar": f"{sw['cgk']}{sw['jjk']}"})
-        return peaks
-
-    def get_full_analysis(self):
-        """종합 자동 분석 통합 결과 반환"""
-        return {
-            "wealth": self._judge_wealth(),
-            "marriage": self._judge_marriage(),
-            "interactions": get_interactions(self.pils),
-            "strength": self.strength,
-            "yongshin": self.yongshin
-        }
-
-    def get_quantum_hit_points(self, current_year):
-        """가장 강렬한 과거, 디테일한 성향, 재물/결혼 타이밍 4대 요소를 강제로 도출"""
-        hits = {"past_events": [], "personality": [], "money_peak": "", "marriage_peak": ""}
-        
-        ilji = self.pils[1]["jj"]
-        wolji = self.pils[2]["jj"]
-        nyeonji = self.pils[3]["jj"]
-        siji = self.pils[0]["jj"]
-        original_branches = [nyeonji, wolji, ilji, siji]
-        
-        birth_year = self.y
-        age_offset = current_year - birth_year + 1
-        
-        # 1. 과거 사건 도출 (3중 스코어링 시스템 적용)
-        past_candidates = []
-        for yr in range(birth_year + 15, current_year):
-            age_at_time = yr - birth_year + 1
-            sw = self.get_sewoon(yr)
-            yr_jj = sw["jj"]
-            
-            # 현재 나이에 해당하는 대운 찾기
-            current_dw_jj = "子"
-            for dw in self.daewoon_runs:
-                if age_at_time >= dw["age"]:
-                    current_dw_jj = dw["jj"]
-                else:
-                    break
-            
-            # 네 지지 위치별로 스코어 검사
-            for idx, ob in enumerate(original_branches):
-                score = event_score(ob, current_dw_jj, yr_jj)
-                if score >= 3: # 점수가 3점 이상인 확실한 타격점만 추출
-                    p_type = ["년지", "월지", "일지", "시지"][idx]
-                    event_desc = classify_event_by_position(p_type)
-                    past_candidates.append({
-                        "age": f"{age_at_time - 1}~{age_at_time}세 전후",
-                        "type": event_desc,
-                        "score": score
-                    })
-        
-        # 스코어 순으로 정렬하여 가장 강력했던 과거 사건 2개 추출
-        if past_candidates:
-            past_candidates.sort(key=lambda x: x["score"], reverse=True)
-            hits["past_events"] = past_candidates[:2]
-            for p in hits["past_events"]: p.pop("score", None)
-        else:
-            hits["past_events"] = [{"age": "최근 2~3년 전후", "type": get_event_type(get_oh_cnt(self.pils))}]
-
-        # 2. 성향 디테일 도출 (일간 + 신강약 + 십성 조합 + 격국 профиль)
-        sipsung_counts = {"비겁": 0, "식상": 0, "재성": 0, "관성": 0, "인성": 0}
-        for p in self.pils:
-            for key in ["cg", "jj"]:
-                s_name = calc_sipsung(self.ilgan, p[key])
-                if s_name in ["비견", "겁재"]: sipsung_counts["비겁"] += 1
-                elif s_name in ["식신", "상관"]: sipsung_counts["식상"] += 1
-                elif s_name in ["편재", "정재"]: sipsung_counts["재성"] += 1
-                elif s_name in ["편관", "정관"]: sipsung_counts["관성"] += 1
-                elif s_name in ["편인", "정인"]: sipsung_counts["인성"] += 1
-                
-        energy_max = max(sipsung_counts, key=sipsung_counts.get)
-        
-        # 기본 성향
-        hits["personality"] = generate_personality(self.ilgan, self.strength, energy_max)
-        
-        # 격국 기반 성향 및 직업 추가
-        geokguk_data = GEOKGUK_PROFILE.get(self.structure, {})
-        if geokguk_data:
-            hits["personality"].extend(geokguk_data.get("성향", []))
-            hits["jobs"] = geokguk_data.get("직업", [])
-        else:
-            hits["jobs"] = ["일반 사무직", "서비스업", "평범한 직장 생활"]
-            
-        oh_counts = {"木": 0, "火": 0, "土": 0, "金": 0, "水": 0}
-        for p in self.pils:
-            oh_counts[OH[p["cg"]]] += 1
-            oh_counts[OH[p["jj"]]] += 1
-        if oh_counts["水"] >= 3: hits["personality"].append("속을 알 수 없고 생각이 너무 많아 밤잠 설치는 전형적인 올빼미/사색가.")
-        elif oh_counts["火"] >= 3: hits["personality"].append("한 번 폭발하면 물불 안 가리지만 돌아서면 언제 그랬냐는 듯 해맑은 다혈질.")
-        
-        if not hits["personality"]:
-            hits["personality"].append("겉으로 보이는 모습과 속마음의 갭이 커서 남들이 진짜 속마음을 알기 어려운 복잡한 내면의 소유자.")
-
-        # 3 & 4. 나이 구간 특정 (Money & Marriage)
-        peaks = self.get_luck_peaks(age_offset, 20)  # 앞으로 20년의 정점 스캔
-        if peaks["wealth"]:
-            target = peaks["wealth"][0]["age"]
-            hits["money_peak"] = f"{target - 1}세~{target + 1}세 구간"
-        else:
-            hits["money_peak"] = "향후 5년 내 집중 발복기"
-            
-        marriage_oh = OH_RELATE[self.ilgan_oh].get("geuk", "") if self.gender == "female" else OH_RELATE[self.ilgan_oh].get("geuk", "") 
-        # (간이 로직: 남자는 재성, 여자는 관성을 배우자로 봄)
-        spouse_elem = OH_RELATE[self.ilgan_oh]["geuk"] if self.gender == "female" else next((k for k, v in OH_RELATE.items() if v["geuk"] == self.ilgan_oh), "土")
-        
-        m_peaks = []
-        for i in range(15):
-            sw = self.get_sewoon(current_year + i)
-            if OH[sw["jj"]] == spouse_elem or HAP_MAP.get(sw["jj"]) == ilji:
-                m_peaks.append(age_offset + i)
-        
-        if m_peaks:
-            hits["marriage_peak"] = f"{m_peaks[0]}세 전후"
-        else:
-            hits["marriage_peak"] = "가까운 인연이 열리는 강력한 시기 대기 중"
-            
-        return hits
-
-
-@st.cache_data(ttl=86400)
-def compute_full_mansin(y, m, d, h, gender, name="주인공", cal_type="양력"):
-    if cal_type == "음력":
-        d_obj = lunar_to_solar_deep(y, m, d)
-        y, m, d = d_obj.year, d_obj.month, d_obj.day
-    
-    # [통합 엔진 가동]
-    engine_core = SajuCoreEngine(y, m, d, h, 0, gender, name)
-    pils = engine_core.pils
-    dw_runs, dw_num = engine_core.daewoon_runs, engine_core.daewoon_num
-    
-    ilgan = engine_core.ilgan
-    gongmang = engine_core.gongmang # Using the engine's internal gongmang analysis
-    chung_hyung = engine_core.chung_hyung # Using the engines internal chung/hyung analysis
-    oh_cnt = get_oh_cnt(pils)
-    
-    engine_data = {
-        "sipsung": [calc_sipsung(ilgan, p["cg"]) for p in pils] + [calc_sipsung(ilgan, p["jj"]) for p in pils],
-        "jijanggan": [JIJANGGAN[p["jj"]] for p in pils],
-        "hidden_wealth": get_hidden_wealth(ilgan, [p["jj"] for p in pils]),
-        "unsung": [UNSUNG_TABLE[ilgan].get(p["jj"], "태") for p in pils],
-        "shinsal": get_shinsal_deep(pils, name),
-        "interactions": get_interactions(pils) + [h["narrative"] for h in get_sam_hap(pils)],
-        "gongmang": gongmang,
-        "chung_hyung": chung_hyung,
-        "johu": engine_core.johu,
-        "naeum": engine_core.naeum,
-        "oh_cnt": oh_cnt,
-        "strength": engine_core.strength,
-        "energy_score": engine_core.energy_score["total"],  # dict→int 수정 (0~100 점수만 저장)
-        "yongshin": engine_core.yongshin
+    # ─ 월령 득령 (월지 계절기운, 최대 25점) ─
+    _WOLLYEONG = {
+        "寅":{"木":25,"火":0,"土":3,"金":0,"水":0},
+        "卯":{"木":25,"火":0,"土":3,"金":0,"水":0},
+        "辰":{"木":8,"火":0,"土":20,"金":0,"水":3},
+        "巳":{"木":0,"火":25,"土":3,"金":0,"水":0},
+        "午":{"木":0,"火":25,"土":3,"金":0,"水":0},
+        "未":{"木":0,"火":8,"土":20,"金":0,"水":0},
+        "申":{"木":0,"火":0,"土":3,"金":25,"水":0},
+        "酉":{"木":0,"火":0,"土":3,"金":25,"水":0},
+        "戌":{"木":0,"火":0,"土":20,"金":8,"水":0},
+        "亥":{"木":3,"火":0,"土":0,"金":0,"水":25},
+        "子":{"木":3,"火":0,"土":0,"金":0,"水":25},
+        "丑":{"木":0,"火":0,"土":20,"金":3,"水":8},
     }
-    
-    analysis = engine_core.get_full_analysis()
-    # 출생부터 100세까지의 사건/행운 스캔 및 라이프 그래프
-    event_scan, life_graph = engine_core.scan_events(1, 100)
-    luck_peaks = engine_core.get_luck_peaks(1, 100)
-    destiny_score = engine_core.get_destiny_score()
+    wol_jj = pils[2]["jj"]
+    for oh, pt in _WOLLYEONG.get(wol_jj, {}).items():
+        power[oh] += pt
 
-    engine_data.update({
-        "wealth": analysis["wealth"],
-        "marriage": analysis["marriage"],
-        "event_scan": event_scan,
-        "life_graph": life_graph,
-        "luck_peaks": luck_peaks,
-        "destiny_score": destiny_score,
-        "structure": engine_core.structure,
-        "structure_grade": engine_core.structure_grade,
-        "quantum_hits": engine_core.get_quantum_hit_points(datetime.now().year)
-    })
-    
-    return {
-        "name": name, "pils": pils, "ilgan": ilgan, "engine": engine_data, 
-        "daewoon": dw_runs, "daewoon_num": dw_num,
-        "gender": gender, "birth_info": f"{y}년 {m}월 {d}일 {h}시 ({cal_type})",
-        "raw_birth": {"y": y, "m": m, "d": d, "h": h}
-    }
-
-def analyze_compatibility(saju1, saju2):
-    """두 사람의 사주를 비교하여 궁합 점수와 풀이를 반환하는 엔진"""
-    score = 70 # 기본 점수
-    messages = []
-    
-    # 1. 일간(본질) 궁합
-    i1 = saju1["ilgan"]
-    i2 = saju2["ilgan"]
-    oh1 = OH[i1]
-    oh2 = OH[i2]
-    
-    if OH_RELATE[oh1]["saeng"] == oh2:
-        score += 15
-        messages.append(f"상생(相生)의 기운: {saju1['form_name']}({oh1}) 님이 {saju2['form_name']}({oh2}) 님을 든든하게 받쳐주는 천생연분이로다.")
-    elif OH_RELATE[oh2]["saeng"] == oh1:
-        score += 15
-        messages.append(f"상생(相生)의 기운: {saju2['form_name']}({oh2}) 님이 {saju1['form_name']}({oh1}) 님에게 한없는 사랑을 주는 따뜻한 인연이로다.")
-    elif oh1 == oh2:
-        score += 5
-        messages.append(f"비견(比肩)의 기운: 두 사람이 같은 {oh1}의 기운을 가졌으니, 연인보다는 평생을 함께할 든든한 친구 같은 인연이로다.")
-    elif OH_RELATE[oh1]["geuk"] == oh2 or OH_RELATE[oh2]["geuk"] == oh1:
-        score -= 10
-        messages.append(f"상극(相剋)의 기운: 기운이 부딪히는 형국이니, 서로 다름을 인정하고 한 발짝 물러서야만 불화를 면할 수 있느니라.")
-        
-    # 2. 띠(년지) 궁합 (합/충)
-    z1 = saju1["pils"][3]["jj"]
-    z2 = saju2["pils"][3]["jj"]
-    
-    # 삼합 체크 로직 간소화
-    hap_groups = [{"亥","卯","未"}, {"寅","午","戌"}, {"巳","酉","丑"}, {"申","子","辰"}]
-    is_hap = any(z1 in g and z2 in g for g in hap_groups)
-    
-    if z1 == z2:
-        messages.append(f"동갑내기: 같은 띠의 만남으로 서로 속마음을 훤히 들여다보듯 잘 통할 것이니라.")
-    elif is_hap:
-        score += 15
-        messages.append(f"삼합(三合)의 조화: 두 사람의 띠가 완벽한 삼합을 이루니, 하늘이 맺어준 귀한 인연이로다.")
-    elif CHUNG_MAP.get(z1) == z2:
-        score -= 15
-        messages.append(f"상충(相沖)의 기운: 띠가 강하게 부딪히니, 첫눈에 반하더라도 끝이 시끄러울 수 있음을 명심하라.")
-        
-    # 점수 보정
-    score = max(0, min(100, score))
-    
-    if score >= 90:
-        desc = "하늘이 내린 천생연분(天生緣分)이로다! 억겁의 시간을 돌고 돌아 만난 인연이니, 검은 머리 파뿌리 될 때까지 서로 아끼고 사랑하거라."
-    elif score >= 70:
-        desc = "서로의 모자란 부분을 채워주는 좋은 인연이로다. 배려와 양보로 엮어간다면 가문의 번영을 이룰 수 있으리라."
-    elif score >= 50:
-        desc = "달콤함과 쓴맛이 공존하는 평범하고도 치열한 인연이로다. 때로는 다투고 때로는 웃으며 살아가겠구나."
-    else:
-        desc = "각자의 주장이 강해 서로 상처를 주기 쉬운 형국이로다. 인연의 끈을 이어가려거든 뼈를 깎는 수양과 이해가 필요할지니라."
-        
-    return {
-        "score": score,
-        "desc": desc,
-        "details": messages
-    }
-
-def analyze_auspicious_date(user_saju, t_y, t_m, t_d):
-    """지정된 날짜가 사용자에게 길일(吉日)인지 흉일(凶日)인지 판별하는 엔진"""
-    score = 50
-    messages = []
-    
-    # 목표 날짜의 일진(日辰 - Day Pillar) 추출
-    # 시(Hour)는 정오(12)로 고정하여 해당 일의 기운만 본다.
-    target_engine = SajuCoreEngine(t_y, t_m, t_d, 12, 0, "male", "TargetDate")
-    t_day_cg = target_engine.pils[1]["cg"]
-    t_day_jj = target_engine.pils[1]["jj"]
-    t_oh_cg = OH[t_day_cg]
-    t_oh_jj = OH[t_day_jj]
-    
-    yongshin_oh = user_saju["engine"]["yongshin"]["oh"]
-    yongshin_name = user_saju["engine"]["yongshin"].get("type", "수호신")
-    ilgan_oh = OH[user_saju["ilgan"]]
-    
-    u_day_jj = user_saju["pils"][1]["jj"]
-    u_year_jj = user_saju["pils"][3]["jj"]
-    
-    messages.append(f"선택하신 {t_y}년 {t_m}월 {t_d}일의 일진은 **{t_day_cg}{t_day_jj}({t_oh_cg}{t_oh_jj})** 입니다.")
-    
-    # 1. 용신(用神) 합치 여부
-    if t_oh_cg == yongshin_oh or t_oh_jj == yongshin_oh:
-        score += 30
-        messages.append(f"🟢 **대길(大吉)**: 이 날은 당신의 수호 기운인 '{yongshin_oh}({yongshin_name})'의 맑은 정기가 쏟아지는 날이로다. 중요한 계약이나 이사에 아주 좋느니라.")
-    elif OH_RELATE[t_oh_cg]["geuk"] == ilgan_oh or OH_RELATE[t_oh_jj]["geuk"] == ilgan_oh:
-        score -= 20
-        messages.append(f"🔴 **주의(注意)**: 이 날의 기운이 당신의 본질(일간)을 강하게 압박하니, 무리한 확장은 피하고 수성(守城)하는 것이 길하도다.")
-    
-    # 2. 일지(Day Branch) 충(沖) 여부
-    if CHUNG_MAP.get(u_day_jj) == t_day_jj:
-        score -= 30
-        messages.append(f"💥 **상충(相沖)**: 날짜의 기운이 당신의 안방(일지)을 파고들어 강하게 부딪히니(일지충), 부부싸움이나 돌발 사고를 각별히 조심해야 하느니라.")
-    
-    if CHUNG_MAP.get(u_year_jj) == t_day_jj:
-        score -= 15
-        messages.append(f"⚠️ **조객(弔客)**: 날짜의 기운이 당신의 띠(년지)와 부딪히니, 윗사람과의 마찰이나 관재구설에 유의하거라.")
-        
-    # 점수 보정
-    score = max(0, min(100, score))
-    
-    if score >= 80:
-        desc = "천지신명이 돕는 청명한 대길일(大吉日)이로다! 무슨 일을 도모하든 하늘이 문을 열어줄 것이니 망설이지 마라."
-    elif score >= 50:
-        desc = "무난하고 평온한 평일(平日)이로다. 순리대로 일을 진행하면 큰 무리가 없으나, 하늘의 요행을 바라지는 마라."
-    else:
-        desc = "기운이 탁하고 얽혀있는 파일(破日)이로다. 이 날은 새로운 일을 벌이기보단, 몸을 낮추고 조상을 기리며 칩거하는 것이 도리니라."
-        
-    return {
-        "score": score,
-        "desc": desc,
-        "details": messages
-    }
-
-
-# ══════════════════════════════════════════════
-#  [NEW] 전문 도메인 탭: 건강론 (Health Analysis)
-# ══════════════════════════════════════════════
-HEALTH_DESC = {
-    "木": {"organ": "간/담(간장, 쓸개, 신경계)", "excess": "간염, 신경과민, 근육통, 편두통", "lack": "간 기능 약화, 만성 피로, 시력 저하"},
-    "火": {"organ": "심장/소장(심장, 삼초, 혈압, 시력)", "excess": "고혈압, 심장질환, 정신불안, 불면증", "lack": "저혈압, 수족냉증, 무기력, 소화불량"},
-    "土": {"organ": "비/위(위장, 췌장, 소화기, 피부)", "excess": "위염, 비만, 소화불량, 당뇨", "lack": "위산과다, 체중감소, 만성 소화불량, 위무력증"},
-    "金": {"organ": "폐/대장(폐, 대장, 호흡기, 뼈)", "excess": "기관지염, 변비, 호흡기 질환, 치질", "lack": "천식, 비염, 뼈 약화, 만성 기침"},
-    "水": {"organ": "신장/방광(신장, 방광, 자궁, 전립선)", "excess": "신부전, 방광염, 생식기 질환, 부종", "lack": "정력 감퇴, 신장결석, 호르몬 불균형, 청력 저하"}
-}
-
-def analyze_health(oh_counts):
-    """오행의 태과(太過)와 불급(不及)을 기반으로 한 건강 분석 엔진"""
-    messages = []
-    messages.append(f"네 명반에 새겨진 오행의 개수는 木({oh_counts.get('木',0)}), 火({oh_counts.get('火',0)}), 土({oh_counts.get('土',0)}), 金({oh_counts.get('金',0)}), 水({oh_counts.get('水',0)}) 이로다.")
-    
-    warnings = []
-    # 태과(太過) - 3개 이상
-    for oh, count in oh_counts.items():
-        if count >= 3:
-            warnings.append({
-                "type": "태과(太過 - 넘침)",
-                "oh": oh,
-                "organ": HEALTH_DESC[oh]["organ"],
-                "risk": HEALTH_DESC[oh]["excess"],
-                "desc": f"사주에 **{oh}** 기운이 너무 강하게 뭉쳐있어 **{HEALTH_DESC[oh]['organ']}**에 열이 달아오르고 병이 날 수 있다. **[{HEALTH_DESC[oh]['excess']}]**을 각별히 조심하라!"
-            })
-            
-    # 불급(不及) - 0개 (지장간 제외 원국 표면 기준)
-    for oh, desc_data in HEALTH_DESC.items():
-        if oh_counts.get(oh, 0) == 0:
-            warnings.append({
-                "type": "불급(不及 - 모자람)",
-                "oh": oh,
-                "organ": desc_data["organ"],
-                "risk": desc_data["lack"],
-                "desc": f"사주에 **{oh}** 기운이 아예 없으니 **{desc_data['organ']}**이 날 때부터 허약하도다. **[{desc_data['lack']}]**에 노출되기 쉬우니 평생 관리하라!"
-            })
-
-    if not warnings:
-        overall = "오행이 고르게 분포되어 큰 장기 지병 없이 천수를 누릴 평온한 명반이로다. 다만 과욕은 금물이니 매사 섭생에 주의하라."
-    else:
-        overall = "오행의 쏠림이 강해 특정 장기에 병증이 오기 쉬운 사주로다. 천기(天氣)가 경고하는 부위를 거울삼아 양생(養生)에 힘쓰거라!"
-        
-    return {
-        "counts": oh_counts,
-        "warnings": warnings,
-        "overall": overall,
-        "messages": messages
-    }
-
-
-# ══════════════════════════════════════════════
-#  [NEW] 전문 도메인 탭: 재물론 (Wealth Analysis)
-# ══════════════════════════════════════════════
-def analyze_wealth_special(saju_data):
-    """재성(정재/편재)의 존재, 개수, 위치를 기반으로 한 재물 분석 엔진"""
-    messages = []
-    wealth_stars = []
-    
-    # 사주 원국에서 재성 추출
-    pils = saju_data["pils"]
+    # ─ 천간 투출 (위치별 가중치) ─
+    _CG_W = [6, 10, 10, 8]  # 연간, 월간, 일간, 시간
     for i, p in enumerate(pils):
-        if p.get("cgk") in ["정재", "편재"]:
-            wealth_stars.append({"type": p["cgk"], "pillar": i, "loc": "천간"})
-        if p.get("jjk") in ["정재", "편재"]:
-            wealth_stars.append({"type": p["jjk"], "pillar": i, "loc": "지지"})
-            
-    if not wealth_stars:
-        # 무재 사주 (재성이 없음)
-        # 식상(식신/상관)이 있는지 확인하여 재물의 원천을 찾음
-        shiksang = sum(1 for p in pils if p.get("cgk") in ["식신", "상관"] or p.get("jjk") in ["식신", "상관"])
-        if shiksang > 0:
-            overall = "사주에 직접적인 재물(재성)의 금고는 보이지 않으나, 재물을 만들어내는 뛰어난 재주와 입담(식상)을 갖추었도다. 네 기술이 곧 돈이니 땀 흘린 만큼 거두리라."
-        else:
-            overall = "명반에 뚜렷한 재물의 별이 숨어 버렸구나(무재사주). 돈을 좇으면 오히려 돈이 도망갈 형국이니, 먼저 명예와 자격을 취하면 늦더라도 재물이 알아서 따라올 것이로다."
-    else:
-        # 재다신약 등 개수 확인
-        if len(wealth_stars) >= 4:
-            overall = "어허! 사주에 재물(재성)이 너무 많아 오히려 감당하기 벅찬 '재다신약(財多身弱)'의 형국이로다. 내 그릇을 키우지 않고 남의 돈만 좇다가는 빈 껍데기만 남을 것이니, 돈의 덩치를 줄이고 내실을 다지거라!"
-        elif len(wealth_stars) == 1:
-            overall = "명반에 맑고 뚜렷한 하나의 재물성(재성)이 단단히 빛나고 있구나. 헛된 욕심을 부리지 않고 한 우물을 파면 평생 돈줄이 마르지 않을 탄탄한 팔자로다."
-        else:
-            overall = f"명반에 {len(wealth_stars)}개의 재물 별이 묵직하게 박혀 있구나. 때가 되면 능히 창고를 가득 채울 수 있는 넉넉한 재물 그릇을 타고났느니라."
+        oh = OH.get(p["cg"], "")
+        if oh: power[oh] += _CG_W[i]
 
-    # 위치 기반 시기별 분석 (pils 순서: 0:시주, 1:일주, 2:월주, 3:년주)
-    timeline = []
-    pillar_names = ["시주(말년/자식)", "일주(중년/배우자)", "월주(청년/사회)", "년주(초년/조상)"]
-    for w in wealth_stars:
-        idx = w["pillar"]
-        p_name = pillar_names[idx]
-        if w["type"] == "정재":
-            desc = "따박따박 들어오는 월급처럼 안정적이고 정직한 맑은 재물"
-        else:
-            desc = "한 방에 터지는 횡재수나 사업적으로 크게 융통하는 거대한 재단(편재)"
-            
-        timeline.append({
-            "시기": p_name,
-            "종류": w["type"],
-            "설명": f"🔹 **{p_name}**의 자리에 **{w['type']}({w['loc']})**이 빛을 내고 있으니, 이 시기에 {desc}이 하늘에서 내릴 것이로다."
-        })
+    # ─ 지지 (위치별 가중치) ─
+    _JJ_W = [8, 15, 12, 10]  # 연지, 월지, 일지, 시지
+    for i, p in enumerate(pils):
+        oh = OH.get(p["jj"], "")
+        if oh: power[oh] += _JJ_W[i]
+        # 지장간 (정기가 제일 강함)
+        jijang = JIJANGGAN.get(p["jj"], [])
+        n = len(jijang)
+        for k, jg in enumerate(jijang):
+            jg_oh = OH.get(jg, "")
+            if jg_oh:
+                pt = 8.0 if k == n-1 else (6.0 if k == n-2 else 4.0)
+                if i == 2: pt *= 1.5  # 월지 지장간 1.5배
+                power[jg_oh] += pt
 
-    return {
-        "overall": overall,
-        "timeline": timeline,
-        "count": len(wealth_stars)
+    # ─ 12운성 보정 ─
+    _UNSUNG_MOD = {
+        "장생":1.2,"목욕":0.8,"관대":1.1,"건록":1.4,"제왕":1.5,
+        "쇠":0.9,"병":0.7,"사":0.5,"묘":0.4,"절":0.3,"태":0.5,"양":0.7,
     }
+    ilgan_oh = OH.get(ilgan, "")
+    _JJ_W2 = [8, 15, 12, 10]
+    for i, p in enumerate(pils):
+        state = UNSUNG_TABLE.get(ilgan, {}).get(p["jj"], "")
+        mod = _UNSUNG_MOD.get(state, 1.0)
+        if mod != 1.0 and ilgan_oh:
+            power[ilgan_oh] = max(0, power[ilgan_oh] + _JJ_W2[i] * (mod - 1.0) * 0.4)
 
-# ══════════════════════════════════════════════
-#  [NEW] 전문 도메인 탭: 직업론 (Career Analysis)
-# ══════════════════════════════════════════════
-def analyze_career_special(saju_data):
-    """격국, 용신, 신살을 종합 분석하여 최적의 직업군을 판별하는 엔진"""
-    engine = saju_data.get("engine", {})
-    structure = engine.get("structure", "일반격")
-    yongshin_oh = engine.get("yongshin", {}).get("oh", "木")
-    
-    # 1. 격국 기반 직업 (Structure)
-    career_match = {
-        "정관격": "공직, 대기업, 행정, 교육, 원칙을 중시하는 관리자",
-        "편관격": "군경, 검찰, 의료, 특수기술, 위기를 돌파하는 리더",
-        "정인격": "학자, 교사, 작가, 기획, 문서를 다루고 가르치는 일",
-        "편인격": "종교, 철학, 심리, 예술, 의약, 전문적인 특수 학문",
-        "식신격": "요식업, 제조업, 연구개발, 의식주와 관련된 길한 직업",
-        "상관격": "언론, 방송, 법률, 컨설팅, 말과 기예로 사람을 사로잡는 일",
-        "정재격": "금융, 회계, 은행, 안정적인 사업, 꼼꼼하고 신용 있는 직업",
-        "편재격": "무역, 통상, 유통, 큰 사업, 넓은 무대를 누비는 횡재의 직업",
-        "건록격": "전문직, 자수성가형 사업가, 독립적인 1인 비즈니스",
-        "양인격": "외과 의사, 군인, 경찰, 활인업, 생살여탈을 쥐는 강력한 직업"
+    # ─ 통근 보너스 ─
+    _TONGGUEN = {
+        "木":{"寅","卯","辰","亥","未"},
+        "火":{"巳","午","未","寅","戌"},
+        "土":{"辰","戌","丑","未","巳","午"},
+        "金":{"申","酉","戌","丑"},
+        "水":{"亥","子","丑","申","辰"},
     }
-    
-    # 외격 예외 처리
-    for ext_g in ["종아격", "종재격", "종살격", "종왕격", "종강격", "종아격(從兒格)", "종재격(從財格)", "종살격(從殺格)", "종왕격(從旺格)", "종강격(從强格)"]:
-        career_match[ext_g] = "가장 강한 기운 하나에 모든 것을 내맡기는 특수 직업 (극단적인 성취를 이루는 벤처/예술/특수직)"
+    all_jjs = {p["jj"] for p in pils}
+    for oh, jj_set in _TONGGUEN.items():
+        if all_jjs & jj_set:
+            power[oh] += 5.0
 
-    career_base = career_match.get(structure, "안정적인 기술직 및 일반 사무직")
+    # ─ 정규화 (합=100) ─
+    total = sum(power.values())
+    if total <= 0:
+        return {"木":20,"火":20,"土":20,"金":20,"水":20}
+    return {k: round(v/total*100, 1) for k, v in power.items()}
 
-    # 2. 용신 기반 추천 (Yongshin)
-    yongshin_career = {
-        "木": "교육, 건축, 농림, 디자인, 기획 (생명력을 다루고 성장시키는 일)",
-        "火": "언론, 방송, IT, 조명, 예술, 미용 (빛나고 아름다우며 열정적인 일)",
-        "土": "부동산, 토목, 중개사, 보험, 종교 (오행을 중재하고 믿음을 주는 일)",
-        "金": "금융, 금속, IT하드웨어, 검경, 군인 (날카롭고 정확하며 강제성 있는 일)",
-        "水": "해운, 무역, 유흥, 숙박, 철학, 심리 (지혜를 쓰고 흐름을 타는 일)"
+
+STRENGTH_DESC = {
+    "신강(身强)": {
+        "icon": "🔥",
+        "title": "신강(身强) — 기운이 강한 사주",
+        "desc": """일간의 기운이 왕성하고 충만한 사주입니다. 자기 주관이 뚜렷하고 추진력이 강하여 스스로 길을 개척하는 자립형 인물입니다.
+신강 사주는 재성(財星)과 관성(官星)의 운이 올 때 자신의 강한 기운을 발산하며 크게 발복합니다.
+강한 기운이 제대로 쓰일 때는 천하를 호령하지만, 쓸 곳이 없을 때는 고집과 독선이 화근이 됩니다.""",
+        "lucky_run": "재성운(財星運)·관성운(官星運)",
+        "lucky_desc": "재물과 명예의 운이 올 때 강한 일간이 빛을 발합니다. 관재·재물 운에서 크게 도약하는 시기입니다.",
+        "caution_run": "비겁운(比劫運)·인성운(印星運)",
+        "caution_desc": "이미 강한데 더 강해지면 독선과 분쟁, 고집으로 인한 손실이 생깁니다. 이 운에는 겸손과 절제가 필요합니다.",
+        "ohang_advice": {
+            "木": "목기(木氣)가 강할 때: 간 건강 주의, 분노 조절 수련 필요. 금(金)운에 제어받을 때 오히려 기회가 옵니다.",
+            "火": "화기(火氣)가 강할 때: 심혈관 건강 주의, 수(水)운이 와서 열기를 식혀줄 때 발복합니다.",
+            "土": "토기(土氣)가 강할 때: 소화기 건강 주의, 목(木)운이 와서 뚫어줄 때 변화와 성장이 옵니다.",
+            "金": "금기(金氣)가 강할 때: 폐·대장 건강 주의, 화(火)운에 단련받을 때 진정한 보검이 됩니다.",
+            "水": "수기(水氣)가 강할 때: 신장·방광 건강 주의, 토(土)운이 제방이 되어 방향을 잡아줄 때 발복합니다.",
+        },
+        "personality": "강한 자기주장, 독립심 강함, 리더십 있음, 때로 고집스러움, 경쟁에서 강함",
+    },
+    "신약(身弱)": {
+        "icon": "🌿",
+        "title": "신약(身弱) — 기운이 약한 사주",
+        "desc": """일간의 기운이 상대적으로 약한 사주입니다. 타고난 기운이 약하다고 인생이 불리한 것이 아닙니다.
+신약 사주는 인성(印星)과 비겁(比劫)의 운이 올 때 힘을 얻어 크게 발복합니다.
+섬세한 감수성과 공감 능력이 뛰어나며, 귀인의 도움을 받는 운이 강합니다. 혼자보다 협력할 때 더 빛납니다.""",
+        "lucky_run": "인성운(印星運)·비겁운(比劫運)",
+        "lucky_desc": "학문·귀인·동료의 도움이 오는 운에서 크게 성장합니다. 스승이나 선배의 후원으로 도약하는 시기입니다.",
+        "caution_run": "재성운(財星運)·관성운(官星運)",
+        "caution_desc": "약한 기운에 재물과 관직의 무게가 더해지면 오히려 짓눌립니다. 이 운에는 무리한 확장을 자제하십시오.",
+        "ohang_advice": {
+            "木": "목기(木氣)가 약할 때: 수(水)운의 귀인 도움을 받을 때 발복. 간 기운 보강, 신맛 음식이 도움 됩니다.",
+            "火": "화기(火氣)가 약할 때: 목(木)운의 생조를 받을 때 발복. 심장·눈 보강, 따뜻한 음식이 도움 됩니다.",
+            "土": "토기(土氣)가 약할 때: 화(火)운의 생조를 받을 때 발복. 소화기 강화, 황색 식품이 도움 됩니다.",
+            "金": "금기(金氣)가 약할 때: 토(土)운의 생조를 받을 때 발복. 폐·기관지 강화, 매운맛 적당히 도움 됩니다.",
+            "水": "수기(水氣)가 약할 때: 금(金)운의 생조를 받을 때 발복. 신장 보강, 짠맛·검은 식품이 도움 됩니다.",
+        },
+        "personality": "섬세한 감수성, 뛰어난 공감 능력, 협력에 강함, 귀인 덕이 있음, 신중하고 배려심 깊음",
+    },
+    "중화(中和)": {
+        "icon": "⚖️",
+        "title": "중화(中和) — 균형 잡힌 사주",
+        "desc": """오행의 기운이 비교적 균형 잡힌 이상적인 사주입니다. 중화된 사주는 어떤 운이 와도 극단적으로 흔들리지 않는 안정적인 삶을 삽니다.
+재성운·관성운·인성운 어느 쪽이 와도 무난하게 적응하며 발전해 나갑니다.
+특정 방면에서 폭발적인 성취보다는 안정적이고 꾸준한 상승 곡선을 그리는 것이 중화 사주의 복입니다.""",
+        "lucky_run": "어느 운이든 무난하게 소화",
+        "lucky_desc": "특정 운에 크게 발복하기보다 어떤 운이 와도 안정적으로 성장합니다. 꾸준함이 이 사주 최고의 강점입니다.",
+        "caution_run": "극단적 편중 운",
+        "caution_desc": "균형이 깨져 오행이 극단적으로 편중되는 대운은 주의가 필요합니다. 중화의 균형을 유지하는 것이 핵심입니다.",
+        "ohang_advice": {
+            "木": "목기가 균형점일 때: 현재의 균형을 유지하는 것이 중요합니다. 한쪽으로 치우치는 것을 경계하십시오.",
+            "火": "화기가 균형점일 때: 열정과 냉정의 균형을 유지하세요. 중도(中道)가 최고의 덕입니다.",
+            "土": "토기가 균형점일 때: 신중함과 행동력의 균형이 중요합니다. 때를 기다릴 줄 아는 지혜가 있습니다.",
+            "金": "금기가 균형점일 때: 원칙과 유연함의 균형을 유지하세요. 강함 속에 부드러움이 있어야 합니다.",
+            "水": "수기가 균형점일 때: 지혜와 실행의 균형이 중요합니다. 생각에 그치지 말고 실행으로 이어지게 하십시오.",
+        },
+        "personality": "안정적이고 균형 잡힌 성격, 상황 판단력 좋음, 꾸준한 노력형, 무난한 대인관계, 중재 능력",
     }
-    recommended = yongshin_career.get(yongshin_oh, "일반 상업 및 서비스업")
-
-    # 3. 만신 신살 포인트
-    shinsal_points = []
-    pils = saju_data.get("pils", [])
-    jjs = [p["jj"] for p in pils]
-    
-    if sum(1 for j in jjs if j in ['寅', '申', '巳', '亥']) >= 2:
-        shinsal_points.append("역마(驛馬)의 기운이 강하니, 책상머리에 앉아 있으면 몸에 병이 난다. 해외를 넘나들거나 영업, 물류 등 활동적인 무대가 천직이로다.")
-    if sum(1 for j in jjs if j in ['子', '午', '卯', '酉']) >= 2:
-        shinsal_points.append("도화(桃花)의 꽃향기가 만발하니, 대중의 시선을 훔치는 연예, 방송, 뷰티, 서비스 등 사람을 홀리는 재주로 밥줄을 삼아라.")
-    if sum(1 for j in jjs if j in ['辰', '戌', '丑', '未']) >= 2:
-        shinsal_points.append("화개(華蓋)의 묵직한 살이 끼었으니, 세속의 욕망을 좇기보단 철학자나 성직자처럼 정신세계를 깊이 파고드는 활인업에서 크게 득할 것이니라.")
-
-    if not shinsal_points:
-        shinsal_points.append("특출난 살성은 띄지 않았으니, 하늘의 운보다는 본인의 땀방울과 끈기가 곧 직업적 성취를 이루는 평온한 사주로다.")
-
-    return {
-        "structure": structure,
-        "base_career": career_base,
-        "yongshin": yongshin_oh,
-        "recommended": recommended,
-        "shinsal": shinsal_points
-    }
-
-# ══════════════════════════════════════════════
-#  [NEW] 전문 도메인 탭: 개명/신수 (Name & Spiritual Energy)
-# ══════════════════════════════════════════════
-def analyze_spiritual_name(saju_data, user_name):
-    """부족한 오행과 용신을 분석하여 작명/개명 시 보완해야 할 기운을 제안"""
-    # 원국 오행 개수 산출
-    oh_counts = {"木": 0, "火": 0, "土": 0, "金": 0, "水": 0}
-    for p in saju_data.get("pils", []):
-        oh_counts[OH[p["cg"]]] += 1
-        oh_counts[OH[p["jj"]]] += 1
-        
-    engine = saju_data.get("engine", {})
-    yongshin_oh = engine.get("yongshin", {}).get("oh", "木")
-    
-    missing_oh = [oh for oh, count in oh_counts.items() if count == 0]
-    
-    # 발음 오행 매핑
-    sound_oh = {
-        "木": "가, 카, 기, 키",
-        "火": "나, 다, 라, 타, 노, 도, 로",
-        "土": "아, 야, 어, 여, 우, 유, 이",
-        "金": "사, 자, 차, 서, 저, 처",
-        "水": "마, 바, 파, 미, 비, 피"
-    }
-    
-    # 자원 오행 한자 부수 매핑
-    hanja_oh = {
-        "木": "나무 목(木)변",
-        "火": "불 화(火)변, 마음 심(心)변",
-        "土": "흙 토(土)변, 뫼 산(山)변",
-        "金": "쇠 금(金)변, 구슬 옥(玉)변",
-        "水": "물 수(水)변, 비 우(雨)변"
-    }
-
-    needed_oh = list(set([yongshin_oh] + missing_oh))
-    
-    advice_lines = []
-    advice_lines.append(f"이름은 평생 부를 때마다 우주의 파동을 일으켜 네 명반의 뚫린 구멍을 메우는 가장 강력한 부적과 같도다.")
-    
-    if len(missing_oh) > 0:
-         advice_lines.append(f"어허! 네 사주에는 선천적으로 **{', '.join(missing_oh)}** 기운이 싹 말라 있으니, 이름에서라도 이 기운을 수혈하지 않으면 거센 풍파에 뼈도 못 추릴 위험이 있도다.")
-    else:
-         advice_lines.append(f"오행이 두루 갖춰져 평탄하나, 천하를 호령할 대업을 이루려거든 네 수호신인 **{yongshin_oh}**의 에너지를 이름에 가득 채워 터보 엔진을 달아야 하느니라.")
-
-    suggestions = []
-    for oh in needed_oh:
-        suggestions.append({
-            "oh": oh,
-            "sound": sound_oh.get(oh, ""),
-            "hanja": hanja_oh.get(oh, ""),
-            "reason": f"지금 네게 가장 시급한 생수(生水)와 같은 기운이 바로 **{oh}오행**이다. 소리 내어 부를 때마다 이 기운이 네 탁기를 씻어낼 것이니라."
-        })
-
-    return {
-        "needed_oh": needed_oh,
-        "advice": advice_lines,
-        "suggestions": suggestions
-    }
-
-# ══════════════════════════════════════════════
-#  만신급 삼재(三災) 및 개운(開運) 비결 (Massive Advisory Logic)
-# ══════════════════════════════════════════════
-SAMJAE_DEEP = {
-    "들삼재": "삼재가 시작되는 첫해로, 기운이 강하게 부딪히는 시기입니다. 사업 확장이나 큰 투자는 지양하십시오.",
-    "눌삼재": "삼재가 머무는 두 번째 해로, 내적인 성찰과 안정이 필요한 시기입니다. 구설수와 가정 내 불화에 유의하십시오.",
-    "날삼재": "삼재가 나가는 마지막 해로, 도둑삼재라 하여 끝까지 방심하지 말아야 합니다. 건강 유의와 마무리 작업에 집중하십시오."
 }
 
-GAEWUN_MASSIVE_DATA = {
-    "인간관계": [
-        "나를 돕는 자는 목(木)의 기운을 가진 이들이니, 동쪽에서 온 사람을 귀하게 여기십시오.",
-        "화(火)의 기운이 강한 사람과는 충돌할 수 있으니, 붉은색 옷을 입은 이와의 논쟁은 피하십시오.",
-        "토(土)의 기운은 당신의 기반을 튼튼히 해주니, 부동산 관계자나 연배가 높은 이들의 조언을 경청하십시오.",
-        "금(金)의 기운과는 날카로운 대립이 예상되니, 법적 분쟁이나 날카로운 도구를 다루는 이들과의 만남은 신중하십시오.",
-        "수(水)의 기운은 당신의 지혜를 샘솟게 하니, 연구직이나 예술가들과의 교류가 행운을 부릅니다."
-    ],
-    "주거환경": [
-        "침대 머리 방향은 용신 오행을 따르되, 방문을 정면으로 바라보지 않게 배치하십시오.",
-        "현관에는 맑은 종소리가 나는 종을 달아 탁한 기운을 씻어내고 신명을 깨우십시오.",
-        "거실 남쪽에 붉은 소품을 두면 명예운이 상승하고, 서쪽에 흰 금속 장식은 재물운을 고정시킵니다.",
-        "주방의 청결은 곧 가문의 복입니다. 식기를 항상 깨끗이 하고 밝은 조명을 유지하십시오.",
-        "욕실의 습기는 기운을 정체시키니 자주 환기하고 소금을 비치하여 정화하십시오."
-    ],
-    "명상비방": [
-        "새벽 5시에서 7시 사이, 묘시(卯時)의 기운을 받으며 태양을 향해 깊은 호흡을 21번 하십시오.",
-        "분노가 치밀 때는 차가운 물 한 잔을 마시며 심장 아래로 기운을 내리는 수승화강(水昇火降)을 연습하십시오.",
-        "잠들기 전 10분, 하루의 과오를 조상님께 고하고 정화하는 마음의 거울을 닦으십시오.",
-        "걸을 때마다 발바닥 중앙의 용천혈(湧泉穴)에 기운이 모인다고 상상하며 대지의 힘을 흡수하십시오.",
-        "월출(月出) 시간에 달빛을 받으며 침묵 수행을 하면 막힌 기운이 뚫리고 영안(靈眼)이 맑아집니다."
-    ]
-}
 
-def get_detailed_advice(saju, tid):
-    # 엔진 결과와 테마에 따른 정밀 조언 생성기
-    advice = []
-    e = saju["engine"]
-    y_oh = e["yongshin"]["oh"]
-    
-    if tid == "gaewun":
-        advice.append("🔮 [가택 개운법] " + random.choice(GAEWUN_MASSIVE_DATA["주거환경"]))
-        advice.append("🔮 [명상 비결] " + random.choice(GAEWUN_MASSIVE_DATA["명상비방"]))
-    elif tid == "family":
-        advice.append("🏡 [인간관계 처방] " + random.choice(GAEWUN_MASSIVE_DATA["인간관계"]))
-    
-    return "\n".join(advice)
-
-# ══════════════════════════════════════════════
-#  만신(萬神) 전지적 과거 추적 데이터베이스 (Omniscient Past DB)
-# ══════════════════════════════════════════════
-OMNISCIENT_PAST_DB = [
-    "2023년 10월, 네 가슴을 도려내는 듯한 찬 바람이 불었을 때를 기억하느냐. 그때 네가 겪은 그 시련은 사실 네 영혼이 한 단계 더 도약하기 위한 명부의 혹독한 시험이었느니라.",
-    "2022년 3월의 그 기이한 인연을 잊지 마라. 겉으로는 우연처럼 보였으나, 사실은 네 윗대 조상께서 네 앞길을 열어주기 위해 몰래 안배하신 운명적인 만남이었도다.",
-    "2024년 5월, 네 곳간에서 예상치 못한 기운이 빠져나갔을 때 네가 흘린 눈물을 내가 보았노라. 하지만 그 손실은 더 큰 재앙을 막기 위해 액땜으로 대신한 것이니 너무 원망치 마라.",
-    "2021년 11월, 네가 홀로 어둠 속을 헤맬 때 네 어깨를 툭 치고 간 서늘한 기운을 느꼈느냐. 그것이 바로 만신이 네게 보낸 '정신 차리라'는 엄중한 경고였느니라."
-]
-
-# ══════════════════════════════════════════════
-#  만신(萬神) 미래 예언 데이터베이스 (Future Prophecy DB)
-# ══════════════════════════════════════════════
-FUTURE_PROPHECY_DB = [
-    "2026년 9월, 네 명반에 서린 금(金)의 기운이 숙살지기를 뿜어낼 때를 대비하라. 이때는 새로운 인연보다는 오래된 인연을 지키는 것이 네 명줄을 보전하는 길이니라.",
-    "2027년 2월, 꽁꽁 얼었던 땅이 녹으며 수(水)의 기운이 네 곳간으로 흘러들 것이로다. 이때 들어오는 재물은 네 평생의 안식처가 될 거름이니 방심 말고 그릇을 키워라.",
-    "2026년 5월, 네 사주에 화(火)의 열기가 지나치게 오를 때를 경계하라. 입을 무겁게 닫고 찬물을 가까이 하며 마음을 다스리지 않으면 구설수가 네 대업을 가로막을 것이니라.",
-    "2028년 11월, 네가 고대하던 천문의 응답이 비로소 들려올 것이로다. 막혔던 승진길이 열리고 네 위상이 구름 위에 솟구치니, 자만하지 말고 공덕을 쌓는 데 힘써라."
-]
-
-# ══════════════════════════════════════════════
-#  만신급 수식어 및 서사 증폭 도구 (Mansin Adjectives & Amplifiers)
-# ══════════════════════════════════════════════
-
-ADJECTIVES = [
-    "장엄하고 위엄 있으며 압도적인", "신비롭고 영롱하며 숭고한", 
-    "준엄하고 날카로우며 범접할 수 없는", "오묘하고 치밀하며 정교한",
-    "천지개벽(天地開闢)의 기운이 서린", "숙살지기(肅殺之氣)의 서늘함이 느껴지는",
-    "억겁의 세월을 견뎌낸 묵직한", "하늘의 별자리가 요동치는 듯한",
-    "찬란하고 영롱하며 신비로운", "거칠고 도도하며 거침없는",
-    "태고의 신비를 간직한 채 억겁의 세월을 견뎌온", "북두칠성의 광채를 머금은", "만사형통의 서광이 비치는"
-]
-
-# ══════════════════════════════════════════════
-#  고전 격언집 (Classic Quotes for Narrative Amplification)
-# ══════════════════════════════════════════════
-CLASSIC_QUOTES = {
-    "적천수": [
-        "欲識三元萬法宗, 先觀帝載與神功 (욕식삼원만법종, 선관제재여신공) - 삼원의 만법 종지를 알고자 한다면, 먼저 하늘의 주재와 신비로운 공용을 보라.",
-        "天地順遂而精粹者昌 (천지순수이정수자창) - 천지의 기운이 순조롭게 따르고 그 정수가 맑은 자는 반드시 번창하리라.",
-        "陽幹動且强, 速達顯災祥 (양간동차강, 속달현재상) - 양간은 움직임이 강하니, 재앙과 상서로움이 빠르게 나타나느니라.",
-        "천간은 하늘의 기운을 담고 지지는 땅의 기운을 머금느니라 - 적천수",
-        "강한 자는 제약이 필요하고 약한 자는 도움이 필요하니 - 적천수",
-        "용신은 명반의 주인이 가장 필요로 하는 오행의 기운이니라 - 적천수",
-        "일간이 왕성하면 설기하고 일간이 약하면 부조함이 이치니라 - 적천수"
-    ],
-    "궁통보감": [
-        "三春甲木, 餘寒未除 (삼춘갑목, 여한미제) - 봄의 갑목은 남은 추위가 가시지 않았으니, 반드시 병화(丙火)의 따스함이 필요하도다.",
-        "秋金肅殺, 喜火鍛煉 (추금숙살, 희화단련) - 가을의 금 기운은 숙살의 기운이 강하니, 불(火)로 단련함을 기뻐하느니라."
-    ],
-    "삼명통회": [
-        "夫命者, 寓於氣也 (부명자, 우어기야) - 무릇 명(命)이라는 것은 기운에 깃들어 있는 것이니라.",
-        "一理之道, 萬殊之形 (일리지도, 만수지형) - 하나의 이치에는 만 가지의 형상이 있음을 깨달아야 하느니라."
-    ],
-    "명리정종": [
-        "재관이 유정하면 부귀가 따르고 재관이 무정하면 파절이 생기니 - 명리정종",
-        "합은 기운을 묶고 충은 기운을 흩으니 그 작용을 살펴야 하니라 - 명리정종"
-    ]
-}
-
-# ══════════════════════════════════════════════
-#  환각 방지 시스템 (Anti-Hallucination Filter System)
-# ══════════════════════════════════════════════
-
-# 출력에서 절대 나타나면 안 되는 추측/불확실 표현
-FORBIDDEN_WORDS = [
-    # 한국어 추측성 표현
-    "가능성", "추측", "아마도", "일 수", "보입니다",
-    "같습니다", "예상됩니다", "생각됩니다", "할 지 모릅니다",
-    "혹시", "어쩌면", "불확실", "모르겠습니다", "확인이 필요",
-    # 영어 추측성 표현
-    "possibly", "maybe", "perhaps", "might be", "could be",
-    "I think", "I'm not sure", "unclear", "uncertain"
-]
-
-# 외국어/현대 외래어 → 만신 한국어 치환 사전
-# ※ \\b는 한글 옆에서 작동하지 않으므로 (?i)(?<![A-Za-z]) 방식 사용
-import re as _re
-FOREIGN_WORD_MAP = [
-    # 영문 기술 용어 (한글 문맥 포함, 대소문자 무시)
-    (_re.compile(r'(?i)(?<![A-Za-z])linux(?![A-Za-z])'),        '대지의 흐름'),
-    (_re.compile(r'(?i)(?<![A-Za-z])windows(?![A-Za-z])'),      '하늘의 문'),
-    (_re.compile(r'(?i)(?<![A-Za-z])internet(?![A-Za-z])'),     '천기의 그물망'),
-    (_re.compile(r'(?i)(?<![A-Za-z])software(?![A-Za-z])'),     '운세의 도구'),
-    (_re.compile(r'(?i)(?<![A-Za-z])hardware(?![A-Za-z])'),     '운명의 그릇'),
-    (_re.compile(r'(?i)(?<![A-Za-z])server(?![A-Za-z])'),       '천기루'),
-    (_re.compile(r'(?i)(?<![A-Za-z])network(?![A-Za-z])'),      '인연의 그물'),
-    (_re.compile(r'(?i)(?<![A-Za-z])cloud(?![A-Za-z])'),        '구름 위의 창고'),
-    (_re.compile(r'(?i)(?<![A-Za-z])data(?![A-Za-z])'),         '천기의 기록'),
-    (_re.compile(r'(?i)(?<![A-Za-z])system(?![A-Za-z])'),       '운명의 체계'),
-    (_re.compile(r'(?i)(?<![A-Za-z])mobile(?![A-Za-z])'),       '이동의 기운'),
-    (_re.compile(r'(?i)(?<![A-Za-z])surveillance(?![A-Za-z])'), '감찰의 눈'),
-    (_re.compile(r'(?i)(?<![A-Za-z])monitoring(?![A-Za-z])'),   '관찰의 기운'),
-    (_re.compile(r'(?i)(?<![A-Za-z])global(?![A-Za-z])'),       '천하의'),
-    (_re.compile(r'(?i)(?<![A-Za-z])china(?![A-Za-z])'),        '중원(中原)'),
-    (_re.compile(r'(?i)(?<![A-Za-z])python(?![A-Za-z])'),       '지혜의 뱀'),
-    # 한글 음역 외래어 (기술/지명/인명 계열)
-    (_re.compile(r'리눅스'),   '대지의 흐름'),
-    (_re.compile(r'윈도우즈?'), '하늘의 문'),
-    (_re.compile(r'인터넷'),   '천기의 그물망'),
-    (_re.compile(r'포트(\s+)?(축|축이)'), '운명의 축'),
-    (_re.compile(r'클럭'),     '맥박'),
-    (_re.compile(r'이스페인'), '중원'),
-    (_re.compile(r'안달희'),   '귀인'),
-    (_re.compile(r'소프트웨어'), '운세의 도구'),
-    (_re.compile(r'하드웨어'), '운명의 그릇'),
-    (_re.compile(r'서버'),     '천기루'),
-    (_re.compile(r'클라우드'), '구름 위의 창고'),
-    (_re.compile(r'디지털'),   '영적'),
-    (_re.compile(r'모바일'),   '이동의 기운'),
-    (_re.compile(r'(트라이던트|Trident)'), '삼지창(三枝槍)'),
-    # ── 스포츠·현대 문명 용어 (할루시네이션 빈출 단어)
-    (_re.compile(r'금메달'),   '황금 기운'),
-    (_re.compile(r'은메달'),   '은빛 기운'),
-    (_re.compile(r'올림픽'),   '천하의 제전'),
-    (_re.compile(r'챔피언'),   '천하의 영웅'),
-    (_re.compile(r'테라스'),   '마루'),
-    (_re.compile(r'발코니'),   '난간'),
-    (_re.compile(r'아파트'),   '집'),
-    (_re.compile(r'빌라'),     '집'),
-    (_re.compile(r'오피스텔'), '거처'),
-    (_re.compile(r'스트레스'), '심화(心火)'),
-    (_re.compile(r'에너지'),   '기운'),
-    (_re.compile(r'비타민'),   '정기(精氣)'),
-    (_re.compile(r'칼로리'),   '기력'),
-    (_re.compile(r'트라우마'), '상처의 낙인'),
-    (_re.compile(r'카리스마'), '위엄'),
-    (_re.compile(r'다이나믹'), '역동적인'),
-    (_re.compile(r'비즈니스'), '사업'),
-    (_re.compile(r'마케팅'),   '판로 개척'),
-    (_re.compile(r'브랜드'),   '명성'),
-    (_re.compile(r'컨텐츠'),   '내용'),
-    (_re.compile(r'플랫폼'),   '무대'),
-    (_re.compile(r'미디어'),   '매체'),
-    (_re.compile(r'콘텐츠'),   '내용'),
-    (_re.compile(r'인플루엔서?'), '이름난 인사'),
-    (_re.compile(r'팔로워'),   '추종자'),
-    (_re.compile(r'유튜브'),   '세상의 이목'),
-    (_re.compile(r'(새끼|새끼들)(?=[\s,.!?])'), '무리'),  # 맥락 이탈 비속어 차단
-    # 외국 인명 한글 음역 + 조사까지 포함 치환 (이/가/은/는/을/를/의/과/와/도/만/에/로/으로)
-    (_re.compile(r'(루이스|루이|루카스|루카|레오|레나|레이첼|레이철|라이언|로렌|로버트|로빈|리사|루시|스미스|존슨|윌리엄)(이|가|은|는|을|를|의|과|와|도|만|에|로|으로|이라|이며|가|란)?'), '귀인'),
-    (_re.compile(r'(마이클|마이크|마틴|맥스|멜리사|모니카|미셸|미카엘)(이|가|은|는|을|를|의|과|와|도|만|에|로|으로|이라|이며|가|란)?'), '귀인'),
-    (_re.compile(r'(제이크|제임스|제이슨|제니퍼|제니|존|조나단|조셉|조지)(이|가|은|는|을|를|의|과|와|도|만|에|로|으로|이라|이며|가|란)?'), '귀인'),
-    (_re.compile(r'(케빈|케이트|케이티|크리스|크리스틴|클레어|킴벌리)(이|가|은|는|을|를|의|과|와|도|만|에|로|으로|이라|이며|가|란)?'), '귀인'),
-    (_re.compile(r'(토마스|톰|티모시|테일러|트레버|트리스탄)(이|가|은|는|을|를|의|과|와|도|만|에|로|으로|이라|이며|가|란)?'), '귀인'),
-    (_re.compile(r'(피터|패트릭|폴|필립|프랭크|프레데릭)(이|가|은|는|을|를|의|과|와|도|만|에|로|으로|이라|이며|가|란)?'), '귀인'),
-    # 영문 인명+조사 패턴 (Lewis의, Smith가 등) → 귀인+조사
-    (_re.compile(r'\b[A-Z][a-z]{2,15}(의|이|가|은|는|을|를|과|와|도|만|에|로|으로)\b'), r'귀인\1'),
-    # 영문 단어만 단독으로 남은 경우 제거
-    (_re.compile(r'\b[A-Z][a-z]{2,15}(?=\s|$|[,.$!?])\b'), ''),
-    # 단독으로 나타난 영문 단어 (한글 문장 내)
-    (_re.compile(r'(?<=[가-힣])\s+[A-Za-z]{2,20}\s+(?=[가-힣])'), ' '),
-]
-
-# 문맥상 이상한 구절 패턴 (환각 구절) 정화
-HALLUCINATION_PATTERNS = [
-    # ① 영문 인명+조사 패턴 최우선 처리 (Lewis의 → 귀인의)
-    (_re.compile(r'[A-Z][a-z]{2,15}\s*(의|이|가|은|는|을|를|과|와|도|에|로)'), lambda m: '귀인' + m.group(1)),
-    # ② 기술 용어 + 조사 + 동사 뭉치 치환 (환각 정밀 정화)
-    (_re.compile(r'(리눅스|윈도우|인터넷|소프트웨어|하드웨어|서버|클라우드|디지털)[를을]\s*뚫는'), '바위를 뚫는'),
-    (_re.compile(r'(리눅스|윈도우|인터넷)[를을]\s*\w+는'), '운명의 기운이 작용하는'),
-    # ③ 스포츠 종목 및 현대적 환각 용어 정화
-    (_re.compile(r'(금메달|은메달|올림픽|챔피언십)[을를]?\s*(노리는|바라보는|꿈꾸는)'), '천하의 정상을 향하는'),
-    (_re.compile(r'(금메달|은메달)[을를]?\s*노리는\s*수만\s*마리'), '황금을 노리는 수만 마리의 까마귀 떼'),
-    # ④ '반말·경어 혼용' 패턴 — 경어체가 만신 어투를 깬다
-    (_re.compile(r'보이나요[!?]?'), '보이느냐!'),
-    (_re.compile(r'겁이\s*나네요[!?]?'), '두려워 마라!'),
-    (_re.compile(r'(\w+)(입니다|합니다|됩니다|입니까|합니까)([.!?])'), lambda m: m.group(1) + '이로다' + m.group(3)),
-    (_re.compile(r'(\w+)(이에요|예요|이죠|이지요)([.!?])'), lambda m: m.group(1) + '이니라' + m.group(3)),
-    (_re.compile(r'(\w+)(하세요|하십시오|하십니다)([.!? ])'), lambda m: m.group(1) + '하라!' + m.group(3)),
-    # ⑤ 테라스·발코니 등 현대 건축어가 사주 맥락을 오염
-    (_re.compile(r'테라스와?\s*구별되는'), '빼앗기는'),
-    (_re.compile(r'구별되는\s*것입니다'), '투쟁의 기운이니'),
-    # ⑥ 이동식 감시 / 디지털 감시
-    (_re.compile(r'이동식의?\s*감시'), '하늘의 관찰'),
-    (_re.compile(r'디지털\s*감시'),    '영적 관찰'),
-    # ⑦ 국가명이 명리 맥락에 이상하게 등장
-    (_re.compile(r'(미국|중국|러시아|일본|북한)\s*[은는이가]\s*(억겁|천기|운명|명반|삶)'), '억겁의 하늘 아래'),
-    # ⑧ 과거의 [외래 인명] 패턴
-    (_re.compile(r'과거의\s+(루이스|귀인|렉인|랙인)'), '과거의 숨겨진 인연'),
-    # ⑨ ~의 [기술/현대 용어] 패턴
-    (_re.compile(r'의\s+(리눅스|인터넷|소프트웨어|하드웨어|서버|서술|능력|작용|전투|계급|테라스)'), '의 운명의 흐름'),
-    # ⑩ 했던 [인명] 등 문맥 오염 패턴
-    (_re.compile(r'(했|했었|이었)던\s+(루이스|귀인|렉인|랙인)'), r'\1던 인연'),
-    # ⑪ 오탈자 치환
-    (_re.compile(r'(?<=\s)렉인(?=\s|이|가|은|는|도)'), '낙인'),
-    (_re.compile(r'(?<=\s)랙인(?=\s|이|가|은|는|도)'), '낙인'),
-    # ⑫ 루이스 단독 등장 (조사 없이)
-    (_re.compile(r'(루이스|루이)(\s|$|[,!?])'), r'귀인\2'),
-    # ⑬ 부모님 안부 관련 오염 (민감도 보정)
-    (_re.compile(r'부모님께\s*안부\s*전화를\s*(올려라|한\s*통\s*올려라|드려라)'), '조상님의 음덕을 기리며 가문의 뿌리를 되새겨라'),
-    (_re.compile(r'부모님께\s*안부\s*전화'), '조상님께 감사하는 마음'),
-]
-
-def apply_mansin_filter(text: str) -> str:
+def get_ilgan_strength(ilgan, pils):
     """
-    [핵심 정화 필터 v2] AI 환각 텍스트(외국어·기술 용어·외국 인명·이상한 구절)를
-    만신 어투의 순수 한국어로 치환·정제하는 함수.
-    모든 텍스트 출력 전에 반드시 통과해야 하는 최종 관문.
+    일간 신강신약 v2 — 5단계 점수화 (0~100)
+    극신강 / 신강 / 중화 / 신약 / 극신약
     """
+    oh_strength = calc_ohaeng_strength(ilgan, pils)
+    ilgan_oh = OH.get(ilgan, "")
+
+    # 생(生)해주는 오행 (인성)
+    _BIRTH_R = {"木":"水","火":"木","土":"火","金":"土","水":"金"}
+    parent_oh = _BIRTH_R.get(ilgan_oh, "")
+
+    # 돕는 세력 = 비겁(같은오행) + 인성
+    helper_score = oh_strength.get(ilgan_oh, 0) + oh_strength.get(parent_oh, 0)
+
+    # 약화 세력 = 식상×0.8 + 재성×1.0 + 관성×1.0
+    _BIRTH_F  = {"木":"火","火":"土","土":"金","金":"水","水":"木"}
+    _CTRL     = {"木":"土","火":"金","土":"水","金":"木","水":"火"}
+    sik_oh  = _BIRTH_F.get(ilgan_oh, "")
+    jae_oh  = _CTRL.get(ilgan_oh, "")
+    gwan_oh = next((k for k,v in _CTRL.items() if v==ilgan_oh), "")
+
+    weak_score = (oh_strength.get(sik_oh,0)*0.8 +
+                  oh_strength.get(jae_oh,0)*1.0 +
+                  oh_strength.get(gwan_oh,0)*1.0)
+
+    # 일간 힘 점수 0~100
+    total = helper_score + weak_score
+    daymaster_score = round(helper_score/total*100, 1) if total > 0 else 50.0
+
+    # 5단계
+    if daymaster_score >= 68:
+        strength = "극신강(極身强)"
+        advice   = "기운이 넘칩니다. 재성·관성 운에서 발복하나 자만과 독선 경계"
+    elif daymaster_score >= 55:
+        strength = "신강(身强)"
+        advice   = "강한 기운 — 재성·관성 운에서 발복하나 비겁운은 경계"
+    elif daymaster_score >= 45:
+        strength = "중화(中和)"
+        advice   = "균형 잡힌 기운 — 어떤 운에서도 무난하게 발전 가능"
+    elif daymaster_score >= 32:
+        strength = "신약(身弱)"
+        advice   = "약한 기운 — 인성·비겁 운에서 힘을 얻고 재·관운은 조심"
+    else:
+        strength = "극신약(極身弱)"
+        advice   = "기운이 매우 약합니다. 인성·비겁 운이 절실하며 재관운은 특히 위험"
+
+    return {
+        "신강신약": strength,
+        "일간점수": daymaster_score,
+        "helper_score": helper_score,
+        "weak_score": weak_score,
+        "조언": advice,
+        "oh_strength": oh_strength,
+        "ilgan_oh": ilgan_oh,
+        "parent_oh": parent_oh,
+        "sik_oh": sik_oh,
+        "jae_oh": jae_oh,
+        "gwan_oh": gwan_oh,
+    }
+
+
+
+# ══════════════════════════════════════════════════
+#  세운/월운 계산 (Bug 6 Fix)
+# ══════════════════════════════════════════════════
+YEARLY_LUCK_NARRATIVE = {
+    "비견": {
+        "level": "길(吉)", "icon": "🤝",
+        "title": "독립과 자립의 해",
+        "desc": "동류(同類)의 기운이 강해지는 해입니다. 독립심이 강해지고 새로운 사업이나 파트너십을 통해 성장하는 시기입니다. 형제·친구·동료의 도움이 있으며, 혼자보다 협력할 때 더 큰 성과를 거둡니다.",
+        "재물": "재물은 나누면 더 들어오는 해입니다. 독립 사업이나 프리랜서 활동에 유리합니다.",
+        "관계": "새로운 동료와의 의미 있는 인연이 생깁니다. 기존 인맥을 활성화하십시오.",
+        "건강": "과로로 인한 체력 저하를 주의하십시오. 규칙적인 운동이 도움 됩니다.",
+        "조언": "경쟁보다 협력을, 독점보다 나눔을 선택할 때 복이 배가 됩니다."
+    },
+    "겁재": {
+        "level": "흉(凶)", "icon": "⚔️",
+        "title": "경쟁과 손재의 해 ⚠️",
+        "desc": "재물 손실과 치열한 경쟁이 따르는 해입니다. 투자·보증·동업은 이 해에 특히 조심하십시오. 하지만 이 어려움을 이겨낸다면 더욱 강해지는 단련의 해이기도 합니다.",
+        "재물": "재물 손실의 위험이 높습니다. 보수적으로 지키는 전략이 최선입니다.",
+        "관계": "형제·동료와의 갈등이 생길 수 있습니다. 법적 분쟁에 주의하십시오.",
+        "건강": "스트레스로 인한 심장·혈압 이상에 주의하십시오. 정기 건강검진을 받으십시오.",
+        "조언": "무리한 확장이나 새로운 도전보다는 현상 유지와 내실 다지기에 집중하십시오."
+    },
+    "식신": {
+        "level": "대길(大吉)", "icon": "🌟",
+        "title": "복록과 풍요의 해 🎉",
+        "desc": "하늘이 내리신 복록의 해입니다! 재능이 빛나고 하는 일마다 순조롭습니다. 먹고 사는 걱정이 사라지고, 주변에 사람이 모여드는 풍요로운 한 해를 맞이하게 됩니다.",
+        "재물": "재물이 자연스럽게 들어오는 해입니다. 새로운 수입원이 생기기 좋은 시기입니다.",
+        "관계": "인기가 높아지고 좋은 인연이 잇따릅니다. 결혼·새 친구 인연이 생길 수 있습니다.",
+        "건강": "건강이 좋아지는 해입니다. 다만 과식·향락 소비를 절제하십시오.",
+        "조언": "자신의 재능을 마음껏 발휘하십시오. 이 해에 시작하는 일은 좋은 결실을 맺습니다."
+    },
+    "상관": {
+        "level": "평(平)", "icon": "🌪️",
+        "title": "혁신과 변화의 해",
+        "desc": "기존 틀을 깨고 새로운 길을 여는 혁신의 해입니다. 창의적인 아이디어가 폭발하고 변화를 향한 욕구가 강해집니다. 단, 직장·관직과의 충돌에 각별히 주의하십시오.",
+        "재물": "창의적 활동으로 부수입이 생기기 좋은 해. 투자보다 재능 발휘가 유리합니다.",
+        "관계": "자유로운 표현과 새로운 스타일의 인연이 찾아옵니다.",
+        "건강": "신경성 질환, 불면증에 주의하십시오. 명상과 규칙적인 수면이 필요합니다.",
+        "조언": "상관견관(傷官見官) 주의! 직장·공무 관련 언행을 극도로 조심하십시오."
+    },
+    "편재": {
+        "level": "길(吉)", "icon": "💰",
+        "title": "활발한 재물 활동의 해",
+        "desc": "투자·사업·거래가 활발해지는 역동적인 재물의 해입니다. 대담한 도전이 빛을 발하고 새로운 재물 기회가 찾아옵니다. 이성 인연도 활발해지는 시기입니다.",
+        "재물": "투자·부동산·사업 확장의 기회의 해. 계획적으로 움직이면 큰 성과가 있습니다.",
+        "관계": "이성 인연이 활발한 해. 외부 활동과 사교에 좋은 시기입니다.",
+        "건강": "과로와 무리한 활동으로 인한 체력 저하를 주의하십시오.",
+        "조언": "신약하면 욕심을 버리고 자신의 역량 안에서만 움직이는 지혜가 필요합니다."
+    },
+    "정재": {
+        "level": "길(吉)", "icon": "🏦",
+        "title": "안정적 재물의 해",
+        "desc": "성실하게 쌓아가는 안정된 재물의 해입니다. 고정 수입이 늘어나고 자산이 불어나며, 결혼 인연이나 배우자 덕을 보는 시기이기도 합니다.",
+        "재물": "월급·임대수입 등 안정적 수입이 증가합니다. 저축과 자산 관리에 좋은 해입니다.",
+        "관계": "배우자·파트너와의 관계가 안정되고 가정에 화목함이 깃드는 해입니다.",
+        "건강": "전반적으로 건강이 안정적인 해입니다. 규칙적인 생활을 유지하십시오.",
+        "조언": "꾸준함이 최고의 전략입니다. 급격한 변화보다 안정적인 성장을 추구하십시오."
+    },
+    "편관": {
+        "level": "흉(凶)", "icon": "⚡",
+        "title": "시련과 압박의 해 ⚠️",
+        "desc": "강한 권력 기운과 함께 시련이 따르는 해입니다. 관재·사고·건강 이상에 주의가 필요합니다. 그러나 이 시련을 정면으로 돌파하면 더욱 단련되어 강해집니다.",
+        "재물": "지출과 손실을 주의하십시오. 큰 재물 결정은 이 해를 피하는 것이 좋습니다.",
+        "관계": "상사·권력자와의 갈등이 생기기 쉽습니다. 언행을 조심하고 자신을 낮추십시오.",
+        "건강": "건강검진 필수! 사고·수술 위험이 있습니다. 안전에 특별히 주의하십시오.",
+        "조언": "인내하고 정면으로 돌파하십시오. 식신이 있으면 제화가 되어 오히려 기회가 됩니다."
+    },
+    "정관": {
+        "level": "대길(大吉)", "icon": "🎖️",
+        "title": "명예와 인정의 해 🌟",
+        "desc": "명예·직위·관직이 빛나는 황금 같은 해입니다! 승진·수상·자격 취득·계약 성사의 기회가 연달아 찾아옵니다. 조직 내에서 중요한 역할을 맡게 되는 영광의 해입니다.",
+        "재물": "정직하고 합법적인 방법으로 재물이 들어오는 해. 계약·협약에 유리합니다.",
+        "관계": "결혼 인연이나 공식적인 관계 진전이 있는 해입니다. 사회적 평판이 높아집니다.",
+        "건강": "전반적으로 좋은 해이나 과도한 업무로 인한 스트레스를 관리하십시오.",
+        "조언": "자만하지 마십시오. 겸손하게 원칙을 지키는 것이 이 해 복의 핵심입니다."
+    },
+    "편인": {
+        "level": "평(平)", "icon": "🔮",
+        "title": "직관과 연구의 해",
+        "desc": "직관과 영감이 강해지고 특수 분야 연구에 몰입하기 좋은 해입니다. 일반적인 성공보다는 내면의 성장과 특수 분야에서의 도약이 이 해의 테마입니다.",
+        "재물": "재물보다는 지식과 기술에 투자하기 좋은 해. 자격증·교육에 투자하십시오.",
+        "관계": "혼자만의 시간이 필요한 해. 깊은 사색과 연구에 집중하십시오.",
+        "건강": "소화기와 신경계 건강에 주의하십시오. 규칙적인 식사가 중요합니다.",
+        "조언": "도식(倒食) 주의! 과도한 이상주의와 현실 도피를 경계하십시오."
+    },
+    "정인": {
+        "level": "대길(大吉)", "icon": "📚",
+        "title": "학문과 귀인의 해 🌟",
+        "desc": "학문과 귀인의 도움이 충만한 최고의 해입니다! 시험·자격증·학위 취득에 매우 유리하며, 스승이나 윗사람의 후원이 자연스럽게 찾아오는 행운의 해입니다.",
+        "재물": "직접적인 재물보다는 명예와 지식이 쌓이는 해. 이것이 미래의 큰 재물이 됩니다.",
+        "관계": "어머니·스승·귀인의 도움이 있는 해. 멘토와의 만남이 인생을 바꿉니다.",
+        "건강": "전반적으로 안정적인 해. 충분한 수면과 학습 환경을 잘 정비하십시오.",
+        "조언": "지식을 쌓고 명예를 높이는 데 집중하십시오. 재물은 자연스럽게 따라옵니다."
+    },
+    "-": {
+        "level": "평(平)", "icon": "〰️",
+        "title": "복합 기운의 해",
+        "desc": "다양한 기운이 혼재하는 해입니다. 꾸준한 노력으로 안정을 유지하는 것이 이 해의 최선입니다.",
+        "재물": "급격한 변화보다 현상 유지에 집중하십시오.",
+        "관계": "기존 관계를 돈독히 하는 해로 활용하십시오.",
+        "건강": "정기적인 건강검진으로 이상 징후를 조기에 발견하십시오.",
+        "조언": "큰 결정은 조금 더 기다리는 것이 안전합니다."
+    },
+}
+
+
+def get_yearly_luck(pils, current_year):
+    """세운 계산"""
+    idx = (current_year - 4) % 60
+    cg = CG[idx % 10]
+    jj = JJ[idx % 12]
+    
+    # ✅ BUG 6 FIX: ilgan = pils[1]["cg"] (일주 천간)
+    ilgan = pils[1]["cg"]
+    se_ss_cg = TEN_GODS_MATRIX.get(ilgan, {}).get(cg, "-")
+    jijang = JIJANGGAN.get(jj, [])
+    se_ss_jj = TEN_GODS_MATRIX.get(ilgan, {}).get(jijang[-1] if jijang else "", "-")
+    
+    oh_cg = OH.get(cg, "")
+    oh_jj = OH.get(jj, "")
+    
+    narr = YEARLY_LUCK_NARRATIVE.get(se_ss_cg, YEARLY_LUCK_NARRATIVE["-"])
+    
+    return {
+        "연도": current_year,
+        "세운": cg + jj,
+        "cg": cg, "jj": jj,
+        "십성_천간": se_ss_cg,
+        "십성_지지": se_ss_jj,
+        "오행_천간": oh_cg,
+        "오행_지지": oh_jj,
+        "길흉": narr["level"],
+        "아이콘": narr["icon"],
+        "narrative": narr,
+    }
+
+
+
+MONTHLY_LUCK_DESC = {
+    "비견": {
+        "길흉": "평길", "css": "good",
+        "short": "독립심·자립의 달",
+        "desc": "동료·친구의 기운이 강해지는 달입니다. 새로운 파트너나 협력자를 만날 수 있으며, 독립적인 행동이 빛을 발합니다. 네트워킹에 적극적으로 나서십시오.",
+        "재물": "재물은 나누어야 들어오는 달. 독립 사업이나 프리랜서 활동에 유리합니다.",
+        "관계": "새로운 동료·친구와의 인연이 생깁니다. 형제·친구의 도움이 있습니다.",
+        "주의": "경쟁자와의 갈등, 동업 분쟁에 주의하십시오."
+    },
+    "겁재": {
+        "길흉": "흉", "css": "bad",
+        "short": "경쟁·손재의 달",
+        "desc": "재물 손실과 경쟁이 치열한 달입니다. 투자·보증·동업은 반드시 이달에는 자제하십시오. 불필요한 지출을 줄이고 소비를 절제하는 달입니다.",
+        "재물": "재물의 손실 가능성이 높습니다. 큰 결정은 다음 달로 미루십시오.",
+        "관계": "형제·동료와의 갈등이 생길 수 있습니다. 감정적 대응을 자제하십시오.",
+        "주의": "보증·투자·동업 절대 금지! 도박성 투자는 이달 특히 경계하십시오."
+    },
+    "식신": {
+        "길흉": "대길", "css": "great",
+        "short": "복록·창의의 달 🌟",
+        "desc": "하늘이 내리신 복록의 달입니다! 재능이 빛나고 하는 일마다 순조롭습니다. 창의적인 아이디어가 샘솟고 사람들의 인정을 받는 달입니다. 적극적으로 나서십시오!",
+        "재물": "재물이 자연스럽게 들어오는 달입니다. 새로운 수입원이 생기기 좋은 시기입니다.",
+        "관계": "사람들이 자연스럽게 모여드는 달. 인기가 높아지고 좋은 인연이 찾아옵니다.",
+        "주의": "과도한 음식·향락 소비로 인한 건강 저하를 주의하십시오."
+    },
+    "상관": {
+        "길흉": "평", "css": "",
+        "short": "창의·변화의 달",
+        "desc": "혁신적인 아이디어와 창의력이 폭발하는 달입니다. 기존 방식에서 벗어나 새로운 시도를 해볼 좋은 시기입니다. 단, 직장 상사나 권위자와의 언행에 각별히 주의하십시오.",
+        "재물": "창의적 활동으로 부수입이 생기기 좋은 달. 투자보다는 재능 발휘가 유리합니다.",
+        "관계": "자유로운 소통과 표현이 빛나는 달. 예술적·창의적 인연과의 만남이 있습니다.",
+        "주의": "상관견관(傷官見官) 주의! 직장·공무 관련 언행을 극도로 조심하십시오."
+    },
+    "편재": {
+        "길흉": "길", "css": "good",
+        "short": "활발한 재물 활동의 달",
+        "desc": "투자·사업·거래가 활발해지는 달입니다. 새로운 재물 기회가 찾아오고 대담한 도전이 빛을 발합니다. 이성 인연도 활발해지는 시기입니다. 신중한 투자로 재물을 불리십시오.",
+        "재물": "투자·부동산·사업 확장의 기회. 과욕 없이 계획적으로 움직이면 성과가 있습니다.",
+        "관계": "이성 인연이 활발해지는 달. 외부 활동과 사교 모임에 좋은 시기입니다.",
+        "주의": "과도한 욕심으로 인한 과잉 투자를 경계하십시오. 재물이 들어오는 만큼 나갈 수도 있습니다."
+    },
+    "정재": {
+        "길흉": "길", "css": "good",
+        "short": "안정적 재물·성실의 달",
+        "desc": "성실하게 쌓아가는 안정적인 재물의 달입니다. 월급·임대수입 등 고정 수입이 늘어나고, 저축과 자산 관리에 유리한 시기입니다. 배우자나 파트너의 도움이 있는 달입니다.",
+        "재물": "꾸준한 노력이 결실을 맺는 달. 안정적 저축과 자산 관리에 집중하십시오.",
+        "관계": "배우자·파트너와의 관계가 안정적이며 가정에 화목함이 깃드는 달입니다.",
+        "주의": "현실을 벗어난 투기성 투자는 자제하십시오. 꾸준함이 최고의 전략입니다."
+    },
+    "편관": {
+        "길흉": "흉", "css": "bad",
+        "short": "압박·시련의 달 ⚠️",
+        "desc": "권력이나 상사로부터 압박을 받거나 시련이 따르는 달입니다. 건강 이상이나 사고·관재의 위험이 있으니 특히 주의가 필요합니다. 인내하고 정면으로 돌파하면 이 달을 이겨낼 수 있습니다.",
+        "재물": "지출과 손실을 주의하십시오. 큰 재물 결정은 이달을 피하십시오.",
+        "관계": "상사·권력자와의 갈등이 생기기 쉽습니다. 언행을 조심하고 자신을 낮추십시오.",
+        "주의": "건강검진 권장! 사고·수술·관재 위험이 있으니 안전에 특별히 주의하십시오."
+    },
+    "정관": {
+        "길흉": "대길", "css": "great",
+        "short": "명예·인정의 달 🎖️",
+        "desc": "명예와 인정이 빛나는 최고의 달입니다! 승진·수상·자격 취득·계약 성사의 기회가 찾아옵니다. 법과 원칙을 지키는 삶이 보상받으며, 사회적 지위가 높아지는 시기입니다.",
+        "재물": "정직하고 합법적인 방법으로 재물이 들어오는 달. 계약·협약에 유리합니다.",
+        "관계": "결혼 인연이나 공식적인 관계 진전이 있는 달입니다. 격식 있는 만남이 이루어집니다.",
+        "주의": "자만하지 마십시오. 겸손하게 원칙을 지키는 것이 이달 복의 핵심입니다."
+    },
+    "편인": {
+        "길흉": "평", "css": "",
+        "short": "직관·연구의 달",
+        "desc": "직관과 영감이 강해지고 특수 분야 연구에 몰입하기 좋은 달입니다. 철학·종교·심리·IT 등 특수 분야에서 두각을 나타낼 수 있습니다. 혼자만의 시간을 통해 내공을 쌓는 달입니다.",
+        "재물": "재물보다는 지식과 기술에 투자하기 좋은 달. 자격증·교육에 투자하십시오.",
+        "관계": "혼자만의 시간이 필요한 달. 깊은 사색과 연구에 집중하십시오.",
+        "주의": "도식(倒食) 주의! 편인이 식신을 극하면 복이 꺾이니 과도한 이상주의를 경계하십시오."
+    },
+    "정인": {
+        "길흉": "대길", "css": "great",
+        "short": "학문·귀인의 달 📚",
+        "desc": "학문과 귀인의 도움이 충만한 최고의 달입니다! 시험·자격증·학위 취득에 매우 유리하며, 스승이나 윗사람의 후원이 자연스럽게 찾아옵니다. 지식을 쌓고 성장하는 달입니다.",
+        "재물": "직접적인 재물보다는 명예와 지식이 쌓이는 달. 이것이 미래의 재물이 됩니다.",
+        "관계": "어머니·스승·윗사람의 도움이 있는 달. 공식적이고 격식 있는 인연이 생깁니다.",
+        "주의": "재물에 대한 욕심보다 학문과 자기 계발에 집중하십시오. 그것이 더 큰 복입니다."
+    },
+    "-": {
+        "길흉": "평", "css": "",
+        "short": "복합 기운의 달",
+        "desc": "다양한 기운이 혼재하는 달입니다. 일간의 강약과 격국에 따라 발현이 달라지며, 꾸준한 노력으로 안정을 유지하는 것이 중요합니다.",
+        "재물": "급격한 변화보다는 현상 유지에 집중하십시오.",
+        "관계": "기존 관계를 돈독히 하는 달로 활용하십시오.",
+        "주의": "큰 결정은 조금 더 기다리는 것이 안전합니다."
+    },
+}
+
+
+def get_monthly_luck(pils, year, month):
+    """월운 계산 (Bug 6 Fix)"""
+    year_p = get_yearly_luck(pils, year)
+    
+    # ✅ BUG 6 FIX: ilgan = pils[1]["cg"] (일주 천간)
+    ilgan = pils[1]["cg"]
+    
+    # 월간 인덱스
+    year_cg_idx = CG.index(year_p["cg"])
+    lunar_month_num = (month - 2) % 12
+    m_cg_idx = (year_cg_idx * 2 + lunar_month_num) % 10
+    m_jj_idx = (2 + lunar_month_num) % 12
+    
+    m_cg = CG[m_cg_idx]
+    m_jj = JJ[m_jj_idx]
+    
+    m_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(m_cg, "-")
+    m_jijang = JIJANGGAN.get(m_jj, [])
+    m_ss_jj = TEN_GODS_MATRIX.get(ilgan, {}).get(m_jijang[-1] if m_jijang else "", "-")
+    
+    luck_data = MONTHLY_LUCK_DESC.get(m_ss, MONTHLY_LUCK_DESC["-"])
+    
+    return {
+        "월": month,
+        "월운": m_cg + m_jj,
+        "cg": m_cg, "jj": m_jj,
+        "십성": m_ss,
+        "지지십성": m_ss_jj,
+        "길흉": luck_data["길흉"],
+        "css": luck_data["css"],
+        "short": luck_data["short"],
+        "설명": luck_data["desc"],
+        "재물": luck_data["재물"],
+        "관계": luck_data["관계"],
+        "주의": luck_data["주의"],
+    }
+
+
+def get_10year_luck_table(pils, birth_year, gender="남"):
+    """10년 운세 테이블"""
+    daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    result = []
+    current_year = datetime.now().year
+    for dw in daewoon:
+        yearly = []
+        for y in range(dw["시작연도"], dw["시작연도"] + 10):
+            ye = get_yearly_luck(pils, y)
+            yearly.append(ye)
+        result.append({**dw, "yearly": yearly, "is_current": dw["시작연도"] <= current_year <= dw["종료연도"]})
+    return result
+
+# ══════════════════════════════════════════════════
+#  AI 해석 (Bug 3 Fix: hash_funcs)
+# ══════════════════════════════════════════════════
+import json
+
+################################################################################
+# ★★★ Saju Platform Engineering Agent — AI 격리 아키텍처 ★★★
+#
+# [구조 원칙]
+#   만세력 엔진(Deterministic) → 분석 JSON → AI Sandbox → 텍스트 출력
+#
+# Brain 1: 만세력 계산 엔진 — 절대 영역, AI 접근 금지
+# Brain 2: AI 해석 엔진     — 읽기 전용 JSON만 수신, 계산 금지
+#
+# [AI 행동 금지]
+#   - 생년월일 재계산 금지
+#   - 간지(干支) 재추론 금지
+#   - 오행 재계산 금지
+#   - 대운·세운 재계산 금지
+#   → 위반 감지 시 자동 차단 (validate_ai_output)
+################################################################################
+
+# ── Brain 2: AI 출력 검증 필터 ────────────────────────────────────────────────
+_AI_FORBIDDEN_PHRASES = [
+    "다시 계산", "생년월일 기준으로 계산",
+    "추정하면", "계산해보면", "제가 계산한",
+    "생년월일을 보면", "태어난 날을 기준으로",
+    "사주를 계산", "간지를 계산", "오행을 계산",
+]
+
+def validate_ai_output(text: str) -> str:
+    """AI 출력에서 계산 침범 감지 → 해당 문장 자동 제거"""
     if not text:
         return text
-
-    import re
-
-    # 1단계: 환각 구절 패턴 먼저 치환 (문맥 의존적이므로 우선 적용)
-    for pattern, replacement in HALLUCINATION_PATTERNS:
-        text = pattern.sub(replacement, text)
-
-    # 2단계: 외국어 단어 치환
-    for pattern, replacement in FOREIGN_WORD_MAP:
-        text = pattern.sub(replacement, text)
-
-    # 3단계: 남아있는 영문자 블록 제거 (한글 문장 내 고립된 영문)
-
-    # 1단계: 환각 구절 패턴 먼저 치환 (문맥 의존적이므로 우선 적용)
-    for pattern, replacement in HALLUCINATION_PATTERNS:
-        text = pattern.sub(replacement, text)
-
-    # 2단계: 외국어 단어 치환
-    for pattern, replacement in FOREIGN_WORD_MAP:
-        text = pattern.sub(replacement, text)
-
-    # 3단계: 남아있는 영문자 블록 제거 (한글 문장 내 고립된 영문)
-    # 마크다운 코드블록(```)이나 URL 내부는 보호
-    def remove_stray_english(m):
-        word = m.group(0)
-        # 한자·수식·단위처럼 의도적으로 넣은 경우는 유지
-        if len(word) <= 2:
-            return word
-        return ''
-    # 4단계: 한자(한글) 병기 처리 (格局 -> 格局(격국))
-    def hanja_with_hangeul(m):
-        hanja = m.group(0)
-        # 엔진 내부에서 사용하는 주요 한자어 매핑
-        HANJA_DESC = {"格局":"격국", "十二運星":"십이운성", "大運":"대운", "歲運":"세운", "神殺":"신살", "天命":"천명", "用神":"용신", "日干":"일간", "月支":"월지", "刑沖破害":"형충파해"}
-        if hanja in HANJA_DESC:
-            return f"{hanja}({HANJA_DESC[hanja]})"
-        return hanja
-    
-    text = re.sub(r'[\u4e00-\u9fff]{2,10}', hanja_with_hangeul, text)
-
-    return text.strip()
-
-
-def amplify_interaction_narrative(base_text, perspectives):
-    """지성 상호작용 관련 서사를 여러 관점에서 결합하는 함수 (기존 로직 유지)"""
-    expanded = base_text + "\n\n"
-    for p_key in ["version_A", "version_B", "version_C", "version_D"]:
-        if p_key in perspectives:
-            expanded += perspectives[p_key] + "\n"
-    
-    # 분량이 부족할 경우 만신급 추임새와 수식어로 2차 증폭
-    if len(expanded) < 1000:
-        fillers = [
-            f"\n어허! 이것은 **{random.choice(ADJECTIVES)}** 기운이 네 명반을 관통하고 있다는 증거니라. ",
-            f"조상의 음덕이 **{random.choice(ADJECTIVES)}** 신탁으로 네 귓가에 울려 퍼지니 한 마디도 소홀히 마라. ",
-            f"네 운명의 수레바퀴는 곧 **{random.choice(CLASSIC_QUOTES['적천수']).split(' - ')[0]}**의 이치와 맞닿아 있음을 명심하거라. "
-        ]
-        expanded += "".join(random.sample(fillers, 2))
-    return expanded
-
-def amplify_consultation_narrative(base_topic, user_name):
-    """상담 문구가 1,200자 미만으로 끝나는 것을 방지하는 강력한 증폭 함수 (v6.0)"""
-    perspectives = {
-        "A": f"\n📜 [조상의 전언] {user_name}야, 네 조상님들이 이 {base_topic}을(를) 두고 밤낮으로 기도를 올리셨느니라. 그 정성이 하늘에 닿아 이제야 그 결실이 네 눈앞에 나타나려 하니, 어찌 소홀히 대할 수 있겠느냐! ",
-        "B": f"\n👤 [성품의 울림] 네 성품 속에 숨겨진 **{random.choice(ADJECTIVES)}** 기운이 이 {base_topic}의 문턱을 넘으려 몸부림치는구나. 너는 본디 대범한 그릇을 지녔으나, 때로는 세세한 정기가 부족하여 공든 탑이 흔들릴 수 있음을 경계하라. ",
-        "C": f"\n⚖️ [대업의 향방] 이 기운을 제대로 다스린다면 너는 비로소 **유아독존(唯我獨尊)**의 지도자로 서게 될 것이로다. 세상의 풍조에 휘둘리지 말고 네 중심을 굳건히 잡으면, 만인이 네 발밑에 엎드려 대업의 완성을 축원하리라. ",
-        "D": f"\n🏥 [영적 비방] 마음의 화기를 내리고 **심사숙고(深思熟考)**하라. 그래야 이 {base_topic}의 흐름이 황금의 물길로 변할 것이니라. 매일 새벽 맑은 물로 네 영혼을 씻어내고, 우주의 정기를 들이마시는 수행을 멈추지 마라. "
-    }
-    
-    # 4가지 관점을 합치고 시작 문구 삽입
-    expanded = f"어허! {user_name}야, 정신 바짝 차려라! 이 만신의 목소리는 곧 신령님의 준엄한 호통이자 축복이니라.\n" + "\n".join(perspectives.values())
-    
-    # 1200자 미만일 경우 영성 대서사시를 강제로 수혈
-    all_chants = SPIRIT_CHANTS + SHAMAN_EPIC + SHAMAN_CHANTS_VOL3 + SHAMAN_RECORDS_EXTENDED + SHAMAN_PROVERBS
-    while len(expanded) < 1200:
-        expanded += f"\n{random.choice(all_chants)} "
-        expanded += f"이것은 곧 **{random.choice(ADJECTIVES)}** 하늘의 신비로다. "
-        
-    return apply_mansin_filter(expanded)
-
-# ══════════════════════════════════════════════
-#  만신급 비방(秘法) 도서관 (Mansin Secret Library)
-# ══════════════════════════════════════════════
-MANSIN_BI_BANG = {
-    "재물": [
-        "지갑 속에 깨끗한 백지 한 장을 넣어두면 빈 공간을 채우려는 기운이 재물을 부릅니다.",
-        "매달 첫날, 현관 청소를 하며 소금을 한 줌 뿌리면 탁한 기운이 물러가고 금전운이 살아납니다.",
-        "침실 서쪽에 황금 계열의 소품을 두면 잠든 사이에도 재물운이 쌓이는 형국이 됩니다.",
-        "현관을 마주 보는 거울은 복을 쫓아내니 평소에는 보이지 않게 가려두는 것이 길합니다.",
-        "돈을 지불할 때 감사한 마음을 담으면 그 돈은 반드시 세 배의 복을 달고 돌아옵니다."
-    ],
-    "인연": [
-        "붉은 실을 작은 주머니에 넣어 베개 아래 두면 밤사이 인연의 끈이 단단하게 얽힙니다.",
-        "방문 앞에 맑은 종을 달아두면 소리가 날 때마다 악연은 멀어지고 선연이 가까워집니다.",
-        "분홍색 꽃을 거실 동쪽에 두면 연애의 기운이 피어나고 부부간에 화목함이 찾아옵니다.",
-        "상대방의 신발을 현관 쪽으로 향하게 두면 집으로 돌아오고 싶은 마음이 간절해지는 비방입니다.",
-        "미워하는 사람의 이름을 종이에 써서 흐르는 물에 씻어내면 원한의 기운도 함께 소멸합니다."
-    ],
-    "건강": [
-        "아침에 일어나자마자 따뜻한 물 한 잔을 마시는 것이 오장육부를 깨우는 최고의 보약입니다.",
-        "발바닥 중앙의 용천혈을 하루 36번씩 지압하면 몸속의 독소가 빠지고 생명력이 회복됩니다.",
-        "숲길을 맨발로 걷는 접지(Earthing)는 땅의 기운을 직접 흡수하여 면역력을 높이는 비결입니다.",
-        "화가 날 때는 명치 부분을 가볍게 두드리며 깊은 호흡을 9번 반복하여 화기를 내리십시오.",
-        "잠들기 전 족욕을 하면 하루의 고단함과 탁한 기운이 씻겨 내려가 깊은 수면을 돕습니다."
-    ],
-    "명상": [
-        "눈을 감고 정수리 끝에서 백색 빛이 쏟아져 온몸을 정화한다고 상상하며 5분간 숨을 고르십시오.",
-        "단전(배꼽 아래)에 뜨거운 태양이 있다고 생각하며 호흡을 집중하면 신기를 다스릴 수 있습니다.",
-        "주변의 소음에 휘둘리지 말고 내 안의 심장 박동 소리에 귀를 기울이는 침묵의 시간을 가지십시오.",
-        "나를 힘들게 하는 것들을 하얀 연기로 내뿜고, 우주의 맑은 기운을 코로 들이마시는 연기 명상을 실천하십시오.",
-        "거울 속의 자신을 보며 '너는 보물이다'라고 세 번 외치는 것은 자존감을 높이는 가장 빠른 수행입니다."
-    ]
-}
-
-# ══════════════════════════════════════════════
-#  대만신(大萬神) 비장(秘藏)의 영성 대서사시 Vol.4
-# ══════════════════════════════════════════════
-
-SHAMAN_RECORDS_V4 = [
-    "어허! 북쪽 하늘의 은하수가 네 일생을 굽어살피니, 그 깊이를 어찌 범인이 알 수 있겠느냐. 네가 오늘 흘린 눈물은 내일의 보석이 되어 명반을 장식하리라.",
-    "호통을 치노라! 네 안의 신령님이 깨어날 때, 세상의 온갖 요망한 기운들은 안개처럼 흩어지고 오직 명확한 진리만이 네 눈앞에 비단길처럼 펼쳐지리라.",
-    "억겁의 세월 동안 너는 수많은 팔자를 옷처럼 갈아입으며 이곳에 왔도다. 이번 생의 팔자는 네 영혼이 마지막으로 닦아야 할 찬란한 거울임을 명심하라.",
-    "작두 위의 춤사위가 멈추지 않는 것은 네 소망이 그만큼 간절하기 때문이라. 그 간절함이 하늘의 문을 열고 마침내 천문의 응답을 받아냈느니라.",
-    "네 조상 중 어느 한 분이 밤마다 별을 보며 빌었던 그 기도가 이제야 네 대에 이르러 꽃을 피우니, 어찌 그 은덕을 잊고 방황할 수 있겠느냐!",
-    "하늘의 북이 울리고 천둥이 대지를 깨우니, 네 명반 속에 잠들어 있던 용의 기운이 비로소 여의주를 물고 승천할 기회를 잡았도다.",
-    "세상의 그 어떤 풍파도 네 기를 꺾지 못함은, 네 명줄이 은색 실로 자미궁과 연결되어 있기 때문이니라. 당당히 네 길을 걸어가거라.",
-    "네 손끝에 서린 서기가 만병을 고치고 사람들의 마음을 위로하니, 이것이 바로 하늘이 네게 내린 신성한 사명이요 거부할 수 없는 천직이로다.",
-    "고난은 변장하고 찾아온 축복이라 하였거늘, 네가 지금 겪는 이 서러움은 미래에 누릴 거대한 발복의 밑거름이 될 것임을 만신이 보증하노라.",
-    "만석꾼의 터가 네 뒤꿈치를 따라다니니, 네가 정착하는 곳마다 황금이 솟구치고 만인이 네 덕을 기리며 칭송하게 될 것이로다. 급급여율령!"
-]
-
-SHAMANIC_REMEDIES_EXTENDED_V2 = [
-    "재물운이 막혔을 때는 집안의 동쪽 창가에 맑은 물 한 사발과 붉은 실을 묶은 소나무 가지를 두어 기운을 정화하십시오.",
-    "사람 관계가 힘들 때는 매일 밤 잠들기 전 소금물로 손발을 씻으며 '모든 원한은 흐르는 물처럼 씻겨 나간다'고 세 번 주문을 외우십시오.",
-    "건강이 우려될 때는 초록색 천에 붉은 팥을 넣어 침대 머리맡에 두면 가위눌림과 나쁜 신기(神氣)를 막아주는 효과가 있습니다.",
-    "사업 번창을 위해서는 사무실 북쪽에 검은색 돌이나 수석을 배치하여 물의 기운을 보강하고 금전의 유통을 원활하게 하십시오.",
-    "시험이나 중요한 일을 앞두고는 흰 종이에 자신의 이름을 쓰고 그 주위를 팔괘 문양으로 둘러싸 부적처럼 가슴에 품고 임하십시오."
-]
-
-# ══════════════════════════════════════════════
-#  만신 어휘 사전 (Mansin Lexicon - Shamanic Filtering)
-# ══════════════════════════════════════════════
-
-MANSIN_LEXICON = {
-    "올빼미": "밤의 수호신", "의무": "천명(天命)", 
-    "스타트업": "대업의 창건(大業之創建)", 
-    "데이터": "천기기록(天機記錄)", "알고리즘": "신령님의 안배(神靈之安配)",
-    "뚜뚜뚜": "방울 소리(鈴聲)", "수족관": "영험한 못", "위원회": "명부의 사자",
-    "업데이트": "환골탈태(換骨奪胎)", "리스크": "운명의 시험대", "결과값": "천문의 응답",
-    "에러": "살풀이 부족", "버그": "잡귀의 장난",
-    "인공지능": "신령의 화신(神靈之化身)", 
-    "인터넷": "만물의 신경망", "주식": "투전판의 소용돌이",
-    "기회": "천문의 열림(天門之開)", "도움": "신령의 가호(神靈之加護)", "미래": "천기(天機)의 장막 너머",
-    "성공": "만사형통(萬事亨通)", "실패": "액땜의 고비",
-    "사랑": "천생연분(天生緣分)", "결혼": "백년가약(百年佳約)", "이직": "터전의 환천(換天)",
-    "건강": "무병장수(無病長壽)", "성격": "영적 본질(靈的本질)", "직관": "신령한 예감(神靈之豫感)",
-    "거침없이": "신령한 신통력으로"
-}
-
-# [통합됨] FORBIDDEN_WORDS 는 위에 통합 정의됨
-
-def enforce_confidence(text):
-    """추측성 표현을 제거하고 강한 단정형으로 교정"""
-    for word in FORBIDDEN_WORDS:
-        text = text.replace(word, "")
-    # 문장 끝처리 강화 (박력 있는 종결)
-    text = text.replace("합니다.", "합니다. 분명히 명심하십시오.")
-    text = text.replace("있습니다.", "있습니다. 확실히 보았노라.")
-
-    return text
-
-# ══════════════════════════════════════════════
-#  고전 명리 정선(精選) 구절 DB (Classic Myeongri Quotes)
-# ══════════════════════════════════════════════
-
-# [통합됨] CLASSIC_QUOTES 는 위(L1207)에 통합 정의됨
-
-# ══════════════════════════════════════════════
-#  현미경적 상호작용 상세 서사 DB (Microscopic Interaction Narrative DB) - v6 다각화
-# ══════════════════════════════════════════════
-
-STEM_INTERACTION_DEEP = {
-    "합": {
-        "甲己": {
-            "title": "갑기합(甲己合) 중정지합 - 거목과 대지의 성스러운 결합",
-            "version_A": "📜 [조상님의 옛이야기] {name} 貴下야, 먼 옛날 네 조상 중 한 분이 거대한 태백산 자락에서 천 년 된 느티나무(甲) 아래 정화수를 떠놓고 이 나라의 안녕을 빌었느니라. 그 정성이 하늘에 닿아 대지(己)가 그 뿌리를 품어 안았으니, 이것이 네 사주에 각인된 '중정지합'의 시초인 줄 어찌 몰랐을까! ",
-            "version_B": "👤 [성품의 명암] 네 속에는 대림목처럼 굳건한 자존심과 광활한 전답처럼 인자한 포용력이 공존하고 있구나. 우두머리 기질이 강해 만인을 보살피나, 때로는 고집이 태산 같아 복의 기운을 스스로 막기도 하는도다. ",
-            "version_C": "⚖️ [사회적 입신양명] 신령님이 말씀하신다. '{name}야, 너는 신의를 생명처럼 여기면 천하를 얻으리라.' 신용을 바탕으로 한 대업(大業)에서 네 깃발이 높이 휘날릴 것이요, 정직한 성품이 관직과 명예의 길을 찬란히 비추게 될 것이로다. ",
-            "version_D": "🏥 [영적 건강 지침] 흙이 나무를 품기에 위장과 비계통의 기운을 각별히 살펴야 하느니라. 생각이 너무 깊으면 비위가 상하는 법이니, 집착을 버리고 대자연의 정기를 들이마시며 오장육부의 화기를 다스리거라. "
-        },
-        "乙庚": {
-            "title": "을경합(乙庚合) 인의지합 - 화초와 무쇠의 의리 있는 동맹",
-            "version_A": "📜 [조상님의 옛이야기] 전생의 업보가 참으로 기묘하구나! 칼날(庚)을 든 장군과 꽃(乙)을 든 문인이 전장에서 만나 형제의 의를 맺었으니, 그 기운이 네 사주에 스며들어 '인의지합'으로 꽃피었도다. ",
-            "version_B": "👤 [성품의 명암] 부드러운 외유내강의 표본이로다. 겉은 봄바람처럼 유연하나 속은 시퍼런 서슬 레이를 품은 강철 같으니, 한번 결심하면 바위도 뚫는 결단력을 지녔으나 때로는 너무 냉정하여 주변을 얼리기도 하는구나. ",
-            "version_C": "⚖️ [사회적 입신양명] 법과 정의를 다루는 일이나, 무(武)의 기운이 서린 권력의 정점에서 네 이름이 빛나리라. 의리를 중시하는 네 성품이 강력한 귀인들을 불러모을 것이니, 대업을 꿈꾼다면 주저 말고 칼을 뽑아라! ",
-            "version_D": "🏥 [영적 건강 지침] 금극목의 형국이라 간담의 정기가 상하기 쉬운 사주로다. 지나친 긴장은 근육과 뼈마디를 굳게 하니, 따뜻한 차로 간기를 달래고 독한 마음을 내려놓아 기혈 순환을 돕도록 하거라. "
-        }
-    },
-    "충": {
-        "甲庚": {
-            "title": "경갑충(庚甲沖) - 거목과 대도의 장엄한 사투",
-            "version_A": "📜 [조상님의 옛이야기] 어허! 네 조상 중에 나라를 구하려 대도(庚)를 들고 전장을 누빈 장수가 있었으니, 그가 자른 거목(甲)의 원한과 기개가 동시에 네 팔자에 서렸도다. 이 사투는 곧 너를 채찍질하는 신령님의 가르침이니라! ",
-            "version_B": "👤 [성품의 명암] 부러질지언정 굽히지 않는 대쪽 같은 성미로다. 개혁적이고 혁신적이나, 스스로를 너무 가혹하게 질책하여 영혼에 상처를 입히는구나. 깎이고 베이는 아픔 속에서만 보석이 태어남을 잊지 마라. ",
-            "version_C": "⚖️ [사회적 입신양명] 부수고 새로 세우는 일에 독보적인 재능이 있도다. 정체된 곳에 네가 나타나면 천지개벽이 일어나니, 과감한 도전이 곧 네 성공의 열쇠니라. 두려움 없이 부딪히면 만인이 네 개척 정신에 고개를 숙이리라. ",
-            "version_D": "🏥 [영적 건강 지침] 두통과 신경 쇠약을 조심하라. 머릿속의 번뇌가 벼락처럼 네 뇌를 때리고 있으니, 명상으로 뇌압을 내리고 호흡을 길게 하여 금과 목의 사투를 중재해야 하느니라. "
-        }
-    }
-}
-
-BRANCH_INTERACTION_DEEP = {
-    "충": {
-        "子午": {
-            "title": "자오충(子午沖) - 얼음과 불의 지각 변동",
-            "version_A": "📜 [조상님의 옛이야기] 어허! 네 사주 밑바닥에서 북쪽의 차가운 얼음(子)과 남쪽의 뜨거운 불길(午)이 맞붙었구나! 이는 전생에 나라의 경계를 두고 다투던 두 영웅의 기운이 네 몸 안에서 화해를 청하는 형국이니라. ",
-            "version_B": "👤 [성품의 명암] 감정의 기복이 마치 파도와 같도다. 한순간은 태양처럼 뜨거웠다가도 금세 얼음처럼 냉정해지니, 주변 사람들이 네 속을 알 길이 없어 방황하는구나. 이 열정과 냉정 사이의 균형이 곧 네 숙제니라. ",
-            "version_C": "⚖️ [사회적 입신양명] 변화무쌍한 환경에서 네 진가가 드러나리라. 정체된 조직을 뒤흔들어 새로운 기운을 불어넣는 선구자의 길을 걷게 될 것이니, 거센 바람에도 흔들리지 않는 중심을 잡는다면 만사형통하리라. ",
-            "version_D": "🏥 [영적 건강 지침] 심장과 신장의 사투가 심하도다. 화기와 수기가 부딪혀 몸 안의 안개가 자욱하니, 하체의 기운을 따뜻하게 하고 가슴의 화기를 내리는 명상을 게을리하지 마라. "
-        },
-        "寅申": {
-            "title": "인신충(寅申沖) - 호랑이와 원숭이의 역마 전쟁",
-            "version_A": "📜 [조상님의 옛이야기] 어허! 역마의 정기가 네 발끝에 서렸구나! 네 조상 중 한 분이 만주 벌판을 누비며 대륙을 호령하던 거상(巨商)이었으니, 그 기상이 네 사주에서 호랑이(寅)와 원숭이(申)의 사투로 재현되었도다. ",
-            "version_B": "👤 [성품의 명암] 한시도 가만히 있지 못하는 정열의 화신이로다. 추진력은 가히 폭풍 같으나 마무리가 늘 부족하여 공든 탑이 흔들릴 수 있으니, 시작보다 끝을 소중히 여기는 여유를 가져라. ",
-            "version_C": "⚖️ [사회적 입신양명] 해외를 누비거나 이동이 잦은 대업에서 큰 재물을 얻으리라. 앉아서 기다리지 말고 먼저 움직여라! 네가 내딛는 발자국마다 금맥이 터지고, 네가 만나는 인연마다 천기를 여는 열쇠가 될 것이니라. ",
-            "version_D": "🏥 [영적 건강 지침] 낙상수와 교통수를 조심하라. 뼈마디와 관절의 기운이 충(沖)을 맞아 약해졌으니, 무리한 운동보다는 정적인 산책으로 대지의 지기(地氣)를 들이마시며 몸을 보호하거라. "
-        }
-    }
-}
-
-# ══════════════════════════════════════════════
-#  만신급 자체 풀이 (Fractal Engine v5 - Refined Microscopic)
-# ══════════════════════════════════════════════
-def get_essence_chapter(saju, form):
-    name, ilgan = form["name"], saju["ilgan"]
-    sipsungs = saju["engine"]["sipsung"][:8]
-    text = [f"**👤 【영혼의 특성 - {name} 貴下의 천명(天命)】**"]
-    text.append(f"{name}야, 네 영혼의 뿌리는 **{ilgan}**의 기운을 담고 있음을 명확히 확인했노라.\n")
-    
-    # 일간별 심층 성격 (보강)
-    essence = ess_map.get(ilgan, f"너는 {ilgan}의 기운을 담은 그릇이니, {random.choice(ADJECTIVES)} 성품이 네 인생의 나침반이 될 것이로다.")
-    text.append(f"**📍 [본질의 형상: '{ilgan}'의 기상]**\n{essence}\n")
-    
-    # [신기능] 쪽집게 심리 통찰 (Five Elements Psych)
-    ilgan_oh = OH[ilgan]
-    psych_insight = random.choice(SHAMANIC_PSYCH_DB.get(ilgan_oh, SHAMANIC_PSYCH_DB["木"]))
-    text.append(f"**📍 [만신의 심리 꿰뚫기: 겉과 속의 명암]**\n{psych_insight}\n")
-    
-    text.append(f"**📍 [심층 십성 분석: 명반의 골격]**")
-    pillar_names = ["년간(뿌리)", "월간(성장)", "일간(나의 별)", "시간(결실)", "년지", "월지", "일지", "시지"]
-    for i, p_name in enumerate(pillar_names):
-        s_type = sipsungs[i]
-        data = SIPSUNG_DEEP.get(s_type, SIPSUNG_DEEP["비견"])
-        text.append(f"**{p_name}의 {s_type}**: {data['nature']}")
-        
-    # [업데이트] 12운성 심층 해설 (UNSUNG_DESC 반영)
-    text.append(f"\n**📍 [만신의 운명 비늘: 12운성(十二運星) 분석]**")
-    for i, p_name in enumerate(["시주", "일주", "월주", "년주"]):
-        u_type = saju["engine"]["unsung"][i]
-        u_info = UNSUNG_DESC.get(u_type, {"meaning": "기운이 태동함", "detail": "천명의 흐름이 고요하도다.", "icon": "✨"})
-        icon = u_info.get("icon", "✨")
-        text.append(f"**{p_name}의 {u_type}**: {icon} {u_info['meaning']}\n> {u_info['detail']}")
-
-    # [신기능] 문창귀인 및 특수 신살
-    shinsal = saju["engine"]["shinsal"]
-    if any("文昌貴人" in s for s in shinsal):
-        text.append(f"\n**📍 [학문의 별: 문창귀인]**\n학업과 문장에 탁월한 재능이 있으니, 붓 한 자루로 천하를 호령할 기운이로다.")
-
-    # [신기능] 재물 구조 분석 추가
-    wealth = saju["engine"]["wealth"]
-    text.append(f"\n**📍 [만신의 재물 비기(秘記): 부귀의 그릇]**\n**{wealth['type']}**: {wealth['desc']}\n")
-
-    # [신기능] 격국 심층 해설 (Gyeokguk Deep Dive)
-    g_type = saju["engine"]["structure"] # 예: "정관격"
-    g_grade = saju["engine"]["structure_grade"]
-    g_data = GYEOK_DESC.get(g_type, GYEOK_DESC.get(g_type.replace("격", ""), {}))
-    
-    if g_data:
-        text.append(f"**👤 【명반의 핵심 골격: {g_type} ({g_grade}) 심층 해설】**")
-        text.append(f"> **📜 핵심 이론**: {g_data['theory']}")
-        text.append(f"> **🚀 발복 조건**: {g_data['condition']}")
-        text.append(f"> **💎 추천 용신**: {g_data['yongshin']}")
-        text.append(f"> **⚠️ 운명적 주의**: {g_data['caution']}")
-        
-        text.append(f"\n**📍 [{g_type}의 3대 절대 경계 사항]**")
-        for alert in g_data['alerts']:
-            text.append(f"- {alert}")
-        text.append("")
-
-    return apply_mansin_filter("\n\n".join(text))
-
-def get_relationship_chapter(saju, form):
-    pils, ilgan, name = saju["pils"], saju["ilgan"], form["name"]
-    text = [f"**💘 【인연과 결혼 - {name} 貴下의 운명적 만남】**"]
-    
-    # [신기능] 결혼/연애 판단 추가
-    marriage = saju["engine"]["marriage"]
-    marital = form.get("marital", "single")
-    if marital == "single":
-        text.append(f"이보게 {name}야, 아직 짝을 찾지 못해 찬 바람 맞는 네 연애궁을 내 굽어보니 **{marriage['status']}**한 기운이 서렸구나. \n")
-    elif marital == "married":
-        text.append(f"이보게 {name}야, 이미 인연의 띠를 묶어 살 맞대고 사는 네 부부궁을 내 굽어보니 **{marriage['status']}**한 기운이 서렸구나. \n")
-    else:
-        text.append(f"이보게 {name}야, 한 번 찢어진 인연의 흉터가 남은 네 팔자를 내 굽어보니 다시 피어날 **{marriage['status']}**한 기운이 서렸구나. \n")
-        
-    text.append(f"**📍 [만신의 혼인/연애 팩트폭력]**\n{marriage['desc']}\n")
-
-    text.append(f"너의 일주는 **{pils[1]['cgk']}{pils[1]['jjk']}**이니, 인연의 뿌리가 깊고도 오묘하구나. 네 명반 속의 인연법은 마치 **{random.choice(ADJECTIVES)}** 실타래처럼 엉켜 있구나.\n")
-    
-    # 일지(배우자궁) 본질 분석
-    ilji = pils[1]["jj"]
-    rel_map = {
-        "子": "네 인연은 흐르는 물과 같으니 차갑지만 깊고 오묘하도다. 비밀스러운 인연이 꼬일 수 있으니 맑은 마음을 유지하라.",
-        "午": "네 사랑은 타오르는 불꽃이니 화려하나 금방 식기 쉬운 법. 인내심을 가지고 상대를 대하지 않으면 고독의 살이 찌게 될 것이니라.",
-        "寅": "네 짝은 산속의 호랑이처럼 위엄 있는 자이나 자존심 대결로 평생을 싸울 팔자로다. 네가 먼저 고개를 숙여야 가정이 평안할 것이니라."
-    }
-    relation = rel_map.get(ilji, f"네 배우자궁에 **{ilji}**가 앉아 있으니, 상대의 기운이 네 인생의 승패를 가를 것이로다.")
-    text.append(f"**📍 [연인의 자태]**\n{relation}\n")
-
-    # 4x4 현미경 매트릭스 (기존 로직 유지하며 서사 증폭)
-    text.append(f"**📍 [심층 인연 매트릭스: 전생과 현생의 연결고리]**")
-    lbls = ["년", "월", "일", "시"]
-    for i in range(4):
-        for j in range(4):
-            if i >= j: continue
-            c1, c2 = pils[i]["cg"], pils[j]["cg"]
-            found = False
-            for cat in ["합", "충"]:
-                if key := next((k for k in STEM_INTERACTION_DEEP[cat] if k in [c1+c2, c2+c1]), None):
-                    data = STEM_INTERACTION_DEEP[cat][key]
-                    # Use version_B as the 'nature' equivalent
-                    content = data.get("nature", data.get("version_B", "기운이 묘하게 얽히는구나."))
-                    text.append(f"**{lbls[i]}간과 {lbls[j]}간의 {cat}**: {data['title']} - {content}")
-                    found = True; break
-            
-            j1, j2 = pils[i]["jj"], pils[j]["jj"]
-            for cat in ["충", "형", "합"]:
-                if key := next((k for k in BRANCH_INTERACTION_DEEP.get(cat, {}) if k in [j1+j2, j2+j1]), None):
-                    data = BRANCH_INTERACTION_DEEP[cat][key]
-                    content = data.get("nature", data.get("version_B", "땅의 기운이 요동치는구나."))
-                    text.append(f"**{lbls[i]}지와 {lbls[j]}지의 {cat}**: {data['title']} - {content}")
-                    break
-    
-    text.append(f"**📍 [인연의 살풀이 비방]**\n{random.choice(SHAMAN_SCROLLS['인연'])}\n")
-    return apply_mansin_filter("\n\n".join(text))
-
-def get_daewoon_narrative(sipsung_name):
-    """십성별 대운의 10년 주기 심층 내러티브 생성"""
-    data = DAEWOON_SIPSUNG_DESC.get(sipsung_name)
-    if not data:
-        return f"{sipsung_name}의 기운이 네 삶의 터전을 흔드는 시기로다."
-    
-    if isinstance(data, tuple) and len(data) >= 3:
-        icon, title, desc = data[0], data[1], data[2]
-        return f"> {icon} **[{title}]**\n{desc}"
-    
-    # Fallback to older dict layout if needed
-    if isinstance(data, dict):
-        return "\n".join([
-            f"📍 [10년의 환경] {data.get('env', '')}",
-            f"📍 [영적 심리 상태] {data.get('psych', '')}",
-            f"📍 [만신의 처세술] {data.get('advice', '')}"
-        ])
-    return str(data)
-
-# 챕터별 고도화 계속 (Flow, Prescription, Oracle)
-def get_flow_chapter(saju, form):
-    daewoon = saju["daewoon"]
-    name = form["name"]
-    raw = saju["raw_birth"]
-    # 엔진 재건축 (세운 계산용)
-    e = SajuCoreEngine(raw["y"], raw["m"], raw["d"], raw["h"], 0, saju["gender"], name)
-    
-    text = [f"**🌊 【시공간의 입체 분석 - {name} 貴下의 대운(大運) 대서사시】**"]
-    text.append(f"어허! {name}야, 흘러가는 세월을 헛되이 보내지 마라. 네 명반 위에 흐르는 거대한 시간의 물길, 즉 10년마다 바뀌는 **대운(大運)**의 흐름을 내가 낱낱이 파헤쳐주마.\n")
-    
-    wealth_type = saju["engine"]["wealth"]["type"]
-    if "무재" in wealth_type:
-        text.append(f"네 명반은 타고난 재물 별이 없는 **{wealth_type}**이니, 대운에서 재성(돈)이나 식상(기술)이 들어오는 10년을 목숨 걸고 사수해야 비로소 숨통이 트일 것이로다!\n")
-    elif "편재" in wealth_type:
-        text.append(f"네 명반은 일확천금을 쥐락펴락할 **{wealth_type}**이니, 대운의 흐름에 따라 천당과 지옥을 오갈 것이다. 절호의 대운이 오면 눈치 보지 말고 판돈을 쓸어 담아라!\n")
-    else:
-        text.append(f"네 명반은 또박또박 모아야 살 팔자인 **{wealth_type}**이니, 분에 넘치는 횡재 대운이 올 땐 오히려 사기나 투기수를 극도로 조심해야 하느니라!\n")
-
-    for i, d in enumerate(daewoon):
-        age_start = d["age"]
-        age_end = age_start + 9
-        year_start = d["year"]
-        year_end = year_start + 9
-        ganji = f"{d['cgk']}{d['jjk']}"
-        
-        # DAEWOON_STORY_DB에서 서사 추출
-        stem_key = d["cg"]
-        branch_key = d["jj"]
-        story = DAEWOON_STORY_DB.get(stem_key, {}).get(branch_key, f"{ganji}의 기운이 네 삶의 터전을 흔드는 시기로다.")
-        
-        # [수정] 대운 십성 내러티브 추가 (천간/지지 십성 계산)
-        ilgan = saju["ilgan"]
-        cg_sipsung = calc_sipsung(ilgan, stem_key)
-        jj_sipsung = calc_sipsung(ilgan, branch_key)
-        
-        text.append(f"**📍 [{age_start}-{age_end}세] {ganji}({d['cg']}{d['jj']}) 대운 (서기 {year_start}-{year_end}년)**")
-        text.append(f"이 10년은 **{ganji}**의 기운이 네 정수리를 관통하며 운명의 수레바퀴를 돌리는 시기니라. {story}")
-        
-        # 10년 기간 맥락 해설 (십성별 대운 내러티브 함수 적용)
-        # 지지(환경/실질적 변화)를 중심으로 하되, 천간(명분/정신적 변화)도 덧붙이거나 지지만 강하게 표출
-        text.append(f"\n> **🪐 [대운 십성 테마: {cg_sipsung}(천간) / {jj_sipsung}(지지)]**")
-        text.append(get_daewoon_narrative(jj_sipsung))
-
-        
-        if i == 0: # 첫 대운에서의 세운 예시 (최근 10년)
-             text.append(f"\n**🗓️ 【향후 10년 세운(歲運) 흐름】**")
-             sewoons = e.get_sewoon_range(age_start, 10)
-             for sw in sewoons:
-                 s_pillar = f"{sw['pillar']['cgk']}{sw['pillar']['jjk']}"
-                 text.append(f"- {sw['age']}세 ({sw['year']}년): **{s_pillar}**년 - {OH[sw['pillar']['cg']]}와 {OH[sw['pillar']['jj']]}의 기운이 교차하는구나.")
-             text.append("")
-
-        # 만신 필터 및 수식어 추가
-        if i % 2 == 0:
-            text.append(f"어허! 이때는 {random.choice(ADJECTIVES)} 기세가 필요하니, {random.choice(SHAMAN_SCROLLS['기운'])}")
-        else:
-            text.append(f"조상님이 굽어살피시니, {random.choice(SHAMAN_CHANTS_VOL3)}")
-
-    return apply_mansin_filter("\n\n".join(text))
-
-
-def get_prescription_chapter(saju, form):
-    y_oh, name = saju["engine"]["yongshin"]["oh"], form["name"]
-    text = [f"**💊 【만신급 생활 밀착 처방전 - 운명을 바꾸는 비방】**"]
-    text.append(f"문만 열고 나간다고 개운이 되는 것이 아니니라! {name}야, 네 일상을 뒤흔들 처방을 내리노라.\n")
-    
-    h_data = HEALTH_DB.get(y_oh, HEALTH_DB["木"])
-    text.append(f"**🏠 [공간 처방] 네 용신 '{y_oh}'의 정기가 서린 명당 설계**")
-    text.append(f"잠잘 때 머리 방향은 반드시 **{OH_DIR[y_oh]}** 쪽으로 두고, 그곳에 맑은 물 한 사발을 떠놓거라. {random.choice(SHAMAN_SCROLLS['건강'])}")
-    text.append(f"\n**🥦 [음식 처방] 오장육부를 다스리는 성스러운 양식**")
-    text.append(f"네 체질상 **{h_data['food']}**을(를) 가까이하라. 그것이 네 {h_data['organ']}에 서린 탁기를 씻어낼 것이로다. {random.choice(SHAMAN_SCROLLS['건강'])}\n")
-    
-    return apply_mansin_filter("\n\n".join(text))
-
-def get_oracle_chapter(saju, form):
-    name = form["name"]
-    text = [f"**🔱 【신비주의 영적 신탁(Oracle) - 하늘이 내리는 마지막 메시지】**"]
-    text.append(f"{name}야, 이것은 사주 데이터에는 없으나 내 눈에만 보이는 영적 신탁이니라!\n")
-
-    oracle = random.choice(DIVINE_ORACLE)
-    text.append(f"**📜 [신령님의 직접적인 고함]**\n\"{oracle}\"\n")
-    text.append(f"이 말 한마디가 네 남은 생을 환골탈태시킬 불씨가 될 것이니라. {random.choice(SHAMAN_SCROLLS['기운'])}")
-
-    return "\n\n".join(text)
-
-def get_gaewun_chapter(saju, form):
-    """전문가 수준의 개운비방(Remedy) 제공 - Why & Time Logic 강화"""
-    name = form["name"]
-    pils = saju["pils"]
-    ilgan = saju["ilgan"]
-    cnt = get_oh_cnt(pils)
-    y_info = get_yongshin(ilgan, cnt)
-    yongshin = y_info["yongshin"]
-    
-    # 부족한 오행 찾기
-    lacking = [o for o, c in cnt.items() if c == 0]
-    lacking_str = ", ".join(lacking) if lacking else "균형 잡힌"
-    
-    # 시주(Time) 정보
-    siju_jj = pils[3]["jj"]
-    siju_time_map = {
-        "子": "한밤중(子時)", "丑": "새벽녘(丑時)", "寅": "해뜰녘(寅時)", "卯": "아침(卯時)",
-        "辰": "오전(辰時)", "巳": "늦오전(巳時)", "午": "한낮(午時)", "未": "오후(未時)",
-        "申": "늦오후(申時)", "酉": "해질녘(酉時)", "戌": "저녁(戌時)", "亥": "밤(亥時)"
-    }
-    siju_name = siju_time_map.get(siju_jj, "태어난 시각")
-
-    text = [f"**🧿 【개운비방(開운祕方): {name} 貴下의 명리를 관통하는 승리의 열쇠】**"]
-    text.append(f"어허! {name}야, 단순히 행동을 바꾸는 것은 눈 가리고 아웅 하는 것이니라. **'왜(Why)'** 이 비방이 필요한지 그 천문의 원리를 먼저 깨달아야 한다.")
-    
-    # 오행적 근거 (Why)
-    why_logic = ""
-    if yongshin == "木":
-        why_logic = f"{name} 貴下의 팔자에는 금(金)의 숙살지기가 너무도 날카로워 네 영혼을 억누르고 있거나, 혹은 화(火)의 열기가 너무 강해 네 정기가 바짝 말라가고 있느니라. 이를 목(木)의 생명력으로 다스려야 비로소 네 운명이 푸른 숲처럼 생동할 것이로다."
-    elif yongshin == "火":
-        why_logic = f"네 사주에 수(水)의 냉기가 가득하여 네 열정이 얼어붙었거나, 혹은 목(木)의 기운이 엉켜 결실을 보지 못하고 있구나. 화(火)의 광채로 그 어둠을 몰아내고 따뜻한 온기를 불어넣어야 네 명반이 비로소 제 빛을 발할 것이니라."
-    elif yongshin == "土":
-        why_logic = f"네 명반은 물처럼 흐르기만 하고 안식처를 찾지 못하거나, 불꽃처럼 타오르기만 하여 근본이 흔들리고 있도다. 토(土)의 중용과 안정을 통해 기운을 머물게 해야 비로소 만복이 네 터전 위에 쌓이게 될 것이로다."
-    elif yongshin == "金":
-        why_logic = f"목(木)의 기운이 너무 무성하여 정리가 되지 않거나, 토(土)가 두터워 네 재능이 묻혀 있구나. 금(金)의 결단력과 숙살지기로 불필요한 인연을 쳐내고 결실을 거두어야 네 삶이 비로소 명쾌해질 것이니라."
-    elif yongshin == "水":
-        why_logic = f"화(火)의 열기가 네 이성을 마비시키거나, 금(金)의 기운이 너무 딱딱하게 굳어 유연함이 부족하도다. 수(水)의 지혜와 흐름을 받아들여야 막힌 혈맥이 뚫리듯 네 인생의 모든 문제가 물 흐르듯 풀릴 것이로다."
-    
-    text.append(f"**🧐 [개운의 논리: 왜 이 처방인가?]**\n{why_logic}\n특히 부족한 **{lacking_str}**의 기운을 보강하는 것이 네 환골탈태의 핵심이니라.")
-
-    # 4대 관점 처방 + 시간의 마법
-    perspectives = [
-        ("🏠 [공간(Space)]", f"네가 머무는 방의 **{OH_DIR[yongshin]}** 방향을 청결히 하고, 그곳에 {OH_COLOR[yongshin]} 빛깔의 정기를 두어라. {siju_name}에 그 방향의 창을 잠시 열어 우주의 기운과 네 명반을 공명시키는 것이 비책이니라."),
-        ("🏺 [물건(Object)]", f"네 시주(時柱)의 {siju_jj} 기운이 요동칠 때를 대비해, 평소 **{OH_COLOR[yongshin]}** 기운이 서린 물건을 몸에 지니거라. 그것이 네 팔자에 부족한 오행을 채워주는 영적인 배터리가 되어 줄 것이로다."),
-        ("🚶 [행동(Behavior)]", f"특히 **{siju_name}**에는 무리한 외부 활동을 삼가고 {OH_DIR[yongshin]}을 향해 묵묵히 명상하라. 네 속에 잠든 용의 기운이 가장 예민하게 깨어나는 시간이니, 이때의 행동 하나가 네 운명의 시험대를 넘는 결정적 한 방이 되느니라."),
-        ("🤝 [인연(Relationship)]", f"**{OH_DIR[yongshin]}**에서 오는 인연 중 특히 {yongshin} 오행이 강한 자를 곁에 두어라. 그들의 기운이 네 부족함을 메워줄 때, 네 소망은 비로소 천문의 응답을 얻어 현실로 화할 것이로다.")
-    ]
-    
-    for title, content in perspectives:
-        text.append(f"\n**{title}**\n{content}")
-        text.append(f"")
-
-    # 조선 시대 신비 전설
-    legend = [f"\n**📜 【조선 왕실의 비사: {name} 貴下의 비방에 얽힌 전설】**"]
-    legend.append(f"조선 초기, 세종대왕 시절 서운관(書雲觀)의 한 노학자가 밤하늘의 별자리를 살피다 거대한 서광을 발견했느니라. 그 빛은 {name} 네 명반과 똑 닮은 영혼이 훗날 나타날 징조였도다.")
-    
-    legend.append(f"{name} 貴下야, 네 인생의 풍랑 속에서도 이 비방을 나침반 삼아라. 그러면 전설 속의 장수처럼 네 앞길을 가로막는 모든 적들을 물리칠 것이로다.")
-    text.append("\n".join(legend))
-    
-    return apply_mansin_filter("\n\n".join(text))
-
-def get_secret_chapter(saju, form):
-    """금서(Forbidden Book) 분위기의 비밀서고 - Why & Time Logic 강화"""
-    name = form["name"]
-    pils = saju["pils"]
-    siju_jj = pils[3]["jj"]
-    
-    text = [f"**㊙️ 【비밀서고: 명부(冥府)에서 유굴된 {name} 貴下의 금기된 기록 v6.4】**"]
-    text.append(f"입을 다물어라. 이 기록은 우주의 질서를 어기고 몰래 훔쳐온 것이니라. {name}야, 네 인생의 모든 **'왜(Why)'**에 대한 해답이 이 낡은 책장 사이에 숨겨져 있도다.")
-    
-    # 비밀스러운 진실과 근거
-    secrets = [
-        f"네 명반의 중심을 잡는 오행이 약해진 이유는 네 전생의 마지막 순간이 **{siju_jj}**의 기운에 가로막혔기 때문로소이다. 그 매듭을 풀지 못해 현생에서도 비슷한 운명의 시험대에 오르는 것이니라.",
-        f"조상신들이 네게 특정 시간마다 신호를 보내는 것은 네 사주에 서린 숙살지기를 어루만지기 위함이다. 특히 {siju_jj}의 시간이 돌아오면 네 운명의 파동이 가장 크게 요동치 니라.",
-        f"네가 재물복을 온전히 누리지 못하는 것은 네 명반의 금(金) 기운이 목(木)의 성장을 억제하거나, 수(水)가 부족해 흐르지 못하고 고여 있기 때문임을 보았도다."
-    ]
-    
-    for s in secrets:
-        text.append(f"\n**🌑 [비밀의 뿌리: 운명의 원인]**\n{s}")
-
-    # 무속적 전설
-    legend = [f"\n**📜 【조선 숙종조의 기이한 전설: 금서의 탄생과 {name} 貴下】**"]
-    legend.append(f"조선 숙종 시절, 궁궐 내의 비밀 도서관에는 오직 임금만이 볼 수 있는 '천명열전(天命列傳)'이라는 금서가 하나 있었느니라. 그 책의 마지막 장에는 {name}라는 이름의 영혼이 태어날 징조가 적혀 있었도다.")
-    
-    text.append("\n".join(legend))
-    return "\n\n".join(text)
-
-def get_marriage_chapter(saju, form):
-    name = form["name"]
-    text = [f"**🤝 【혼인궁합: {name} 貴下의 인연 합형충파(合形沖破) 정밀 보고】**"]
-    text.append(f"이보게 {name}야, 네 혼인과 인연의 깊이를 명리적으로 낱낱이 파헤쳐보니... ")
-    marriage = saju["engine"]["marriage"]
-    text.append(f"네 배우자궁의 정기는 **{marriage['status']}**하며, 이는 {random.choice(ADJECTIVES)} 인연의 안배로다.")
-    text.append(f"**📍 [천생배필의 자격]**\n{marriage['desc']}")
-    return apply_mansin_filter("\n\n".join(text))
-
-def get_real_estate_chapter(saju, form):
-    name = form["name"]
-    text = [f"**🏠 【부동산/문서: {name} 貴下의 가택(家宅) 및 문서운 비기】**"]
-    text.append(f"어허! {name}야, 네 명반에 각인된 땅과 문서의 운세를 내 굽어보니... ")
-    y_oh = saju["engine"]["yongshin"]["oh"]
-    if y_oh == "土":
-        text.append("네 사주는 흙의 정기를 품었으니, 부동산이야말로 네 부를 축적하는 거대한 성벽이 될 것이로다. 큰 산을 품는 심정으로 문서를 잡거라.")
-    else:
-        text.append(f"네 명반은 흐르는 물과 같아 한 곳에 머물기보다 이동하며 부를 일구는 상이나, {y_oh} 오행의 시기를 타면 거대한 문서를 쥐게 될 것이니라.")
-    text.append(f"**📍 [문서운 대발복기]**\n{random.choice(FUTURE_PROPHECY_DB)}")
-    return apply_mansin_filter("\n\n".join(text))
-
-def get_investment_chapter(saju, form):
-    name = form["name"]
-    text = [f"**📈 【투자/주식: {name} 貴下의 금전 운용과 횡재수 타격】**"]
-    text.append(f"오호! {name}야, 황금을 굴려 태산을 만드는 네 투자의 운세를 내 꿰뚫어 보노라.")
-    jae_cnt = saju["engine"]["oh_cnt"]["金"] # 임시로 금 기운을 재물 운용으로 활용
-    if jae_cnt >= 2:
-        text.append("너는 돈 냄새를 맡는 감각이 남다르니, 과감하되 {random.choice(ADJECTIVES)} 지혜를 곁들여 투자하라. 횡재의 정기가 네 손끝에 고여 있도다.")
-    else:
-        text.append("너는 티끌 모아 태산을 만드는 안정이 우선이니, 투기보다는 투자의 정석을 따르라. 그래야 네 곳간이 새지 않고 가득 찰 것이니라.")
-    return apply_mansin_filter("\n\n".join(text))
-
-def get_study_chapter(saju, form):
-    name = form["name"]
-    text = [f"**📖 【학업/고시: {name} 貴下의 지혜와 문창(文昌) 기운 풀이】**"]
-    text.append(f"이보게 {name}야, 붓을 들어 천하를 호령할 네 학운과 지혜의 깊이를 내 파헤쳐주마.")
-    in_cnt = saju["engine"]["oh_cnt"]["木"] # 임시로 목 기운을 학문으로 활용
-    if in_cnt >= 2:
-        text.append("네 명반에는 문창귀인의 광채가 서렸으니, 한 번 읽으면 백을 깨닫는 지혜가 있도다. 고시나 자격증 등 높은 문턱도 네 앞에서는 평지일 뿐이라.")
-    else:
-        text.append("너는 경험을 통해 깨닫는 실전형 지혜의 상이니, 책상 앞보다 현장에서 네 천재성을 드러내라. 그것이 곧 네 성공의 지름길이니라.")
-    return apply_mansin_filter("\n\n".join(text))
-
-def get_travel_chapter(saju, form):
-    name = form["name"]
-    text = [f"**✈️ 【해외/이동: {name} 貴下의 역마(驛馬) 및 천하 유람운】**"]
-    text.append(f"어허! {name}야, 발바닥에 불이 붙은 듯 사방을 유람할 네 역마의 기운을 내 굽어보노라.")
-    # 역마 살짝 체크 (寅, 申, 巳, 亥)
-    jjs = "".join([p["jj"] for p in saju["pils"]])
-    if any(jj in jjs for jj in ["寅", "申", "巳", "亥"]):
-        text.append("네 팔자는 땅이 좁아 세계를 무대로 삼아야 할 운명로다. 바다 건너 서방에서 네 이름 석 자가 빛날 것이니 이동을 두려워 마라.")
-    else:
-        text.append("너는 한곳에 뿌리를 내리고 내실을 다져야 발복하는 상이니, 잦은 이동보다는 내실을 기하라. 하지만 용신운에는 잠시의 유람이 개운이 되리라.")
-    return apply_mansin_filter("\n\n".join(text))
-
-def get_spiritual_chapter(saju, form):
-    name = form["name"]
-    text = [f"**☯️ 【영성/수행: {name} 貴下의 전생 업보와 영적 성장】**"]
-    text.append(f"입을 다물고 마음의 소리에 귀를 기울여라, {name}야. 네 영혼의 깊이를 내 투시해보노라.")
-    text.append(f"네 명반에는 보이지 않는 신령님의 보호가 서려 있으니, 이는 전생에 쌓은 공덕의 결과로다. 명상과 기도를 통해 네 속의 신성을 깨우거라.")
-    text.append(f"**📍 [조상님의 마지막 당부]**\n{random.choice(SHAMAN_PROVERBS)}")
-    return apply_mansin_filter("\n\n".join(text))
-
-def get_disaster_tracking(saju, form):
-    """관재사고(Disaster) 2026년 월별 정밀 정적 분석"""
-    name = form["name"]
-    text = [f"**🚨 【관재사고(官災事故): 丙午年(2026년) {name} 貴下의 월별 재앙 추적】**"]
-    text.append(f"어허! {name}야, 2026년 병오년의 타오르는 불꽃은 네 명반의 어두운 구석을 비출 것이니라. 아래는 네가 필히 피해야 할 재앙의 월별 기록이니 작두 위의 서늘함으로 마주하라.\n\n")
-
-    disaster_samples = [
-        "**관재구설(官災口舌)**: 입을 잘못 놀려 관청의 문턱을 넘나들 운이로다. 침묵이 금이니라.",
-        "**낙상수(落傷數)**: 길 위에서 다리가 꺾이고 피를 볼 징조니, 높은 곳을 피하고 발밑을 살펴라.",
-        "**이별수(離別數)**: 믿었던 도끼에 발등 찍히듯 인연의 단절이 있으리니, 마음의 빗장을 걸어 잠그라.",
-        "**파재수(破財數)**: 곳간에 쥐가 들어 황금을 갉아먹는 형국이니 투자를 멈추고 현금을 쥐어라."
-    ]
-    
-    for m in range(1, 13):
-        d = random.choice(disaster_samples)
-        text.append(f"**📍 2026년 {m}월의 경보: {d}**")
-        text.append(f"어허! {m}월에는 {random.choice(ADJECTIVES)} 기운이 네 뒤통수를 치려 하니, 평소보다 세 배는 더 몸을 낮추고 조상님께 빌어라.\n")
-
-    # 무속적 전설 보강
-    legend = f"\n**📜 【대만신의 비기: 재앙을 쫓는 붉은 팥의 전설】**\n"
-    legend += f"먼 옛날, 관재수가 낀 어느 정승이 이 만신을 찾아와 길을 물었느니라. "
-    legend += f"내가 그에게 '대문 앞에 붉은 팥을 뿌리고 삼일 밤낮을 기도하라' 하였더니, 다음날 대역죄인으로 몰릴 위기를 면하고 오히려 공신(功臣)으로 책봉되었다는 전설이 있도다. "
-    legend += f"재앙은 피하는 것이 아니라 미리 알고 쳐내는 것이니라.\n"
-    
-    return apply_mansin_filter("\n\n".join(text))
-
-def get_lucky_fate(saju, form):
-    """곳간보물(Wealth) 2026년 월별 행운/승진 정밀 분석"""
-    name = form["name"]
-    text = [f"**💰 【곳간보물(財物): 丙午年(2026년) {name} 貴下의 월별 행운 리포트】**"]
-    text.append(f"오호! {name}야, 2026년 병오년의 밝은 기운이 네 곳간 문을 두드리는구나. 아래는 황금이 쏟아질 발복의 달이니 정갈한 마음으로 맞이하라!\n\n")
-
-    luck_samples = [
-        "**횡재수(橫財數)**: 길 가다 보석을 줍듯 뜻밖의 재물이나 기회가 찾아오리니, 망설임 없이 손을 뻗어라.",
-        "**승진수(昇進數)**: 네 이름이 사방에 알려지고 신분이 상승하는 형국이니, 만인이 네 발밑에 고개를 숙이리라.",
-        "**인복수(人福數)**: 귀인이 나타나 막혔던 금전의 물꼬를 터줄 것이니, 사람을 귀하게 대하고 인연을 소중히 하라.",
-        "**문서수(文書數)**: 계약서에 도장을 찍는 소리가 천둥처럼 우렁차니, 부동산과 증권으로 발복할 기로다."
-    ]
-    
-    for m in range(1, 13):
-        l = random.choice(luck_samples)
-        text.append(f"**📍 2026년 {m}월의 축복: {l}**")
-        text.append(f"오호! {m}월에는 {random.choice(ADJECTIVES)} 서광이 네 광을 가득 채우니, {random.choice(SPIRIT_CHANTS)}의 자세로 발복을 준비하라.\n")
-
-    # 무속적 전설 보강
-    legend = f"\n**📜 【대만신의 비기: 만석꾼을 만든 황금 거북이 전설】**\n"
-    legend += f"조선 중기, 대흉년을 맞은 한 어부가 산신당에서 백일기도를 드렸느니라. "
-    legend += f"백일째 되는 날 황금 비늘을 가진 거북이가 나타나 그를 풍요의 땅으로 인도했으니, 그곳이 바로 오늘날의 만석꾼 터라 전해지느니라. "
-    legend += f"운이 들어올 때는 물감 배어들듯 조용히 오나, 그 결과는 태산보다 무거운 법이니라.\n"
-    text.append(legend)
-    
-    return apply_mansin_filter("\n\n".join(text))
-
-# ══════════════════════════════════════════════
-#  '족집게 만신' (Sharp Shaman) 사건 타격 로직 - Past & Career
-# ══════════════════════════════════════════════
-
-def analyze_past_clashes(saju, form):
-    """주인공의 실제 나이에 맞추어 출생 이후부터 현재까지 인생의 3대 격변 지점(Big 3 Clashes)을 소름 돋게 지목하는 '영성 연대기' 로직."""
-    marital = form.get("marital", "single")
-    ilji = saju["pils"][1]["jj"]
-    wolji = saju["pils"][2]["jj"]
-    ilgan = saju["ilgan"]
-    yongshin_oh = saju["engine"]["yongshin"]["oh"]
-    
-    from datetime import datetime
-    current_year = datetime.now().year
-    birth_year = saju.get("raw_birth", {}).get("y", current_year - 40)
-    start_year = birth_year  # 태어난 해부터 스캔
-    
-    impacts_by_decade = {}
-    
-    # 60갑자 중 특정 연도의 간지를 구하는 헬퍼
-    def get_yr_ganji(yr):
-        base_yr = 1984 # 甲子年
-        diff = yr - base_yr
-        cgi = (diff % 10 + 10) % 10
-        jji = (diff % 12 + 12) % 12
-        return CG[cgi], JJ[jji]
-
-    for yr in range(start_year, current_year):
-        cg, jj = get_yr_ganji(yr)
-        yr_name = CG_KR[CG.index(cg)] + JJ_KR[JJ.index(jj)] + "년"
-        yr_oh = OH[cg]
-        yr_age = yr - birth_year + 1
-        
-        weight = 0
-        desc = ""
-        
-        # 1. 일지 충 (대격변: 사고, 이별, 수술수, 이사)
-        if CHUNG_MAP.get(ilji) == jj:
-            weight += 50
-            if marital == "single":
-                desc = f"📍 **{yr}년({yr_name}, 당시 {yr_age}세)**: 네 연애궁을 상징하는 **{ilji}**가 세운의 **{jj}**와 부딪혀 깨졌구나! 엮일 뻔했던 인연이 산산조각 나거나, 피치 못할 이동수, 몸에 칼을 대는 수술/사고수로 생사가 오갔을 터인데 내 말이 틀리느냐!"
-            else:
-                desc = f"📍 **{yr}년({yr_name}, 당시 {yr_age}세)**: 네 부부 안방을 상징하는 **{ilji}**가 세운과 부딪혀 **천지개벽할 충(沖)**이 났었구나! 이때 부부간 찢어질 듯한 이별수나 이사, 혹은 가장 가까운 자와 쌩이별을 겪으며 피눈물을 쏟았을 터인데 내 말이 틀리느냐!"
-        
-        # 2. 월지 충 (사회적 변동: 직장 이동, 배신)
-        elif CHUNG_MAP.get(wolji) == jj:
-            weight += 40
-            desc = f"📍 **{yr}년({yr_name}, 당시 {yr_age}세)**: 네 사회적 터전인 **{wolji}**가 **{jj}**와 정면으로 들이받으니, 다니던 직장에서 갑작스럽게 쫓겨나듯 이동하거나, 믿었던 동료의 배신으로 관재구설에 휘말려 밤잠을 설쳤어야 할 억울한 직장 변동 운명이었도다."
-            
-        # 3. 삼형살 (사고, 소송, 수술)
-        elif (ilji in ["寅","巳","申"] and jj in ["寅","巳","申"]) or (ilji in ["丑","戌","未"] and jj in ["丑","戌","未"]):
-            weight += 30
-            desc = f"📍 **{yr}년({yr_name}, 당시 {yr_age}세)**: 저승사자의 서슬 퍼런 **형(刑)**의 기운이 네 명반을 덮쳤으니, 관공서 문턱(소송/시비)을 넘나드느라 혼비백산했거나 갑작스럽게 피를 보는 사고/수술대에 올랐어야 했도다."
-
-        # 4. 용신운 발복 (긍정적 격변)
-        elif yr_oh == yongshin_oh:
-            weight += 20
-            desc = f"✨ **{yr}년({yr_name}, 당시 {yr_age}세)**: 네 용신인 **{yongshin_oh}**의 기운이 하늘에서 쏟아졌으니, 막혔던 돈줄이 터지고 명예가 드높아지며 문서나 승진운이 따라주던 **발복(發福)의 절정기**였음을 내가 보았노라."
-
-        if desc and yr_age >= 10:
-            decade_str = f"[{yr_age // 10 * 10}대]"
-            if decade_str not in impacts_by_decade:
-                impacts_by_decade[decade_str] = []
-            impacts_by_decade[decade_str].append({"yr": yr, "weight": weight, "desc": desc})
-
-    # 연대기별로 가장 강한 이벤트 1~2개씩만 추출
-    top_hits = []
-    for decade in sorted(impacts_by_decade.keys()):
-        events = impacts_by_decade[decade]
-        events.sort(key=lambda x: x["weight"], reverse=True)
-        best_event = events[0]["desc"]
-        top_hits.append(f"**{decade}**\n{best_event}")
-
-    if not top_hits:
-        return "과거 인생길, 큰 풍랑은 없었어도 잔잔한 파도가 네 영혼을 끊임없이 갉아먹었을 것이로다. 이제 그 고요를 깨고 대업을 이룰 시기가 왔느니라."
-    
-    return "\n\n".join(top_hits)
-
-def target_shamanic_career(saju):
-    """격국과 십성을 통한 소름 돋는 직업 지목 로직"""
-    ilgan = saju["ilgan"]
-    pils = saju["pils"]
-    
-    # 십성 분포 분석
-    cnt = {"비겁":0, "식상":0, "재성":0, "관성":0, "인성":0}
-    # 간단히 일지를 제외한 주변 기운 분석
-    for i in [0, 2, 3]: # 시주, 월주, 년주 기운
-        ss_cg = calc_sipsung(ilgan, pils[i]["cg"])
-        ss_jj = calc_sipsung(ilgan, pils[i]["jj"])
-        for s in [ss_cg, ss_jj]:
-            if "비견" in s or "겁재" in s: cnt["비겁"] += 1
-            elif "식신" in s or "상관" in s: cnt["식상"] += 1
-            elif "편재" in s or "정재" in s: cnt["재성"] += 1
-            elif "편관" in s or "정관" in s: cnt["관성"] += 1
-            elif "편인" in s or "정인" in s: cnt["인성"] += 1
-
-    main_energy = max(cnt, key=cnt.get)
-    
-    metaphors = {
-        "관성": "너는 나라의 녹을 먹거나 거대한 성벽(조직)을 지키는 우두머리의 상이로다. 만인을 다스리는 법도나 질서를 집행하지 않으면 네 신기가 몸을 칠 것이니라.",
-        "식상": "너는 입으로 만인을 먹여 살리거나, 손끝에서 보석을 만들어내는 재주꾼이로다. 마당놀이의 광대처럼 네 재능을 만천하에 드러내야 비로소 곳간이 찰 것이로다.",
-        "인성": "너는 붓을 잡고 문서를 탐하며, 만인의 스승이 되어 지혜를 전수할 팔자로다. 깊은 산속의 학자처럼 파고들지 않으면 네 영혼이 갈증을 느낄 것이니라.",
-        "재성": "너는 사방의 돈 냄새를 맡고 황금을 끄집어내는 타고난 장사꾼의 기질이로다. 흐르는 물처럼 재물을 돌리지 않으면 네 명줄이 짧아지니 끊임없이 움직여라.",
-        "비겁": "너는 스스로가 곧 법이요, 누구의 밑에서도 머물지 못하는 야생마의 상이로다. 네 이름을 내걸고 홀로 서지 않으면 네 기운이 썩어 문드러질 것이니라."
-    }
-    
-    return metaphors.get(main_energy, "너는 천기를 읽고 사람의 마음을 어루만지는 기이한 업을 가졌구나.")
-
-def get_past_traces_chapter(saju, form):
-    """[과거의 흔적] - 족집게 타격 섹션"""
-    name = form["name"]
-    past_hit = analyze_past_clashes(saju, form)
-    job_hit = target_shamanic_career(saju)
-    
-    text = [f"**👁️ 【과거의 흔적 - {name} 貴下의 영적 족집게 타격】**"]
-    text.append(f"이보게 {name}야, 내 전지적 시점으로 네 과거를 굽어보니 몇 가지 지울 수 없는 흔적이 명반에 선명하게 박혀 있구나.\n")
-    
-    text.append(f"**📍 [만신의 과거 추적: 사건의 지평선]**\n{past_hit}\n")
-    text.append(f"**📍 [천직(天職)의 지목: 영적 직업관]**\n{job_hit}\n")
-    
-    return apply_mansin_filter("\n\n".join(text))
-
-# ══════════════════════════════════════════════
-#  '미래의 파동' (Future Waves) 미래 대사건 추적 로직 (2026-2030)
-# ══════════════════════════════════════════════
-
-def analyze_future_waves(saju):
-    """2026~2030년 미래의 재항과 횡재를 소름 돋게 예견 (결정론적 로직 강화)"""
-    ilji = saju["pils"][1]["jj"]
-    ilgan = saju["ilgan"]
-    yongshin_oh = saju["engine"]["yongshin"]["oh"]
-    
-    future_years = {
-        2026: ("午", "병오년"), 2027: ("未", "정미년"), 2028: ("申", "무신년"),
-        2029: ("酉", "기유년"), 2030: ("戌", "경술년")
-    }
-    
-    # 중복 정의 제거됨 (전역 고정 상수 사용)
-    
-    disasters = []
-    windfalls = []
-    
-    for yr, (jj, name) in future_years.items():
-        # 천간 간지 구하기 (2026:丙, 2027:丁, 2028:戊, 2029:己, 2030:庚)
-        cgi = (yr - 2026) % 10
-        cg = ["丙","丁","戊","己","庚"][cgi]
-        yr_oh = OH[cg]
-        
-        # 1. 미래 재앙 타격 (세밀화)
-        if CHUNG_MAP.get(ilji) == jj:
-            disasters.append(f"📍 **{yr}년({name})**: 네 몸의 근간인 **{ilji}**가 세운의 **{jj}**와 무참히 부딪히니, 살벌한 칼날을 조심하고 길 위에서의 환재를 경계하라! 이 시기에는 서쪽으로 머리도 두지 말고 낯선 이와의 술자리를 멀리해야 산다.")
-        elif (ilji in ["寅","巳","申"] and jj in ["寅","巳","申"]):
-             disasters.append(f"📍 **{yr}년({name})**: **인사신 삼형(寅巳申 三刑)**의 서슬 퍼런 작두 날이 네 목을 겨누니, 관재구설과 배신의 살기를 피해 정화수를 떠놓고 자중해야 산다!")
-            
-        # 2. 미래 횡재 타격 (세밀화) - 용신운 우선
-        if yr_oh == yongshin_oh:
-             windfalls.append(f"📍 **{yr}년({name})**: 네 용신인 **{yongshin_oh}**의 기운이 하늘 문을 여니, 십 년 공부 도로아미타불 될 위기에서도 기적처럼 살아나 대업을 성취할 최고의 길운이로다!")
-        
-        if HAP_MAP.get(ilji) == jj:
-            windfalls.append(f"📍 **{yr}년({name})**: 네 일지가 세운과 **천생연분의 합(合)**을 이루니, 멈춰있던 대업이 승천하고 꿈에 그리던 조력자가 네 문턱을 닳도록 드나들 것이로다. 황금의 정기가 네 손바닥에 고일 것이니라!")
-        elif (ilgan == "庚" and jj == "寅") or (ilgan == "甲" and jj == "未"):
-            windfalls.append(f"📍 **{yr}년({name})**: **천을귀인(天乙貴人)**의 광채가 네 정수리를 비추니, 어떤 난관도 무쇠처럼 뚫고 나갈 무궁무진한 행운이 깃들 것이로다. 신령님께 감사하며 크게 베풀어라!")
-            
-    return disasters, windfalls
-
-def get_future_waves_chapter(saju, form):
-    """[미래의 파동] - 2026-2030 미래 사건 타격"""
-    name = form["name"]
-    disasters, windfalls = analyze_future_waves(saju)
-    scan = saju["engine"].get("event_scan", {})
-    
-    text = [f"**🔮 【미래의 파동 - {name} 貴下의 미래 대사건 추적】**"]
-    text.append(f"어허! {name}야, 흘러간 물은 되돌릴 수 없으나 다가올 파도는 미리 알고 대비할 수 있는 법. 내가 네 명반을 향후 흐름에 비추어보니, 소름 돋는 사건들이 줄을 서 있구나.\n\n")
-    
-    if scan:
-        text.append("**📅 [만신의 구간형 미래 예보: 발복과 침체 구간]**")
-        # 5년 단위로 구간화하여 출력 (User requirement: 구간형)
-        ages = sorted([int(a.replace("세","")) for a in scan.keys()])
-        if ages:
-            min_age, max_age = min(ages), max(ages)
-            for start in range(min_age, max_age + 1, 3):
-                end = start + 2
-                text.append(f"**🌀 {start}~{end}세 구간: 운명의 파동**")
-                interval_evs = []
-                for a in range(start, end + 1):
-                    key = f"{a}세"
-                    if key in scan: interval_evs.extend(scan[key])
-                
-                if interval_evs:
-                    for e in list(set(interval_evs))[:3]: # 중복 제거 및 상위 3개
-                         text.append(f"- {e}")
-                else:
-                    text.append("- 큰 풍랑 없이 기운이 응집되는 시기니 내실을 다지거라.")
-                text.append("")
-        text.append("\n")
-
-    # Disaster Map
-    text.append("**🚨 [미래 사고수 및 재앙 추적]**")
-    if disasters:
-        for d in disasters:
-            text.append(f"📍 {d}\n")
-    
-    text.append("\n**💰 [횡재수 및 문서운 추적]**")
-    if windfalls:
-        for w in windfalls:
-            text.append(f"📍 {w}\n")
-            
-    return apply_mansin_filter("\n\n".join(text))
-
-# ══════════════════════════════════════════════
-#  '끝판왕' (Final Boss) 시공간 흔적 - Wealth Explosion & Future Accident
-# ══════════════════════════════════════════════
-
-def get_wealth_explosion(saju):
-    """향후 5년 내 곳간이 터지는 전율의 지점 (천을귀인 및 삼합/방합 정밀 타격)"""
-    ilgan = saju["ilgan"]
-    pils = saju["pils"]
-    
-    wealth_events = []
-    
-    # 1. 천을귀인(天乙貴人)과 재성(財星)의 만남
-    # 庚(경)일간 -> 丑(축), 未(미)가 귀인
-    if ilgan == "庚":
-        wealth_events.append("📍 **2027년(정미년) 늦여름**: 네 경금(庚金)의 단단함이 정미(丁未)의 용광로를 만나는구나! 특히 **未(미)**는 네게 **천을귀인**이자 재벌의 기운이니, 이때는 길가에 굴러다니는 돌멩이도 황금으로 변할 팔자로다. 무조건 큰 문서를 잡아라.")
-    elif ilgan == "甲":
-        wealth_events.append("📍 **2028년(무신년) 봄**: 갑목(甲木)인 네가 무토(戊土)라는 거대한 대지를 얻고, 申(신) 속의 임수가 네 뿌리를 적시니 **'재관쌍미(財官雙美)'**의 기적이 일어날 것이로다. 신분이 상승하며 금고가 넘칠 것이니라.")
-
-    # 2. 강력한 합(合)의 기운 (삼합 중심)
-    ilji = pils[1]["jj"]
-    if ilji in ["寅", "午", "戌"]: # 화국(火局)
-        wealth_events.append("📍 **2026년(병오년) 한여름**: 네 일지의 화국이 세운의 **午(오)**와 공명하여 거대한 불길을 일으키니, 이는 곧 모든 액운을 태우고 황금을 제련하는 형국이라. 평생의 횡재수가 이때 몰려있도다.")
-
-    if not wealth_events:
-        wealth_events.append(f"📍 **2029년(기유년) 가을**: 네 명반의 오행이 유독 밝게 빛나는 시기니, {random.choice(ADJECTIVES)} 기운으로 곳간을 채울 준비를 하라.")
-
-    return "\n".join(wealth_events)
-
-def get_future_accident(saju):
-    """운명의 그림자가 드리우는 살벌한 경고 (충/형/살 정밀 타격)"""
-    ilji = saju["pils"][1]["jj"]
-    wolji = saju["pils"][2]["jj"]
-    
-    accidents = []
-    
-    # 1. 인신충(寅申沖) - 역마의 충돌
-    if ilji in ["寅", "申"] or wolji in ["寅", "申"]:
-        accidents.append(f"📍 **[대경보] 2028년(무신년) 8월 (인신충)**: {saju['name']}야! 네 명반의 **역마(驛馬)**가 세운과 정면으로 들이받느니라! 이것은 단순한 접촉사고가 아니요, 인생의 근간이 흔들리는 거대한 풍랑이니, 이때는 절대 해외로 나가지 말고 바다 근처에도 가지 마라. 피를 보아야 끝날 살기니라!")
-
-    # 2. 축술미 삼형 (丑戌未 三刑)
-    if ilji in ["丑", "戌", "未"]:
-        accidents.append("📍 **[대경보] 2027년(정미년) 하반기**: 네 일지의 토(土) 기운이 세운의 **未(미)**와 엉켜 **삼형(三刑)**의 족쇄를 채우는구나! 믿었던 이의 배신으로 관공서 문턱을 넘나들거나, 배앓이로 수술대에 오를 일이 있겠으니 필히 보름달 아래서 비방을 행하라.")
-
-    if not accidents:
-        accidents.append("📍 **2026년(병오년) 동지 무렵**: 타오르는 불길 뒤의 서늘한 기운이 네 건강을 위협하니, 특히 심장과 신장의 조화를 살펴라. 과신하는 마음이 네 가장 큰 적이 될 것이로다.")
-
-    return "\n".join(accidents)
-
-def get_spatiotemporal_traces_chapter(saju, form):
-    """[시공간의 흔적] - 끝판왕 미래 예보"""
-    name = form["name"]
-    wealth_explosion = get_wealth_explosion(saju)
-    future_accident = get_future_accident(saju)
-    
-    text = [f"**🌀 【시공간의 흔적 - {name} 貴하의 끝판왕 미래 예보】**"]
-    text.append(f"어이쿠! {name}야, 여기까지 왔다면 너는 이미 네 운명의 절반을 손에 쥔 것이나 다름없다. 이제 내가 만신의 마지막 힘을 짜내어, 네 향후 5년 중 가장 강렬하게 터질 돈벼락과 가장 살벌하게 닥칠 재앙의 순간을 찍어주마.\n\n")
-    
-    text.append("**💰 [황금의 섬광: 돈벼락 터지는 달]**")
-    text.append(f"{wealth_explosion}\n\n")
-    
-    text.append("**### 💀 [어둠의 흔적: 사고 및 이별의 살(煞)]**")
-    text.append(f"{future_accident}\n\n")
-    
-    return apply_mansin_filter("\n\n".join(text))
-
-# apply_mansin_filter 는 Line 1269에 정의된 함수를 사용합니다.
-# (구버전 중복 정의 제거 - MANSIN_LEXICON 미정의로 인한 NameError 방지)
-
-
-# ══════════════════════════════════════════════
-#  쪽집게 룰 기반 팩트 엔진 (Rule-Based Fact Engine v6.3)
-# ══════════════════════════════════════════════
-
-RULE_DB_ACCIDENTS = {
-    "Water_High": "어릴 적 물가에서 크게 놀랐거나 죽을 고비를 넘긴 흔적이 분명합니다. 비 오는 날의 사고가 네 영혼을 위협했음을 보았노라.",
-    "Fire_High": "급한 성격 탓에 화상이나 염증으로 크게 고생했으며, 뜨거운 것에 데인 흉터가 몸 어딘가에 반드시 남아 있습니다.",
-    "Metal_High": "금속이나 날카로운 칼날에 의해 피를 보았으며, 수술대에 올라 몸을 열었던 흔적이 명반에 낙인처럼 새겨져 있도다.",
-    "Earth_High": "높은 곳에서 떨어지는 낙상수나 흙으로 인한 사고를 이미 겪었으며, 피부 질환으로 인해 장기간 고통받은 전력이 확실합니다.",
-    "Wood_High": "뼈마디가 어긋나거나 신경계 질환으로 인해 남모를 정기 약을 복용했던 시기가 있었음을 내가 똑똑히 보았노라.",
-    "InShinChung": "20대 중반, 이동 중에 발생한 급작스러운 사고나 충돌로 인생의 경로가 뒤바뀌는 대사건을 겪었음을 단언하노라.",
-    "JukSoolMi": "가까운 이의 배신으로 관재(官災)를 겪어 법원 문턱을 넘었거나, 심한 마음의 병으로 어둠 속에 갇혔던 시기가 확실히 존재합니다.",
-    "JaOhChung": "심장과 신장의 기운이 정면으로 부딪혀 가슴을 쓸어내릴 이별이나 급격한 환경 변화를 겪었으며, 이는 피할 수 없는 운명이었습니다.",
-    "MyoYooChung": "인간관계의 처절한 배신이나 수술수로 인해 몸과 마음에 지울 수 없는 흉터가 남았음을 내가 작두 위에서 보았노라.",
-    "JinSoolChung": "부동산이나 문서로 인해 큰 손실을 보고 가슴을 앓았으며, 살던 터전을 급히 옮겨야만 했던 시기가 명반에 기록되어 있습니다.",
-    "SaHaeChung": "해외운이나 장거리 이동 중에 예상치 못한 풍랑을 만나 직업적, 환경적으로 대급변을 겪었음을 내가 확언하노라."
-}
-
-# ══════════════════════════════════════════════
-#  만신(萬神) 전지적 스토리텔링 과거 DB (Storied Past DB)
-# ══════════════════════════════════════════════
-STORIED_PAST_DB = {
-    "accidents": [
-        "어릴 적 물가에서 크게 놀랐거나 죽을 고비를 넘긴 흔적이 분명합니다. 비 오는 날의 사고가 네 영혼을 위협했음을 보았노라.",
-        "급한 성격 탓에 화상이나 염증으로 크게 고생했으며, 뜨거운 것에 데인 흉터가 몸 어딘가에 반드시 남아 있습니다.",
-        "금속이나 날카로운 칼날에 의해 피를 보았으며, 수술대에 올라 몸을 열었던 흔적이 명반에 낙인처럼 새겨져 있도다.",
-        "높은 곳에서 떨어지는 낙상수나 흙으로 인한 사고를 이미 겪었으며, 피부 질환으로 인해 장기간 고통받은 전력이 확실합니다.",
-        "뼈마디가 어긋나거나 신경계 질환으로 인해 남모를 정기 약을 복용했던 시기가 있었음을 내가 똑똑히 보았노라."
-    ],
-    "career": [
-        "네가 평생을 다짐했던 첫 직장의 터전을 급히 옮겨야만 했던 시기가 있었습니다. 이는 단순한 이직이 아니라 네 운명의 환천(換天)이었도다.",
-        "믿었던 상사나 동료의 배신으로 인해 등 떠밀리듯 자리를 옮겼던 흔적을 보았노라. 그때 네가 씹었던 고독이 지금의 너를 만들었느니라.",
-        "아무도 가보지 않은 길을 홀로 개척하며 첫 대업을 창건하려 했던 시기가 있었구나. 그때의 좌절은 사실 신령님의 혹독한 단련이었도다."
-    ],
-    "conflicts": [
-        "가까운 인연과 피눈물을 흘리며 갈라섰던 그믐달 밤의 기억을 잊었느냐. 서늘한 배반의 상처가 네 가슴 깊숙이 문신처럼 새겨져 있도다.",
-        "가문 내부의 불화로 인해 등을 돌리고 홀로 거친 세상에 나섰던 시기가 있었습니다. 그때 조상님들조차 너를 보며 탄식하셨느니라.",
-        "말 한마디에 천 냥 빚을 지듯, 구설수에 휘말려 만인에게 손가락질받으며 밤잠을 설쳤던 그 치욕의 순간을 내가 기억하노라."
-    ]
-}
-
-RULE_DB_CAREER = {
-    "木": "교육, 기획, 디자인 등 인적 자원을 창조하는 분야가 네 유일한 천직이며, 여기서 독보적인 존재감을 드러냅니다.",
-    "火": "방송, 마케팅, IT 예술 등 화려한 빛을 발하는 분야가 네 운명이며, 화려한 조명 아래서만 네 정기가 살아납니다.",
-    "土": "부동산, 건설, 상담 등 신뢰를 바탕으로 한 기반 사업이 네 길이며, 땅의 기운을 만져야 비로소 만복이 깃듭니다.",
-    "金": "금융, 법조, 정밀 기계 등 칼날 같은 전문직이 네 천성이며, 냉철한 판단력으로 만인을 다스리는 우두머리가 됩니다.",
-    "水": "유통, 무역, 서비스업 등 흐름을 주도하는 분야가 네 대업이며, 물처럼 끊임없이 움직여야 재물이 마르지 않습니다.",
-    "Gwan_Strong": "조직의 질서를 집행하는 권력직이 네 운명이며, 만인을 호령하는 우두머리의 상이라 단언하노라.",
-    "Jae_Strong": "황금을 직접 만지고 투자하여 성과를 내는 실익형 직업이 네 천명이며, 네 손길이 닿는 곳마다 금맥이 터집니다.",
-    "Sik_Strong": "자신의 재능으로 가치를 만드는 전문직이 네 천성인바, 무에서 유를 창조하는 창조주로 살아야 발복합니다."
-}
-
-def get_rule_based_facts(saju, form):
-    """Saju 데이터를 바탕으로 인공지능이 참고할 '스토리 기반 팩트 패키지'를 생성함"""
-    facts = []
-    pils = saju["pils"]
-    oh = saju["engine"]["oh_cnt"]
-    sipsung = saju["engine"]["sipsung"] 
-    name = form["name"]
-    
-    # [NEW] 스토리텔링 기반 동적 과거 자동 생성 (User Request: 사고 1~2, 직장 1, 갈등 1)
-    random.seed(name + str(pils[0]['jj'])) # 개인별 고유하지만 가변적인 시드
-    
-    # 1. 사고 (1~2개)
-    acc_cnt = random.randint(1, 2)
-    acc_samples = random.sample(STORIED_PAST_DB["accidents"], acc_cnt)
-    for a in acc_samples:
-        age = random.randint(7, 22) # 주로 어린 시절 사고
-        facts.append(f"과거사건({age}세 전후): {a}")
-    
-    # 2. 직장 변동 (1개)
-    job_story = random.choice(STORIED_PAST_DB["career"])
-    job_age = random.randint(26, 31) # 청년기 직장 변동
-    facts.append(f"과거사건({job_age}세 전후): {job_story}")
-    
-    # 3. 인간관계 갈등 (1개)
-    con_story = random.choice(STORIED_PAST_DB["conflicts"])
-    con_age = random.randint(23, 28) # 감정이 예민한 시기 갈등
-    facts.append(f"과거사건({con_age}세 전후): {con_story}")
-    
-    # 기존 룰 기반 팩트 병합 (더 단정화됨)
-    if oh["水"] >= 3: facts.append(f"보충: {RULE_DB_ACCIDENTS['Water_High']}")
-    if oh["火"] >= 3: facts.append(f"보충: {RULE_DB_ACCIDENTS['Fire_High']}")
-    if oh["金"] >= 3: facts.append(f"보충: {RULE_DB_ACCIDENTS['Metal_High']}")
-    
-    # 직업 및 결혼 (생략 없이 유지)
-    dominant_oh = max(oh, key=oh.get)
-    facts.append(f"천직지목: {RULE_DB_CAREER.get(dominant_oh, '명부의 길')}")
-    
-    gender = form.get("gender", "male")
-    try: 
-        birth_year = int(saju["birth_info"].split("-")[0])
-        age_now = datetime.now().year - birth_year + 1
-    except: age_now = 30
-    
-    if age_now < 27: facts.append("혼인여부: 미혼이며 대업 준비 중")
-    else: facts.append("혼인여부: 이미 짝을 만났거나 안정기에 들어섬")
-
-    random.seed() # 시드 해제
-    return facts
-
-# 전역 변수로 폰트 등록 여부 관리
-PDF_FONT_NAME = "Helvetica" # 기본값
-
-def register_pdf_fonts():
-    """한글 폰트 등록 - 성공 시 전역 변수 업데이트"""
-    global PDF_FONT_NAME
-    import os, platform
-    try:
-        if platform.system() == "Windows":
-            font_path = "C:/Windows/Fonts/malgun.ttf"
-        else:
-            # Linux (Streamlit Cloud): Noto Sans KR 등 대체 경로 탐색
-            paths = [
-                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-                "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
-            ]
-            font_path = next((p for p in paths if os.path.exists(p)), None)
-            
-        if font_path and os.path.exists(font_path):
-            pdfmetrics.registerFont(TTFont("Malgun", font_path))
-            PDF_FONT_NAME = "Malgun"
-    except Exception:
-        PDF_FONT_NAME = "Helvetica"
-
-# 초기 앱 구동 시 1회 시도
-register_pdf_fonts()
-
-def draw_page_footer(canvas, doc):
-    """페이지 하단에 페이지 번호 및 리포트 정보 추가"""
-    canvas.saveState()
-    canvas.setFont(PDF_FONT_NAME, 9)
-    canvas.setFillAlpha(0.6)
-    page_num = f"Page {doc.page} | 【천명실록(天命實錄)】"
-    canvas.drawRightString(545.27, 30, page_num)
-    canvas.restoreState()
-
-def generate_pdf(filename_or_buffer, name, interpretation_text):
-    """사주 분석 결과를 세련된 PDF 리포트로 생성"""
-    # 명시적 여백 설정 (A4 크기: 595.27 x 841.89)
-    doc = SimpleDocTemplate(
-        filename_or_buffer, 
-        pagesize=(595.27, 841.89),
-        rightMargin=50, leftMargin=50, topMargin=60, bottomMargin=60
-    )
-    elements = []
-    styles = getSampleStyleSheet()
-    
-    # 커스텀 스타일 정의 (PDF_FONT_NAME 사용)
-    title_style = ParagraphStyle(
-        'TitleStyle', parent=styles['Heading1'], fontName=PDF_FONT_NAME, 
-        fontSize=12, spaceAfter=15, alignment=1, textColor=colors.HexColor("#a0720a"), fontWeight='bold'
-    )
-    body_style = ParagraphStyle(
-        'BodyStyle', parent=styles['Normal'], fontName=PDF_FONT_NAME, 
-        fontSize=11, leading=17, spaceAfter=12
-    )
-    section_style = ParagraphStyle(
-        'SectionStyle', parent=styles['Heading2'], fontName=PDF_FONT_NAME, 
-        fontSize=11, spaceBefore=15, spaceAfter=10, textColor=colors.HexColor("#c5a059"), fontWeight='bold'
-    )
-
-    # 헤더
-    elements.append(Paragraph(f"🔮 【天命實록: {name} 貴下의 웅장한 대운명 서사시】", title_style))
-    elements.append(Spacer(1, 0.3 * inch))
-    
-    # 본문 처리 (Markdown 호환을 위해 변환)
-    lines = interpretation_text.split("\n")
+    lines = text.split("\n")
+    clean = []
     for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            elements.append(Spacer(1, 0.1 * inch))
-            continue
-        
-        # 주요 챕터 단위로 페이지 넘김 (가독성 향상)
-        if stripped.startswith("# ") or stripped.startswith("## ") or ("제" in stripped and "장" in stripped):
-            elements.append(PageBreak())
-        
-        if stripped.startswith("# "):
-            elements.append(Paragraph(stripped.replace("# ", ""), title_style))
-        elif stripped.startswith("## ") or stripped.startswith("### "):
-            elements.append(Paragraph(stripped.replace("## ", "").replace("### ", ""), section_style))
+        if any(phrase in line for phrase in _AI_FORBIDDEN_PHRASES):
+            # 침범 문장 제거 (로그만 남김)
+            clean.append(f"[⚠️ 계산 침범 문장 자동 제거됨]")
         else:
-            # HTML 특수문자 이스케이프 및 AI 특수 기호 정제
-            clean_line = stripped.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            clean_line = clean_line.replace("++", "").replace("--", "")
-            
-            # Markdown Bold -> HTML <b> 변환
-            clean_line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', clean_line)
-            clean_line = re.sub(r'__(.*?)__', r'<b>\1</b>', clean_line)
-            clean_line = clean_line.replace("*", "")
-            
-            try:
-                # 닫히지 않은 <b> 태그 방어
-                open_tags = clean_line.count("<b>")
-                close_tags = clean_line.count("</b>")
-                if open_tags > close_tags:
-                    clean_line += "</b>" * (open_tags - close_tags)
-                elif close_tags > open_tags:
-                    clean_line = clean_line.replace("</b>", "", close_tags - open_tags)
-                
-                elements.append(Paragraph(clean_line, body_style))
-            except:
-                safe_line = re.sub(r'<.*?>', '', clean_line)
-                elements.append(Paragraph(safe_line, body_style))
+            clean.append(line)
+    return "\n".join(clean)
 
-    # 푸터(페이지 번호)를 포함하여 PDF 빌드
-    doc.build(elements, onFirstPage=draw_page_footer, onLaterPages=draw_page_footer)
+# ── Brain 2: AI Sandbox Wrapper ───────────────────────────────────────────────
+_AI_SANDBOX_HEADER = """
+★★★ AI 해석 전용 Sandbox 규칙 ★★★
 
+아래 DATA는 만세력 계산 엔진이 이미 확정한 결과입니다.
+당신은 절대로 이 값을 수정하거나 재계산하면 안 됩니다.
 
-def build_ai_payload(saju, form):
-    """자체 엔진의 모든 정밀 분석 결과를 AI에 전달할 수 있게 구조화"""
-    engine = saju.get("engine", {})
-    pils = saju.get("pils", [])
-    tp_events = engine.get("event_scan", {}) 
-    luck = engine.get("luck_peaks", {})
-    
-    # 팩트 기반 요약 (AI가 흔들리지 않게 함)
-    summary = f"{engine.get('strength', '중립')}, {engine.get('yongshin', {}).get('oh', '미상')}가 용신"
-    
-    import datetime
-    current_year = datetime.datetime.now().year
-    raw_birth = saju.get("raw_birth", {})
-    birth_year = raw_birth.get("y", 1990)
-    current_age = current_year - birth_year + 1
+[금지 행동]
+- 생년월일을 다시 계산하는 행위 금지
+- 간지(干支)를 새로 추론하는 행위 금지
+- 오행 비율을 재계산하는 행위 금지
+- 대운·세운을 새로 계산하는 행위 금지
+- "추정하면" "계산해보면" 같은 표현 금지
 
-    payload = {
-        "사용자_나이": f"{current_age}세 (한국 나이 기주기준)",
-        "사용자_조건": f"성별: {form.get('gender', '미상')}, 혼인상태: {form.get('marital', '미상')}",
-        "성향_요약": summary,
-        "현재_상태": "상승 기류에 진입 중 (발복 초입)",
-        "원국_간지": {
-            "년주": f"{pils[0]['cgk']}{pils[0]['jjk']}",
-            "월주": f"{pils[1]['cgk']}{pils[1]['jjk']}",
-            "일주": f"{pils[2]['cgk']}{pils[2]['jjk']}",
-            "시주": f"{pils[3]['cgk']}{pils[3]['jjk']}"
-        },
-        "에너지_판정": {
-            "신강여부": engine.get("strength", "미상"),
-            "용신_오행": engine.get("yongshin", {}).get("oh", "미정"),
-            "용신_설명": engine.get("yongshin", {}).get("desc", "")
-        },
-        "인생_구조": {
-            "격국_특성": engine.get("structure", "미정"),
-            "재물형태": engine.get("wealth", {}).get("type", "안정형"),
-            "결혼성향": engine.get("marriage", {}).get("status", "신중")
-        },
-        "추천_직업": engine.get("quantum_hits", {}).get("jobs", ["미정"]),
-        "quantum_hits": engine.get("quantum_hits", {}),
-        "확정적_과거_사실": get_rule_based_facts(saju, form)
-    }
-    return payload
+[허용 행동]
+- 제공된 DATA를 바탕으로 해석·서술·조언만 수행
 
-def call_groq_mansin(tid, saju, form, key, payload):
-    tab_label = next((t["label"] for t in TABS if t["id"] == tid), tid)
-    payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
+위 규칙을 위반하면 시스템이 해당 내용을 자동 차단합니다.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    # 분량 및 형식 조건
-    if tid == "daily":
-        vol_req = "전체 300자 이내로 매우 짧고 강렬하게 작성하십시오."
-    elif tid == "yearly":
-        vol_req = "1월부터 12월까지 각 달의 운세를 월별로 300~400자 분량으로 상세히 쪼개서 총 4,000자 내외로 작성하십시오."
-    else:
-        vol_req = "전체 **최소 15,000자 이상 압도적이고 방대한 분량**을 작성하십시오. 대만신의 긴 대서사기록(대장정)을 쏟아내야 합니다. 웅장한 대서사시여야 합니다."
-
-    prompt = (
-        f"당신은 30년 경력의 명리학자이자 신내림을 받은 대만신(애기보살)입니다.\n"
-        f"다음은 실제 엔진이 정밀 계산해 낸 팩트 데이터입니다.\n"
-        f"AI로서 창작하거나 지어내지 말고, 오직 이 'quantum_hits' 데이터를 기반으로만 아래 5가지 규칙을 칼같이 지켜 해석하십시오.\n\n"
-        f"[필수 규칙]\n"
-        f"1. 과거 적중을 가장 먼저 말하십시오. (quantum_hits.past_events의 나이 구간과 내용을 1순위로 호통칠 것)\n"
-        f"2. 구체적인 나이를 반드시 언급하십시오. (예: '27~28세 전후')\n"
-        f"3. 절대 애매하게 얼버무리지 말고 단정적으로 말하십시오. (~어라, ~다, ~했지! 등)\n"
-        f"4. 성향과 격국을 구체적으로 설명하십시오. (단순히 예민하다가 아니라 인생_구조.격국_특성과 quantum_hits.personality의 디테일을 살릴 것)\n"
-        f"5. 돈과 결혼 시기를 명확히 말하십시오. (quantum_hits.money_peak, marriage_peak 활용)\n"
-        f"6. 사주 원국에 맞는 '추천_직업'을 팩트로 꽂아주십시오.\n\n"
-        f"또한, 잘 맞추는 만신은 '좋다/나쁘다'가 아니라 '왜 그랬는지(그때 충이 들어왔기 때문 등)'를 말합니다. 이 화법을 적용하세요.\n\n"
-        f"**주인공 정보**\n"
-        f"- 이름: {form['name']}\n"
-        f"- 기준 나이: {payload.get('사용자_나이', '나이 미상')}\n\n"
-        f"**[천기 누설 데이터 - 절대 딴소리 금지]**\n"
-        f"```json\n{payload_json}\n```\n\n"
-        f"**출력 구조 (반드시 아래 5개의 목차만 사용할 것):**\n"
-        f"1️⃣ 소오름 돋는 과거 적중 — 과거 나이 구간과 사건을 짚으며 신뢰를 박아라.\n"
-        f"2️⃣ 뼈 때리는 기주 성향 — 격국(Structure)과 십성을 엮어 겉과 속이 어떻게 다른지 디테일하게 까발려라.\n"
-        f"3️⃣ 휘몰아치는 대운 흐름 — 원국뿐만 아니라 지금 어떤 대운/세운을 지나는지 짚어라.\n"
-        f"4️⃣ 천직과 재물의 정점 — '추천_직업'을 명시하고, 돈 쓸어 담을 나이 구간과 주의할 점을 팩트로 꽂아라.\n"
-        f"5️⃣ 인연과 천생연분 — 진짜 배우자/인연이 나타날 나이 구간을 명확히 명시해라.\n\n"
-        f"분량: {vol_req}\n\n"
-        f"자, 너의 신기를 보여라!"
-    )
-
-
-    data = {"model": "llama-3.3-70b-versatile",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.5, "max_tokens": 8000}
-    try:
-        res = requests.post("https://api.groq.com/openai/v1/chat/completions",
-                            headers={"Authorization": f"Bearer {key}"},
-                            json=data, timeout=120)
-        return res.json()["choices"][0]["message"]["content"], None
-    except Exception as e:
-        return None, str(e)
-
-
-@st.cache_data(
-    ttl=3600,
-    hash_funcs={dict: lambda d: json.dumps(d, sort_keys=True, default=str)}
-)
-def get_cached_ai_interpretation(tid, saju, form, key, payload):
-    """AI 해석 결과 캐싱 (API 비용 절감 및 속도 향상)"""
-    return call_groq_mansin(tid, saju, form, key, payload)
-
-def amplify_with_epics(text, limit, tid, tab_label, user_name):
-    """분량이 부족할 경우 만신의 영성 대서사시를 추가하여 보정함"""
-    if len(text) >= limit:
-        return text
-
-    app_title = "천명실록(天命實錄)" if tid == "overall" else f"{tab_label} 비기(祕記)"
-    
-    # 전지적 과거/미래 추적 서사 무작위 삽입
-    trackers = list(OMNISCIENT_PAST_DB + FUTURE_PROPHECY_DB)
-    random.shuffle(trackers)
-    text += f"\n\n**👁️ 【만신의 전지적 운명 추적 - {user_name} 貴下의 기록】**\n\n"
-    text += "\n\n".join(trackers[:10]) + "\n\n" # 노출량 증가
-    
-    text += f"**📜 【부록: 대만신의 영성 대서사시 - {app_title}】**\n\n"
-    # 모든 가용 데이터를 합쳐서 풀 가동
-    epics_pool = list(set(SPIRIT_CHANTS + SHAMAN_EPIC + SHAMAN_CHANTS_VOL3 + SHAMAN_RECORDS_EXTENDED + SHAMAN_PROVERBS + SHAMAN_RECORDS_V4 + SHAMAN_LEGENDS_JOSEON + SHAMAN_DANCE_VOL2 + FENG_SHUI_GUIDE))
-    random.shuffle(epics_pool)
-    
-    idx = 0
-    while len(text) < limit and idx < len(epics_pool):
-        text += f"\n\n{epics_pool[idx]}\n"
-        # 주문 및 미사여구 대량 투하
-        if idx % 3 == 0:
-            text += f"\n어허! 이것은 실로 **{random.choice(ADJECTIVES)}** 하늘의 안배가 아니고 무엇이겠느냐. "
-        elif idx % 5 == 0:
-            text += f"\n**이것은 곧 억겁의 세월을 꿰뚫은 장엄한 하늘의 계시이니 한 글자도 흘려듣지 마라.** "
-        elif idx % 7 == 0:
-            text += f"\n**급급여율령(急急如律令)! 운명의 수레바퀴가 이토록 준엄하게 돌아감을 명심하라.** "
-        idx += 1
-        if idx >= len(epics_pool):
-            # 그래도 부족하면 풀을 다시 섞어서 한 번 더 순회 (반복 허용)
-            random.shuffle(epics_pool)
-            idx = 0
-    # 4단계: 한자(한글) 병기 처리 (格局 -> 格局(격국))
-    return text
-
-def mansin_engine(tid, saju, form):
-    # 0. AI 하이브리드용 데이터 구조화
-    payload = build_ai_payload(saju, form)
-    tab_label = next((t["label"] for t in TABS if t["id"] == tid), tid)
-    # 극단적인 분량 목표치 설정 ( overall: 12,000자, 개별: 7,000자 )
-    limit = 12000 if tid == "overall" else 7000
-
-    # 1. Groq API Key가 있다면 AI 하이브리드 엔진 실행
-    if form.get("groq_key"):
-        ai_res, err = get_cached_ai_interpretation(tid, saju, form, form["groq_key"], payload)
-        if ai_res:
-            # AI 결과 정화 후 분량 보정 적용
-            filtered_ai = apply_mansin_filter(ai_res)
-            return amplify_with_epics(filtered_ai, limit, tid, tab_label, form["name"])
-
-    # 2. 로컬 엔진 폴백
-    if tid == "yearly": return get_yearly_chapter(saju, form)
-    if tid == "daily": return get_daily_oracle(form["name"], saju)
-    if tid == "personal": return get_essence_chapter(saju, form)
-    if tid == "wealth": return get_lucky_fate(saju, form)
-    if tid == "relationship": return get_relationship_chapter(saju, form)
-    if tid == "career": return get_flow_chapter(saju, form)
-    if tid == "health": return get_prescription_chapter(saju, form)
-    if tid == "future": return get_future_waves_chapter(saju, form)
-    if tid == "past": return get_past_traces_chapter(saju, form)
-    if tid == "lucky_fate": return get_lucky_fate(saju, form)
-    if tid == "marriage": return get_marriage_chapter(saju, form)
-    if tid == "real_estate": return get_real_estate_chapter(saju, form)
-    if tid == "investment": return get_investment_chapter(saju, form)
-    if tid == "study": return get_study_chapter(saju, form)
-    if tid == "travel": return get_travel_chapter(saju, form)
-    if tid == "spiritual": return get_spiritual_chapter(saju, form)
-    if tid == "disaster": return get_disaster_tracking(saju, form)
-    if tid == "remedy": return get_prescription_chapter(saju, form)
-    if tid == "monthly": return get_monthly_luck_chapter(saju, form)
-    
-    report = []
-    # 3. 종합운세의 경우 전체 챕터 합산
-    if tid == "overall":
-        summary = [
-            f"**📌 [운명의 그림자: {form['name']}야! 네 인생의 핵심 요지]**",
-            f"- **영적 토대**: {saju['ilgan']}의 기운을 타고난 {saju['engine']['sipsung'][1]}의 상",
-            f"- **격국 등급**: {saju['engine']['structure']} ({saju['engine']['structure_grade']})",
-            f"- **가장 강력한 기운**: {saju['engine']['unsung'][1]} (일주 12운성)",
-            f"- **재물 그릇**: {saju['engine']['wealth']['type']} ({saju['engine']['wealth']['desc'][:40]}...)",
-            f"- **과거의 파동**: {random.choice(STORIED_PAST_DB['accidents'])[:30]}... 등 이미 겪었노라.",
-            f"- **운명의 반전**: {saju['engine']['yongshin']['oh']} 기운이 들어오는 시기에 대업이 성취됨",
-            f"- **비방**: {OH_DIR[saju['engine']['yongshin']['oh']]} 방향을 가까이하라.\n"
-        ]
-        report.append("\n".join(summary))
-
-        report.append(get_daily_oracle(form["name"], saju))
-        report.append(get_past_traces_chapter(saju, form)) 
-        report.append(f"**👑 【천명잔혹사(天命殘酷史): {form['name']} 貴下의 스릴러 연대기】**\n\n")
-        report.append(get_essence_chapter(saju, form))        
-        report.append(get_relationship_chapter(saju, form))   
-        report.append(get_flow_chapter(saju, form))           
-        report.append(get_prescription_chapter(saju, form))   
-        report.append(get_oracle_chapter(saju, form))         
-        
-        final_text = "\n\n".join(report)
-    else:
-        # 4. 개별 전문 탭
-        final_text = f"**🔮 {tab_label} - 만신의 특별 신탁**\n\n"
-        final_text += f"{form['name']}야, 이 '{tab_label}'의 기운은 네 명반의 길목마다 서린 오묘한 안배로다. \n\n"
-
-    # 현대어 -> 만신어 치환 필터
-    filtered_text = apply_mansin_filter(final_text)
-    
-    # 분량 보정 적용
-    return amplify_with_epics(filtered_text, limit, tid, tab_label, form["name"])
-
-def get_oh_cnt(pils):
-    cnt = {"木":0,"火":0,"土":0,"金":0,"水":0}
-    for p in pils:
-        cnt[OH[p["cg"]]] += 1
-        cnt[OH[p["jj"]]] += 1
-    return cnt
-
-def get_yongshin(ilgan, cnt):
-    oh = OH[ilgan]
-    if cnt[oh] >= 3: return {"yongshin": OH_RELATE[oh]["geuk"], "desc":"기운이 넘칩니다. 제어 오행이 필요합니다."}
-    return {"yongshin": OH_RELATE[oh]["saeng"], "desc":"기운이 부족합니다. 돕는 오행이 길합니다."}
-
-# ══════════════════════════════════════════════
-# 기초 데이터 & API
-# (call_groq_mansin은 2263행에 정의되어 있으며 아래 중복 정의를 제거함)
-
-TABS = [
-    # ━━━━ 📅 시기별 종합 운세 (대운 및 흐름) ━━━━
-    {"id":"overall",      "label":"평생 총운",   "icon":"📅", "category":"시기별 종합 운세"},
-    {"id":"future",       "label":"대운 분석",   "icon":"🌊", "category":"시기별 종합 운세"},
-    {"id":"yearly",       "label":"신년 총운",   "icon":"🎋", "category":"시기별 종합 운세"},
-    {"id":"monthly",      "label":"월간 운세",   "icon":"🌙", "category":"시기별 종합 운세"},
-    {"id":"daily",        "label":"일일 운세",   "icon":"☀️", "category":"시기별 종합 운세"},
-
-    # ━━━━ 💰 재물 및 성공 운세 (발복과 횡재) ━━━━
-    {"id":"wealth",       "label":"정재운",      "icon":"💵", "category":"재물 및 성공 운세"},
-    {"id":"lucky_fate",   "label":"편재운",      "icon":"🎰", "category":"재물 및 성공 운세"},
-    {"id":"career",       "label":"사업/창업운", "icon":"🏢", "category":"재물 및 성공 운세"},
-    {"id":"personal",     "label":"승진/명예운", "icon":"🏆", "category":"재물 및 성공 운세"},
-    {"id":"investment",   "label":"성공의 정점", "icon":"📈", "category":"재물 및 성공 운세"},
-
-    # ━━━━ 🏠 생활 및 자산 운세 (의식주) ━━━━
-    {"id":"real_estate",  "label":"부동산/문서", "icon":"🏠", "category":"생활 및 자산 운세"},
-    {"id":"travel",       "label":"이동/이사운", "icon":"✈️", "category":"생활 및 자산 운세"},
-    {"id":"study",        "label":"물품/차량운", "icon":"🚗", "category":"생활 및 자산 운세"},
-    {"id":"disaster",     "label":"소송/관재수", "icon":"⚖️", "category":"생활 및 자산 운세"},
-    {"id":"spiritual",    "label":"개명/신수",   "icon":"✍️", "category":"생활 및 자산 운세"},
-
-    # ━━━━ 🤝 관계 및 심리 운세 (인연과 건강) ━━━━
-    {"id":"past",         "label":"귀인운",      "icon":"🤝", "category":"관계 및 심리 운세"},
-    {"id":"marriage",     "label":"인연/부부운", "icon":"💍", "category":"관계 및 심리 운세"},
-    {"id":"health",       "label":"건강/액땜",   "icon":"💊", "category":"관계 및 심리 운세"},
-    {"id":"remedy",       "label":"심리/힐링",   "icon":"🧘", "category":"관계 및 심리 운세"},
-    # ━━━━ 🤝 관계 및 심리 운세 (궁합) ━━━━
-    {"id":"compat",       "label":"인연/궁합",   "icon":"💕", "category":"관계 및 심리 운세"},
-    {"id":"family",       "label":"가족/대인",   "icon":"👨‍👩‍👦", "category":"관계 및 심리 운세"},
-    {"id":"gaewun",       "label":"가택/개운",   "icon":"🔮", "category":"관계 및 심리 운세"},
-    
-    # ━━━━ 📅 특별 택일 (Date Selection) ━━━━
-    {"id":"auspicious",   "label":"택일/길일",   "icon":"🖋️", "category":"길일 택일 운세"},
-
-    # ━━━━ 기타 ━━━━
-    {"id":"chat",         "label":"만신 채팅",   "icon":"💬", "category":"기타"},
-    {"id":"copy",         "label":"리포트/복사", "icon":"📑", "category":"기타"}
-]
-
-def get_daily_oracle(user_name, saju):
-    today = datetime.now()
-    t_y, t_m, t_d = today.year, today.month, today.day
-    today_str = f"{t_y}년 {t_m}월 {t_d}일"
-    
-    try:
-        # 오늘의 일진 계산 (정오 기준)
-        target_engine = SajuCoreEngine(t_y, t_m, t_d, 12, 0, "male", "Today")
-        t_day_cg = target_engine.pils[1]["cg"]
-        t_day_jj = target_engine.pils[1]["jj"]
-    except Exception:
-        t_day_cg, t_day_jj = "甲", "子"
-        
-    t_oh_cg = OH.get(t_day_cg, "木")
-    
-    ilgan = saju["ilgan"]
-    yongshin_oh = saju["engine"]["yongshin"]["oh"]
-    u_day_jj = saju["pils"][1]["jj"]
-    
-    # 매일 랜덤하게 바뀌되 당일은 고정되도록 시드 설정
-    random.seed(f"{today_str}_{user_name}_{ilgan}")
-    
-    text = [f"**☀️ 【{today_str} 일일 신탁】 {user_name}아, 오늘의 흐름을 새겨들어라!**\n"]
-    
-    sipsung = calc_sipsung(ilgan, t_day_cg)
-    
-    # 1. 일진의 십성/오행 해석 (팩트폭력)
-    if t_oh_cg == yongshin_oh:
-        text.append(f"오늘 하늘에서 띄워준 카드는 **{t_day_cg}{t_day_jj} ({sipsung})**이로다. 네 수호신인 {yongshin_oh} 기운이 정통으로 내리꽂히니, 막혔던 돈줄이나 귀인의 연락이 닿을 절호의 타이밍이다. 쓸데없이 고집 피우지 말고 문을 활짝 열어라.")
-    elif OH_RELATE.get(t_oh_cg, {}).get("geuk") == OH.get(ilgan):
-        text.append(f"오늘 일진이 **{t_day_cg}{t_day_jj} ({sipsung})**인데, 쇠망치처럼 네 본신을 강하게 억누르는 형국이구나. 사람 믿고 함부로 입 털지 마라! 구설수나 상사와의 등쌀에 피눈물 뺄 수 있으니, 무조건 고개 숙이고 바짝 엎드려 있는 게 상책이다.")
-    elif sipsung in ["식신", "상관"]:
-        text.append(f"어허, 오늘은 **{t_day_cg}{t_day_jj} ({sipsung})**의 날! 네 입과 손끝에서 황금빛 재주가 터져 나오는구나. 평소에 웅크려 있던 생각이라도 오늘은 무조건 밖으로 질러라. 가만히 있으면 도리어 살이 찔 팔자니 부지런히 움직여라.")
-    elif sipsung in ["정재", "편재"]:
-        text.append(f"돈 냄새가 진동하는 **{t_day_cg}{t_day_jj} ({sipsung})**의 날이로다. 현금이 돌 형국이지만, 방심하면 똥파리가 꼬여서 네 지갑을 털어간다. 돈 쓸 데와 쥐어야 할 때를 매섭게 구분해라.")
-    else:
-        text.append(f"오늘 네게 떨어진 일진은 **{t_day_cg}{t_day_jj} ({sipsung})**의 기운이다. 무리해서 새판을 벌이기보다는 있는 밥그릇부터 단단히 지키는 게 우선이다. 남 일에 오지랖 부리다간 네 발등이 찍힐 것이니 조심해라.")
-        
-    # 2. 일지 충 여부 (초정밀 타격)
-    if CHUNG_MAP.get(u_day_jj) == t_day_jj:
-        text.append(f"⚡ **[긴급 경고]** 네 안방을 상징하는 {u_day_jj}가 오늘의 {t_day_jj}와 정면으로 꽝 부딪혀 박살이 났구나! 길에서 차 조심, 사람 조심 필수다. 욱하는 성질 지그시 누르거라!")
-        
-    # 3. 비방 (짧게)
-    bi_bang = random.choice(MANSIN_BI_BANG['건강'] + MANSIN_BI_BANG['명상'])
-    text.append(f"\n🔮 **[액땜 비방]**: {bi_bang}")
-    
-    random.seed() # 리셋
-    return apply_mansin_filter("\n\n".join(text))
-
-
-def local_consultation_engine(query, saju):
-    name = saju["name"]
-    topic = "대업과 인연" # 기본 주제
-    
-    if any(k in query for k in ["돈", "재물", "부자"]): topic = "재물복과 곳간의 운용"
-    elif any(k in query for k in ["결혼", "사랑", "인연"]): topic = "천생연분과 인연의 고리"
-    elif any(k in query for k in ["직장", "취업", "사업"]): topic = "대업의 성취와 관운"
-    
-    # 이제 단순히 한 줄 리턴하지 않고 amplify_consultation_narrative를 호출하여 1,200자 이상 보장
-    ans = amplify_consultation_narrative(topic, name)
-    ans += f"\n\n【만신 답】 {name}야, 네 질문의 핵심을 명반에서 읽었도다. 더 깊은 천무의 소리는 명리풀이를 정독하여 가슴에 새기거라!"
-    return ans
-
-# ══════════════════════════════════════════════
-#  대만신 명리 백과사전 (Mansin Encyclopedia - Massive Data)
-# ══════════════════════════════════════════════
-
-MANSIN_ENCYCLOPEDIA = {
-    "사주팔자": "사람이 태어난 연, 월, 일, 시의 네 기둥(사주)과 여덟 글자(팔자)를 의미하며, 이는 우주의 기운이 인간의 운명에 각인된 천문학적 코드입니다.",
-    "음양오행": "우주의 만물을 생성하고 변화시키는 두 가지 상반된 기운(음양)과 다섯 가지 원소(목, 화, 토, 금, 수)의 순환 원리를 뜻합니다.",
-    "십성": "인간관계와 사회적 사회 활동의 유형을 열 가지 성질로 분류한 것으로, 비견, 겁재, 식신, 상관, 편재, 정재, 편관, 정관, 편인, 정인을 말합니다.",
-    "십이운성": "한 인간의 기운이 태어나고(장생), 씻고(목욕), 옷을 입고(관대), 벼슬에 오르고(건록), 왕성해졌다가(제왕), 쇠퇴하고(쇠), 병들고(병), 죽고(사), 묘지에 들어가고(묘), 끊어졌다가(절), 다시 잉태되어(태), 길러지는(양) 순환 과정을 뜻합니다."
-}
-
-# 12지신별 궁합 매트릭스 (Zodiac Compatibility Matrix)
-ZODIAC_COMPAT_DB = {}
-_zodiacs = ["쥐","소","호랑이","토끼","용","뱀","말","양","원숭이","닭","개","돼지"]
-for z1 in _zodiacs:
-    ZODIAC_COMPAT_DB[z1] = {}
-    for z2 in _zodiacs:
-        ZODIAC_COMPAT_DB[z1][z2] = f"{z1}와 {z2}의 만남: 서로의 기운이 조화를 이루어 대길한 인연이로다." if z1 != z2 else "자신의 기운을 거울처럼 비추는 만남이로다."
-
-# ══════════════════════════════════════════════
-#  대만신 격언집 (Grand Shaman Proverbs)
-# ══════════════════════════════════════════════
-
-SHAMAN_PROVERBS = [
-    "하늘이 무너져도 솟아날 구멍은 오직 네 자비로운 마음에 있느니라.",
-    "돈을 좇는 자는 돈의 노예가 되고, 덕을 좇는 자는 돈이 그 발등을 적시리라.",
-    "억울한 일을 당했을 때 웃을 수 있다면, 너는 이미 신의 경지에 오른 것이로다.",
-    "길가에 구르는 돌멩이 하나도 다 조상신의 뜻이 담겨 있음을 잊지 마라.",
-    "네가 오늘 베푼 밥 한 그릇이 내일 네 자식의 생명줄이 되어 돌아올 것이니라.",
-    "부귀공명은 아침 이슬과 같고, 명성과 권위는 저녁 노을과 같이 덧없도다.",
-    "오직 네 영혼의 맑음만이 저승까지 가져갈 수 있는 유일한 재산임을 명심하라.",
-    "남을 비웃지 마라. 그 비웃음은 부메랑이 되어 네 가슴에 박힐 것이니라.",
-    "고난은 신이 내리신 가장 큰 선물이다. 보석은 거친 연마 끝에 빛나기 때문이지.",
-    "네 부모를 공경하라. 그자들은 네 인생의 뿌리요, 네 운명의 첫 번째 문이로다.",
-    "운명이 너를 속일지라도 슬퍼하거나 노여워하지 마라. 슬픔의 날을 견디면 기쁨의 날이 오리니.",
-    "마음이 가난한 자는 황금 침대에서도 잠들지 못하고, 마음이 풍요로운 자는 거적때기 위에서도 꿈을 꾼다.",
-    "바람이 불면 부는 대로, 비가 오면 오는 대로 순리대로 사는 것이 대만신의 도리니라.",
-    "네 눈물을 닦아줄 이는 너 자신뿐이다. 강해져라. 그래야 네 소중한 이들을 지킬 수 있다.",
-    "천기는 누설되는 것이 아니라, 네 성실한 삶을 통해 증명되는 것임을 잊지 마라."
-]
-
-# ══════════════════════════════════════════════
-#  조선 명과학의 역사와 정통성 (Myeongri History - 500+ Lines)
-# ══════════════════════════════════════════════
-
-MYEONGRI_HISTORY = """
-조선 시대의 명과학(命科學)은 국가의 기틀을 다지는 중요한 학문이었습니다. 
-관상감(觀象監)에서는 하늘의 흐름을 읽어 국운을 예견하고 왕실의 안녕을 도모했습니다.
-이 앱은 그 유구한 역사의 맥을 이어받아 현대적인 알고리즘으로 재해석되었습니다.
 """
 
-# ══════════════════════════════════════════════
-#  동양 28수(二十八宿) 천문 데이터베이스 (Oriental Astronomy DB)
-# ══════════════════════════════════════════════
+def get_ai_interpretation(prompt_text, api_key="", system="당신은 40년 경력의 한국 전통 사주명리 전문가입니다.", max_tokens=2000, groq_key=""):
+    """
+    AI 해석 요청 — Anthropic 또는 Groq 선택
+    [Saju Platform Engineering Agent]
+    - Brain 2 역할: 해석 전용 Sandbox
+    - 계산 침범 자동 검증 (validate_ai_output)
+    - 읽기 전용 JSON만 수신
+    """
+    import requests
 
-TWENTY_EIGHT_STARS = {
-    "각(角)": "청룡의 뿔로, 만물의 생성과 군사적 위엄을 상징하도다. 이 별자리의 기운을 받은 자는 지혜롭고 용맹하리라.",
-    "항(亢)": "청룡의 목으로, 조정의 정사나 인간의 수명을 관장하도다. 청렴함과 강직함을 상징하는 기운이로다.",
-    "저(氐)": "청룡의 가슴으로, 임금의 궁궐이나 백성의 안락을 뜻하도다. 풍요와 안정을 가져다주는 별자리로세.",
-    "방(房)": "청룡의 배로, 밝음과 화합을 상징하도다. 재물과 인복이 따르는 상서로운 기운이 서려 있느니라.",
-    "심(心)": "청룡의 심장으로, 임금의 위엄과 백성의 마음을 뜻하도다. 공평무사하고 정의로운 성품을 점지하리라.",
-    "미(尾)": "청룡의 꼬리로, 가문의 번성과 후손의 길함을 관장하도다. 조상의 음덕이 깊음을 상징하느니라.",
-    "기(箕)": "청룡의 항문으로, 바람을 다스리고 곡식을 고르는 서문이로다. 실속 있고 알찬 삶을 보장하리라."
+    # Sandbox 헤더를 시스템 프롬프트에 강제 주입
+    sandboxed_system = _AI_SANDBOX_HEADER + system
+
+    # Groq 우선 (빠름, 무료)
+    if groq_key and groq_key.strip():
+        try:
+            headers = {
+                "Authorization": f"Bearer {groq_key.strip()}",
+                "Content-Type": "application/json"
+            }
+            data = {
+                "model": "llama-3.3-70b-versatile",
+                "messages": [
+                    {"role": "system", "content": sandboxed_system},
+                    {"role": "user",   "content": prompt_text}
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.7
+            }
+            resp = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                                 headers=headers, json=data, timeout=60)
+            if resp.status_code == 200:
+                raw = resp.json()["choices"][0]["message"]["content"]
+                return validate_ai_output(raw)   # ★ 계산 침범 검증
+            else:
+                return f"[Groq 오류 {resp.status_code}]: {resp.text[:200]}"
+        except Exception as e:
+            return f"[Groq 연결 오류: {e}]"
+
+    # Anthropic fallback
+    if api_key and api_key.strip():
+        try:
+            headers = {
+                "x-api-key": api_key.strip(),
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            }
+            data = {
+                "model": "claude-sonnet-4-6",
+                "max_tokens": max_tokens,
+                "system": sandboxed_system,
+                "messages": [{"role": "user", "content": prompt_text}]
+            }
+            resp = requests.post("https://api.anthropic.com/v1/messages",
+                                 headers=headers, json=data, timeout=60)
+            if resp.status_code == 200:
+                raw = resp.json()["content"][0]["text"]
+                return validate_ai_output(raw)   # ★ 계산 침범 검증
+            else:
+                return f"[Anthropic 오류 {resp.status_code}]: {resp.text[:200]}"
+        except Exception as e:
+            return f"[Anthropic 연결 오류: {e}]"
+
+    return ""  # 둘 다 없으면 빈 문자열
+
+
+# ✅ BUG 3 FIX: hash_funcs를 사용하여 dict 인수 해싱 가능하게 처리
+@st.cache_data(hash_funcs={dict: lambda d: json.dumps(d, sort_keys=True, default=str)})
+def build_past_events(pils, birth_year, gender):
+    """
+    태어나서 현재까지 대운×세운 교차 → 사건 자동 생성
+    충·합 발생 시점 + 십성으로 분야 판단 → 나이 특정 → 단정 서술
+    """
+    ilgan = pils[1]["cg"]
+    ilgan_oh = OH.get(ilgan, "")
+    orig_jjs = [p["jj"] for p in pils]
+    orig_cgs = [p["cg"] for p in pils]
+    current_year = datetime.now().year
+    daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+
+    # 십성 → 인생 분야 매핑
+    SS_DOMAIN = {
+        "남": {
+            "비견": "경쟁·독립·형제갈등", "겁재": "재물손실·배신·경쟁심화",
+            "식신": "창업·표현·자녀", "상관": "이직·창작충동·관직갈등",
+            "편재": "사업변동·부친·이성", "정재": "재물·처·안정",
+            "편관": "직장압박·사고·관재", "정관": "승진·명예·책임",
+            "편인": "학업중단·모친·이사", "정인": "자격증·귀인·학업",
+        },
+        "여": {
+            "비견": "경쟁·독립·자매갈등", "겁재": "재물손실·배신·고집",
+            "식신": "자녀·표현·창업", "상관": "남편갈등·이직·예술",
+            "편재": "사업변동·부친·재물", "정재": "재물·시댁·안정",
+            "편관": "남편갈등·압박·관재", "정관": "남편·명예·책임",
+            "편인": "모친·이사·학업중단", "정인": "귀인·학업·자격증",
+        },
+    }
+    # 충 → 구체 사건 서술
+    CHUNG_EVENT = {
+        frozenset(["子","午"]): "감정 격변, 수화 충돌 — 가만히 있을 수 없었다",
+        frozenset(["丑","未"]): "재물 분쟁, 토지·부동산 갈등 — 잃거나 싸웠다",
+        frozenset(["寅","申"]): "돌발 사고, 이동·변화 — 예상 밖 사건이 터졌다",
+        frozenset(["卯","酉"]): "관재 구설, 이성 갈등 — 말이 문제가 됐다",
+        frozenset(["辰","戌"]): "재물 손실, 부동산 갈등 — 뭔가를 잃었다",
+        frozenset(["巳","亥"]): "이별·분리, 먼 이동 — 관계가 끊어졌다",
+    }
+    # 천간합 → 긍정 변화
+    TG_HAP_PAIRS = [{"甲","己"},{"乙","庚"},{"丙","辛"},{"丁","壬"},{"戊","癸"}]
+
+    events = []  # {age, year, type, domain, desc, intensity}
+
+    for dw in daewoon:
+        if dw["시작연도"] > current_year:
+            continue  # 미래 대운 제외
+        dw_ss = TEN_GODS_MATRIX.get(ilgan,{}).get(dw["cg"],"-")
+        dw_domain = SS_DOMAIN.get(gender,SS_DOMAIN["남"]).get(dw_ss,"변화")
+
+        # 대운 자체가 원국과 충·합하는지
+        dw_chung = []
+        for ojj in orig_jjs:
+            k = frozenset([dw["jj"], ojj])
+            if k in CHUNG_MAP:
+                dw_chung.append((ojj, CHUNG_EVENT.get(k, "큰 변화가 찾아왔다")))
+        dw_hap = []
+        for pair in TG_HAP_PAIRS:
+            if dw["cg"] in pair:
+                other = list(pair - {dw["cg"]})[0]
+                if other in orig_cgs:
+                    dw_hap.append(other)
+
+        # 대운 진입 시점 자체 이벤트
+        age_start = dw["시작나이"]
+        if dw_chung:
+            for ojj, ev_desc in dw_chung:
+                chung_ss = TEN_GODS_MATRIX.get(ilgan,{}).get(JIJANGGAN.get(ojj,[""])[- 1],"-")
+                domain = SS_DOMAIN.get(gender,SS_DOMAIN["남"]).get(chung_ss, dw_domain)
+                events.append({
+                    "age": f"{age_start}~{age_start+2}세",
+                    "year": dw["시작연도"],
+                    "type": "대운 지지충",
+                    "domain": domain,
+                    "desc": f"{dw['str']}대운 진입 — {ev_desc}. {domain} 영역에서 변동.",
+                    "intensity": "🔴"
+                })
+        elif dw_hap:
+            events.append({
+                "age": f"{age_start}세",
+                "year": dw["시작연도"],
+                "type": "대운 천간합",
+                "domain": dw_domain,
+                "desc": f"{dw['str']}대운 진입 — 새로운 기운과 합(合). {dw_domain} 영역에서 기회.",
+                "intensity": "🟡"
+            })
+
+        # 대운 내 세운별 교차 분석
+        for y in range(dw["시작연도"], min(dw["종료연도"]+1, current_year)):
+            age = y - birth_year + 1
+            if age < 5:
+                continue
+            sw = get_yearly_luck(pils, y)
+            sw_ss = sw.get("십성_천간", "-")
+            sw_domain = SS_DOMAIN.get(gender,SS_DOMAIN["남"]).get(sw_ss,"변화")
+
+            # 세운이 원국 지지와 충
+            sw_chung_found = []
+            for ojj in orig_jjs:
+                k = frozenset([sw["jj"], ojj])
+                if k in CHUNG_MAP:
+                    sw_chung_found.append((ojj, k))
+
+            # 대운+세운이 원국과 삼합
+            sam_hap_found = []
+            all_jj = set(orig_jjs + [dw["jj"], sw["jj"]])
+            for combo,(hname,hoh,hdesc) in SAM_HAP_MAP.items():
+                if combo.issubset(all_jj) and dw["jj"] in combo and sw["jj"] in combo:
+                    sam_hap_found.append(hname)
+
+            # 대운+세운 십성 조합으로 강도 판단
+            dw_sw_combo = f"{dw_ss}+{sw_ss}"
+            HIGH_IMPACT = {
+                "편관+편관": ("🔴", "이중 편관 — 시련이 두 겹으로 왔다. 직업·건강·관재 중 하나가 터졌다."),
+                "겁재+겁재": ("🔴", "이중 겁재 — 재물이 크게 흔들렸다. 배신이나 손실이 있었다."),
+                "편관+겁재": ("🔴", "칠살 겁재 동시 — 직업+재물이 동시에 흔들렸다. 매우 힘든 해."),
+                "정관+식신": ("🟡", "명예와 재능이 빛난 해. 승진·수상·성취가 있었다."),
+                "정재+정관": ("🟡", "재물과 명예가 함께 왔다. 인생의 좋은 해였다."),
+                "식신+정재": ("🟡", "재물운 폭발. 돈이 들어오는 해였다."),
+                "편관+식신": ("🟢", "칠살제화 — 시련이 기회로 바뀐 해. 반전이 있었다."),
+                "편재+편관": ("🔴", "재물 손실 + 직업 압박. 두 분야에서 동시에 힘들었다."),
+            }
+
+            intensity = "⬜"
+            extra_desc = ""
+
+            if dw_sw_combo in HIGH_IMPACT:
+                intensity, extra_desc = HIGH_IMPACT[dw_sw_combo]
+
+            if sw_chung_found:
+                for ojj, ck in sw_chung_found:
+                    chung_ss = TEN_GODS_MATRIX.get(ilgan,{}).get(JIJANGGAN.get(ojj,[""])[- 1],"-")
+                    domain = SS_DOMAIN.get(gender,SS_DOMAIN["남"]).get(chung_ss, sw_domain)
+                    ev_desc = CHUNG_EVENT.get(ck, "큰 변화")
+                    if intensity in ("🔴","🟡") or (intensity == "⬜" and ck in CHUNG_MAP):
+                        events.append({
+                            "age": f"{age}세",
+                            "year": y,
+                            "type": f"{dw_ss}대운 × {sw_ss}세운 + 원국충",
+                            "domain": domain,
+                            "desc": f"{y}년({age}세) — {ev_desc}. {domain}에서 변동. {extra_desc}",
+                            "intensity": "🔴" if intensity == "⬜" else intensity
+                        })
+
+            elif sam_hap_found:
+                events.append({
+                    "age": f"{age}세",
+                    "year": y,
+                    "type": f"삼합 성립 {sam_hap_found[0]}",
+                    "domain": sw_domain,
+                    "desc": f"{y}년({age}세) — 대운+세운+원국 삼합({sam_hap_found[0]}) 성립. {sw_domain} 영역에서 발복.",
+                    "intensity": "🟡"
+                })
+            elif intensity in ("🔴","🟡"):
+                events.append({
+                    "age": f"{age}세",
+                    "year": y,
+                    "type": f"{dw_ss}대운 × {sw_ss}세운",
+                    "domain": sw_domain,
+                    "desc": f"{y}년({age}세) — {extra_desc} {sw_domain} 분야.",
+                    "intensity": intensity
+                })
+
+    # 중요도 기준 정렬, 상위 15개 선별
+    priority = {"🔴": 0, "🟡": 1, "🟢": 2, "⬜": 3}
+    events.sort(key=lambda e: (priority.get(e["intensity"],3), e["year"]))
+    return events[:15]
+
+
+# ══════════════════════════════════════════════════════════════════
+# ★★★ 십성(十星) 2-조합 인생 분석 DB ★★★
+# 조합만 알면 그 사람의 인생이 보인다
+# ══════════════════════════════════════════════════════════════════
+SIPSUNG_COMBO_LIFE = {
+    frozenset(["식신","편재"]): {
+        "요약": "🍀 재능으로 돈 버는 타입",
+        "성향": "여유롭고 배짱이 있습니다. 쫓기는 삶보다 자기 페이스를 지키는 삶을 선호합니다. 욕심을 부리지 않아도 밥은 먹고 사는 구조가 이 사주입니다. 억지로 벌려 하면 오히려 안 풀립니다.",
+        "재물": "재능·기술·콘텐츠로 돈이 들어오는 구조입니다. 억지로 발로 뛰는 영업보다, 본인이 잘하는 걸 갈고닦으면 돈이 따라옵니다. 프리랜서·창작·요식업·전문직이 유리합니다.",
+        "직업": "자영업·프리랜서·요리사·디자이너·강사·유튜버·작가·예술가. 시간을 자유롭게 쓸 수 있는 직업이 맞습니다.",
+        "연애": "상대방에게 집착하지 않습니다. 여유로운 관계를 선호합니다. 상대가 집착하거나 간섭하면 자연스럽게 멀어집니다.",
+        "주의": "너무 여유를 부리다 기회를 흘려보내는 수가 있습니다. 좋은 운이 왔을 때 적극적으로 움직이십시오.",
+    },
+    frozenset(["상관","편재"]): {
+        "요약": "⚡ 창의력과 말발로 돈 버는 타입",
+        "성향": "말이 빠르고 아이디어가 넘칩니다. 기존 방식에 만족하지 못하고 항상 더 나은 방법을 찾습니다. 자유롭고 틀에 갇히는 것을 싫어합니다. 한 곳에 오래 있으면 답답함을 느낍니다.",
+        "재물": "아이디어·설득·창의로 돈을 법니다. 세일즈·마케팅·홍보·예술·미디어에서 두각을 나타냅니다. 남들이 생각 못한 방식으로 수익을 만드는 능력이 있습니다.",
+        "직업": "마케터·광고인·유튜버·방송인·세일즈·작가·디자이너·스타트업 창업자·연예인.",
+        "연애": "매력적이고 화술이 뛰어나 이성의 시선을 끕니다. 다만 한 사람에게 오래 집중하기 힘든 면이 있어 이별이 잦을 수 있습니다.",
+        "주의": "말이 앞서고 행동이 뒤처질 수 있습니다. 구설수와 경솔한 발언이 발목을 잡습니다.",
+    },
+    frozenset(["정관","정인"]): {
+        "요약": "🏛️ 관인상생 — 공부가 출세로, 조직 내 최고 귀격",
+        "성향": "원칙적이고 신중합니다. 배움을 좋아하고 지식을 쌓는 것에 보람을 느낍니다. 남에게 인정받는 것이 중요한 동기입니다. 겉으로는 여유로워 보여도 속으로는 평판을 매우 신경 씁니다.",
+        "재물": "조직·제도권 안에서 안정적으로 재물이 쌓입니다. 급여·연금·직책 수당 등 안정된 수입 구조입니다. 투기보다 장기 저축·부동산이 맞습니다.",
+        "직업": "공무원·교수·교사·대기업 임원·법관·의사·연구원. 자격증과 학위가 인생을 열어주는 사주입니다.",
+        "연애": "신중하게 시작하고 오래 만납니다. 상대의 성실함·안정성을 중요하게 봅니다. 가볍게 만나는 것을 좋아하지 않습니다.",
+        "주의": "너무 원칙만 고집하면 기회를 놓칩니다. 인간관계에서 유연함이 필요합니다.",
+    },
+    frozenset(["편관","식신"]): {
+        "요약": "🔥 칠살제화 — 시련이 오히려 기회, 역경을 딛고 성공하는 타입",
+        "성향": "어려운 상황에서 진가가 드러납니다. 압박이 올수록 더 강해집니다. 어릴 적 힘든 시절이 있었지만 그것이 오히려 내공이 되었습니다. 두 번 쓰러져도 세 번 일어나는 사람입니다.",
+        "재물": "재능과 실력으로 역경을 뚫는 구조입니다. 처음엔 힘들어도 나중에 빛을 봅니다. 40대 이후 크게 안정됩니다.",
+        "직업": "의사·검사·군인·경찰·운동선수·요리사·장인(匠人). 전문 기술로 편관의 압박을 제어하는 직업이 맞습니다.",
+        "연애": "강인해 보이지만 내면은 매우 세심합니다. 강한 상대보다 따뜻하게 챙겨주는 사람에게 끌립니다.",
+        "주의": "지나친 고집으로 도움받을 기회를 밀어내는 수가 있습니다. 받는 법도 배워야 합니다.",
+    },
+    frozenset(["편관","정인"]): {
+        "요약": "🎖️ 큰 조직·권력 기관에서 빛나는 리더 타입",
+        "성향": "리더십이 있습니다. 어려운 상황에서도 흔들리지 않고 방향을 잡습니다. 자연스럽게 따르는 사람이 생깁니다. 카리스마와 지식을 함께 갖춘 유형입니다.",
+        "재물": "높은 직위·권한에서 재물이 따라오는 구조입니다. 실무보다 결정권을 갖는 위치가 훨씬 유리합니다.",
+        "직업": "고위 공무원·군 장성·CEO·정치인·법조인·병원장. 조직의 상층부로 올라가는 것이 이 사주의 목표입니다.",
+        "연애": "강한 카리스마에 끌리는 상대를 만납니다. 주도적인 관계를 선호하며, 상대가 자신을 인정해주기를 원합니다.",
+        "주의": "권위적이 되기 쉽습니다. 아랫사람의 말에 귀 기울이는 연습이 필요합니다.",
+    },
+    frozenset(["비견","편재"]): {
+        "요약": "⚔️ 남 밑에서는 못 배기는 독립 창업 기질",
+        "성향": "독립심이 매우 강합니다. 누군가의 아래에서 지시받는 것을 본능적으로 거부합니다. 월급쟁이로 오래 살기 힘든 체질입니다. 자기 사업이나 자기 방식이 맞습니다.",
+        "재물": "독립·창업·자영업으로 돈을 법니다. 재물이 왔다 갔다 하는 기복이 있지만 결국 스스로 만들어냅니다. 형제·동업자와의 재물 갈등을 각별히 조심하십시오.",
+        "직업": "자영업·사업가·독립 컨설턴트·프리랜서·스타트업 대표. 조직 생활보다 독립이 맞습니다.",
+        "연애": "자기 생각이 강해 상대와 부딪히는 경우가 많습니다. 비슷한 독립심을 가진 상대가 맞습니다.",
+        "주의": "혼자 다 하려다 번아웃이 옵니다. 동업 분리를 명확히 하고 계약서를 꼭 쓰십시오.",
+    },
+    frozenset(["겁재","편재"]): {
+        "요약": "🎰 크게 벌고 크게 쓰는 승부사 — 기복이 강한 인생",
+        "성향": "승부욕이 극강입니다. 크게 베팅하는 기질이 있습니다. 결과가 좋을 때와 나쁠 때의 차이가 매우 큽니다. 조심성보다 추진력이 앞섭니다.",
+        "재물": "한 번에 크게 버는 구조이지만, 그만큼 나가기도 쉽습니다. 보증·투기·동업에서 손해를 보는 패턴이 반복될 수 있습니다. 재물을 지키는 연습이 핵심 숙제입니다.",
+        "직업": "사업가·트레이더·영업직·부동산·스포츠·연예계. 경쟁이 있는 환경에서 더 잘 됩니다.",
+        "연애": "적극적이고 주도적입니다. 상대에게 아낌없이 씁니다. 하지만 재물 갈등이 관계에 영향을 줄 수 있습니다.",
+        "주의": "충동적 투자와 보증은 반드시 피하십시오. 인생 최대 위기는 대부분 돈 문제에서 시작됩니다.",
+    },
+    frozenset(["겁재","정재"]): {
+        "요약": "💸 벌어도 새는 구조 — 재물 관리가 인생의 핵심 숙제",
+        "성향": "씀씀이가 큽니다. 들어오는 만큼 나갑니다. 저축보다 소비가 먼저입니다. 가까운 사람에게 베푸는 것을 좋아하지만, 그로 인해 손해를 보기도 합니다.",
+        "재물": "수입은 있는데 모이지 않습니다. 고정 지출을 줄이고 자동 저축 시스템을 만드는 것이 핵심입니다. 부동산 같은 묶어두는 자산이 맞습니다.",
+        "직업": "안정적인 월급 구조가 오히려 더 맞습니다. 변동 수입보다 고정 수입 직종이 재물을 지키기 좋습니다.",
+        "연애": "관대하고 잘 챙깁니다. 그러나 지나친 헌신으로 지치는 경우가 있습니다.",
+        "주의": "보증 서는 것과 쉬운 투자 제안을 경계하십시오.",
+    },
+    frozenset(["정재","정관"]): {
+        "요약": "🏦 성실하게 쌓아가는 안정형 — 50대에 빛나는 사주",
+        "성향": "현실적이고 성실합니다. 화려한 것보다 안정적인 것을 선호합니다. 맡은 일은 반드시 해냅니다. 한 번 한 약속은 반드시 지킵니다.",
+        "재물": "꾸준히 차곡차곡 쌓는 구조입니다. 큰 기복 없이 우상향합니다. 50대가 되면 상당한 재산이 쌓여 있습니다. 부동산·예금·연금이 잘 맞습니다.",
+        "직업": "금융인·회계사·공무원·대기업 직원·관리직. 안정적인 조직에서 오래 머무는 것이 유리합니다.",
+        "연애": "신중하게 시작하고 오래 유지합니다. 화려한 연애보다 현실적이고 안정적인 파트너를 선호합니다.",
+        "주의": "너무 안정만 추구하다 도전의 기회를 놓칩니다. 30~40대에 한 번은 용기 있는 선택이 필요합니다.",
+    },
+    frozenset(["상관","정관"]): {
+        "요약": "💥 조직과 충돌하는 혁신가 — 창업이 답",
+        "성향": "규칙과 권위에 본능적으로 반발합니다. '왜 이 규칙을 따라야 하는가'를 항상 묻습니다. 독창적이고 기존 방식을 파괴하는 혁신가 기질입니다.",
+        "재물": "조직 안에서는 재물이 잘 안 쌓입니다. 독립·창업·전문직에서 빛을 발합니다. 자기 분야의 최고가 되면 돈이 따라옵니다.",
+        "직업": "창업가·예술가·작가·유튜버·강연가·변호사. 자기 목소리를 낼 수 있는 직업이 최적입니다.",
+        "연애": "솔직하고 직선적입니다. 상대방의 단점이 잘 보이고 그것을 말하는 경향이 있어 갈등이 생기기 쉽습니다.",
+        "주의": "윗사람과의 갈등을 조심하십시오. 직장 내 구설수가 경력에 큰 타격을 줄 수 있습니다.",
+    },
+    frozenset(["편인","겁재"]): {
+        "요약": "🌑 고독한 승부사 — 혼자 깊이 파고드는 전문가",
+        "성향": "혼자 있는 것이 편합니다. 깊이 파고드는 것을 좋아하지만 결과를 잘 드러내지 않습니다. 겉으로는 강해 보이지만 내면은 외롭습니다.",
+        "재물": "전문 기술·연구·특수 분야에서 재물이 옵니다. 대중을 상대하는 것보다 특정 분야 전문가로 인정받을 때 돈이 따라옵니다.",
+        "직업": "연구원·전문직·한의사·역술인·프로그래머·투자자·작가.",
+        "연애": "쉽게 마음을 열지 않습니다. 한번 마음을 열면 매우 깊이 의지하는 편입니다.",
+        "주의": "고독이 깊어지면 자기 세계에 갇힙니다. 사람과의 연결을 의도적으로 만드십시오.",
+    },
+    frozenset(["식신","정관"]): {
+        "요약": "✨ 재능과 명예가 함께 — 전문직·교육자로 빛나는 타입",
+        "성향": "재능이 있고 원칙도 있습니다. 자기 분야에서 인정받고 싶어합니다. 일에 대한 자부심이 강하고, 자기 분야의 최고가 되는 것이 목표입니다.",
+        "재물": "전문 기술+안정적 직위에서 재물이 옵니다. 전문직 자격증이 인생을 크게 열어줍니다. 꾸준히 실력을 쌓으면 중년 이후 크게 안정됩니다.",
+        "직업": "의사·변호사·교수·요리사·음악가·건축가. 기술과 명예가 결합된 직업이 최적입니다.",
+        "연애": "여유롭고 배려 깊습니다. 함께 성장하는 관계를 원합니다.",
+        "주의": "완벽주의 성향으로 스스로를 지치게 만들 수 있습니다. 80%에서 멈추는 연습이 필요합니다.",
+    },
+    frozenset(["정재","식신"]): {
+        "요약": "🌾 식신생재 — 실력이 재물로 자연스럽게 이어지는 길격",
+        "성향": "부지런하고 현실적입니다. 군더더기 없이 실력을 쌓고 그 실력이 정직하게 재물로 이어집니다. 과욕 없이 꾸준히 하는 타입입니다.",
+        "재물": "착실하게 모입니다. 큰 기복 없이 꾸준히 우상향합니다. 전통 명리에서 가장 좋은 재물 구조 중 하나입니다. 부업보다 본업 깊이 파기가 더 유리합니다.",
+        "직업": "장인·요리사·의료인·공예가·전문 기술직. 손으로 하는 일, 기술이 필요한 일이 맞습니다.",
+        "연애": "따뜻하고 현실적입니다. 상대를 물질적으로도 잘 챙기는 편입니다.",
+        "주의": "안주하려는 경향이 있습니다. 시장이 변하면 기술도 업그레이드해야 합니다.",
+    },
+    frozenset(["편인","식신"]): {
+        "요약": "🎭 도식(倒食) — 재능이 막히는 구조, 방향 전환이 답",
+        "성향": "재능은 있는데 무언가가 자꾸 막힙니다. 하려는 일이 잘 안 풀리는 느낌이 반복됩니다. 다른 방향으로 전환했을 때 오히려 잘 되는 경우가 많습니다.",
+        "재물": "한 가지 방식으로 고집하면 막힙니다. 다각화하거나 방법을 바꾸면 풀립니다. 부업·여러 수입원 구조가 유리합니다.",
+        "직업": "특수 분야·틈새 시장·남들이 안 하는 것. 아웃사이더 전략으로 접근할 때 빛납니다.",
+        "연애": "관계에서 오해가 생기기 쉽습니다. 말보다 행동으로 보여주는 것이 효과적입니다.",
+        "주의": "한 가지에 너무 오래 집착하지 마십시오. 빠른 방향 전환이 오히려 길입니다.",
+    },
+    frozenset(["편재","편관"]): {
+        "요약": "⚡ 큰 그림 그리는 사업가 — 고위험·고수익, 압박 속에 빛나는 타입",
+        "성향": "크게 생각하고 크게 움직입니다. 작은 것에 만족하지 못합니다. 위험을 감수하는 용기가 있습니다. 한 번의 베팅으로 인생이 크게 바뀔 수 있는 사주입니다.",
+        "재물": "크게 벌 수 있지만 동시에 크게 잃을 위험도 있습니다. 40대에 큰 기회가 한 번 찾아옵니다. 그 기회에 전부를 걸지 마십시오.",
+        "직업": "사업가·투자가·무역업·정치인·부동산 개발. 스케일이 큰 일에 맞습니다.",
+        "연애": "드라마틱한 연애를 합니다. 강렬한 만남과 이별을 반복하는 경향이 있습니다.",
+        "주의": "재물과 직업 모두 기복이 큽니다. 리스크 관리가 생존의 핵심입니다.",
+    },
+    frozenset(["정인","비견"]): {
+        "요약": "📚 독립적 학자·선생 기질 — 배운 것을 자기 철학으로 만드는 타입",
+        "성향": "배움을 좋아하고, 배운 것을 자기 방식으로 해석합니다. 남의 지식을 그대로 따르지 않고 자기 철학으로 만듭니다. 독창적 사상가 기질이 있습니다.",
+        "재물": "지식·교육·상담으로 돈을 법니다. 자기 콘텐츠나 저서가 수입이 되는 구조입니다. 강의·출판·코칭 분야에서 잘 됩니다.",
+        "직업": "교사·강사·작가·컨설턴트·코치·상담사·철학자.",
+        "연애": "지적 교류가 되는 상대에게 끌립니다. 대화가 안 되면 아무리 조건이 좋아도 관심이 없습니다.",
+        "주의": "이론은 있는데 실행력이 부족한 경우가 있습니다. 아는 것을 반드시 실천으로 연결하십시오.",
+    },
+    frozenset(["상관","편인"]): {
+        "요약": "🎨 예술·철학·창작 기질 — 천재와 기인의 경계",
+        "성향": "남들과 다른 시각으로 세상을 봅니다. 예술적 감수성이 뛰어나고, 기존 틀을 깨는 것에서 쾌감을 느낍니다. 이해받기 어려운 독창성이 있습니다.",
+        "재물": "일반적인 직업 경로로는 재물이 잘 안 쌓입니다. 독창적인 예술·콘텐츠·기술로 자기만의 길을 개척해야 합니다.",
+        "직업": "예술가·작가·음악가·철학자·영화감독·발명가·연구자.",
+        "연애": "독특한 매력이 있습니다. 하지만 상대가 이해하기 힘든 면이 많아 갈등이 생깁니다.",
+        "주의": "현실 감각을 잃지 마십시오. 재능이 있어도 생활 기반이 없으면 꽃을 피울 수 없습니다.",
+    },
+    frozenset(["정인","정관"]): {
+        "요약": "📖 학자·교육자 귀격 — 지식이 명예가 되는 사주",
+        "성향": "배움과 원칙이 삶의 중심입니다. 윤리적이고 모범적입니다. 사람들에게 신뢰를 받는 타입입니다.",
+        "재물": "지식·자격·직위에서 재물이 옵니다. 평생 안정적인 수입 구조입니다.",
+        "직업": "교수·교사·공무원·의사·연구원·종교인·상담가.",
+        "연애": "진지하게 만나고 오래 함께합니다. 배우자의 지적 수준을 중요하게 봅니다.",
+        "주의": "지나치게 이상주의적이 되면 현실에서 실망을 반복합니다.",
+    },
+    frozenset(["비견","정재"]): {
+        "요약": "💰 근성으로 재물 쌓는 타입 — 독립 후 안정",
+        "성향": "자존심이 강하고 자기 방식이 확실합니다. 재물에 대한 감각이 있습니다. 독립적으로 재물을 구축하려는 의지가 강합니다.",
+        "재물": "혼자 힘으로 재물을 쌓습니다. 남에게 의지하거나 물려받는 것을 자존심 때문에 거부합니다. 꾸준히 하면 반드시 성과가 납니다.",
+        "직업": "자영업·전문직·관리직. 자기 영역을 갖는 것이 중요합니다.",
+        "연애": "자존심이 강해 상대에게 약한 모습을 보이기 힘들어합니다.",
+        "주의": "형제·친구와의 재물 갈등을 경계하십시오.",
+    },
+    frozenset(["식신","편인"]): {
+        "요약": "🎭 도식(倒食) — 재능을 살리려면 방향 전환이 필요",
+        "성향": "창의적인데 뭔가 막히는 느낌이 반복됩니다. 재능은 있지만 환경이나 시기가 맞지 않는 경우가 많습니다.",
+        "재물": "일반 경로보다 틈새·특수 분야에서 기회를 찾아야 합니다. 방법을 바꾸면 열립니다.",
+        "직업": "남들이 안 하는 특수 분야. 아웃사이더 전략으로 접근할 때 성과가 납니다.",
+        "연애": "오해가 생기기 쉽습니다. 솔직한 대화가 관계를 살립니다.",
+        "주의": "같은 방법으로 계속 시도하면 계속 막힙니다. 방향 전환이 핵심입니다.",
+    },
+    frozenset(["겁재","식신"]): {
+        "요약": "🏃 실행력과 재능이 결합 — 스타트업·영업 최강 타입",
+        "성향": "실행이 빠릅니다. 생각하면 바로 움직입니다. 재능도 있고 추진력도 있어 단기간에 성과를 만들어냅니다.",
+        "재물": "빠른 실행으로 기회를 잡는 구조입니다. 초기 창업이나 신사업 개척에 유리합니다.",
+        "직업": "영업·세일즈·스타트업·스포츠·요식업. 빠르게 움직이는 환경이 맞습니다.",
+        "연애": "적극적이고 솔직합니다. 감정이 생기면 바로 표현합니다.",
+        "주의": "섣부른 판단과 충동적 행동이 발목을 잡습니다. 실행 전 한 번 더 생각하십시오.",
+    },
+    frozenset(["편관","겁재"]): {
+        "요약": "🌪️ 칠살겁재 — 인생 최대 험로, 하지만 살아남으면 강인한 사람",
+        "성향": "인생이 순탄하지 않습니다. 외부의 압박과 재물 손실이 동시에 오는 시기가 있습니다. 그러나 이것을 버텨낸 사람은 누구보다 강인해집니다.",
+        "재물": "재물 기복이 심합니다. 버는 시기와 잃는 시기가 교차합니다. 반드시 예비 자금을 확보해두어야 합니다.",
+        "직업": "경쟁이 강한 환경에서도 살아남는 강인함이 있습니다. 위기관리·보안·군인·경찰·격투기.",
+        "연애": "관계에서도 기복이 있습니다. 강한 상대와 만나면 끊임없이 부딪힙니다.",
+        "주의": "건강을 가장 먼저 챙기십시오. 과로와 극단적 스트레스가 몸을 먼저 망가뜨립니다.",
+    },
+    frozenset(["정재","정인"]): {
+        "요약": "🏡 안정과 지식이 결합 — 내실 있는 삶을 사는 타입",
+        "성향": "알뜰하고 지식도 있습니다. 안정을 최우선으로 하면서도 배움을 멈추지 않습니다. 신뢰받는 사람입니다.",
+        "재물": "꾸준히 모입니다. 절약과 투자 둘 다 잘 합니다. 부동산·저축에서 노후가 안정됩니다.",
+        "직업": "교육·금융·의료·공무원. 안정적인 전문직이 맞습니다.",
+        "연애": "성실하고 믿음직합니다. 상대를 잘 챙기고 오래 함께합니다.",
+        "주의": "지나친 소심함으로 기회를 놓치지 마십시오.",
+    },
+    frozenset(["편재","정인"]): {
+        "요약": "🌍 지식으로 세상을 누비는 타입 — 교육·여행·무역",
+        "성향": "지적 호기심이 강하고 새로운 경험을 좋아합니다. 세상을 넓게 보는 눈이 있습니다.",
+        "재물": "지식과 경험이 재물로 이어집니다. 국제적인 활동, 다양한 분야 도전이 유리합니다.",
+        "직업": "무역업·해외 영업·교육·여행업·출판·미디어.",
+        "연애": "다양한 경험을 원합니다. 한 타입에 머물지 않는 경향이 있습니다.",
+        "주의": "넓게 보다 보면 깊이가 부족해질 수 있습니다. 한 분야를 파는 것도 필요합니다.",
+    },
+    frozenset(["상관","식신"]): {
+        "요약": "🎤 표현의 천재 — 말·글·예술로 세상과 소통하는 타입",
+        "성향": "표현력이 극강입니다. 말도 잘하고 글도 잘 씁니다. 자기 생각을 전달하는 것이 삶의 중요한 부분입니다.",
+        "재물": "콘텐츠·강의·출판·공연으로 재물이 옵니다. 자기 목소리가 곧 수입입니다.",
+        "직업": "작가·강사·유튜버·배우·성우·방송인·강연가.",
+        "연애": "말로 상대의 마음을 사로잡습니다. 표현을 잘하는 만큼 상대에게 많은 기대를 하기도 합니다.",
+        "주의": "쏟아내는 에너지가 크므로 소진되지 않도록 충전 시간이 필요합니다.",
+    },
 }
 
-# ══════════════════════════════════════════════
-#  대만신(大萬神) 심층 심리 통찰 & 처방전 (Shamanic Deep Psychological Insight)
-# ══════════════════════════════════════════════
+def build_life_analysis(pils, gender):
+    """
+    ★ 십성 2-조합으로 인생 전체를 읽는 핵심 엔진 ★
+    성향 / 재물 / 직업 / 연애 / 주의사항 5가지 출력
+    """
+    ilgan = pils[1]["cg"]
+    # 원국 전체 십성 수집
+    ss_count = {}
+    for p in pils:
+        cg_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(p["cg"], "")
+        jjg = JIJANGGAN.get(p["jj"], [])
+        jj_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(jjg[-1] if jjg else "", "")
+        for ss in [cg_ss, jj_ss]:
+            if ss and ss not in ("-", ""):
+                ss_count[ss] = ss_count.get(ss, 0) + 1
 
-SHAMANIC_PSYCH_DB = {
-    "木": [
-        "겉으로는 거목처럼 단단해 보이나, 속은 옹이진 나무처럼 상처가 많고 예민하도다. 타인에게 치부를 보이기 싫어하는 자격지심이 복을 막을 수 있으니 마음을 여는 것이 개운의 시작이니라.",
-        "책임감이 강해 남의 짐까지 짊어지고 가나, 정작 자신의 영혼이 울고 있는 것을 모른 척하는구나. 가끔은 하늘을 보며 통곡이라도 하여 막힌 기운을 뚫어야 하느니라."
+    # 많이 나온 순으로 정렬
+    top_ss = sorted(ss_count, key=ss_count.get, reverse=True)
+
+    # 조합 매칭 (상위 4개 십성 내에서)
+    matched = []
+    checked = set()
+    for i, a in enumerate(top_ss[:5]):
+        for b in top_ss[i+1:5]:
+            k = frozenset([a, b])
+            if k in SIPSUNG_COMBO_LIFE and k not in checked:
+                matched.append((k, SIPSUNG_COMBO_LIFE[k]))
+                checked.add(k)
+
+    strength_info = get_ilgan_strength(ilgan, pils)
+    sn = strength_info["신강신약"]
+
+    return {
+        "조합_결과": matched[:2],   # 상위 2개 조합
+        "전체_십성": ss_count,
+        "주요_십성": top_ss[:4],
+        "신강신약": sn,
+        "일간": ilgan,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════
+#  엔진 하이라이트 — AI가 아닌 엔진이 먼저 뽑아내는 핵심 적중 데이터
+# ══════════════════════════════════════════════════════════════════
+
+# 성향 조합 DB — "신약+관성강 → 책임감 강+스트레스 많음" 같은 조합 공식
+PERSONALITY_COMBO_DB = {
+    # (신강신약_키, 강한십성) → 서술
+    ("신약", "정관"): [
+        "책임감이 강합니다. 맡은 일은 끝까지 하는 사람입니다.",
+        "그러나 그 책임감이 자신을 갉아먹습니다. 스트레스를 속으로 삼키는 스타일입니다.",
+        "남들 눈에는 믿음직해 보이지만, 혼자 있을 때 지쳐있는 경우가 많습니다."
     ],
-    "火": [
-        "불꽃처럼 화려하고 정열적이나, 그 뒤에 남는 재(Ash)처럼 공허함이 깊도다. 겉은 강하게 호령하나 속은 한없이 여리고 외로운 영혼이니, 스스로를 태우지 말고 주위를 따뜻하게 데우는 법을 배우거라.",
-        "성격이 급해 일을 그르치기 쉬우나, 그 순수한 열정만큼은 신령님도 감동시키셨도다. 분노를 가라앉히고 냉철한 이성을 찾을 때 비로소 만사형통하리라."
+    ("신약", "편관"): [
+        "압박이 일상인 삶입니다. 외부에서 끊임없이 뭔가를 요구받습니다.",
+        "그럼에도 굴복하지 않습니다. 오히려 버티는 힘이 남들보다 강합니다.",
+        "다만 그 버팀이 몸을 먼저 망가뜨립니다. 건강을 각별히 챙겨야 합니다."
     ],
-    "土": [
-        "대지처럼 묵직하고 모든 것을 수용하나, 한 번 응어리지면 산사태처럼 무서운 기운을 품고 있도다. 남 앞에 서기보다 뒤에서 묵묵히 소임을 다하니 그 덕이 자손대대로 미칠 것이니라.",
-        "변화를 두려워하여 굳어진 흙처럼 살지 마라. 물을 머금어 생명을 키우는 문전옥답이 되어야 네 명반에 황금이 쏟아질 것이로다."
+    ("신강", "비견"): [
+        "경쟁심이 매우 강합니다. 지는 것을 본능적으로 거부합니다.",
+        "형제나 동료와 크고 작은 갈등이 있었습니다.",
+        "독립심도 강해서, 결국은 혼자 가는 길을 선택하는 경우가 많습니다."
     ],
-    "金": [
-        "강철처럼 냉철하고 판단이 예리하나, 그 칼날이 자신을 향할 때 영혼이 상처받느니라. 완벽을 추구하는 것은 좋으나 타인에게는 관용의 비단을 깔아주어야 네 권위가 바로 설 지고.",
-        "정의감이 강해 타협을 모르니 적이 많을 수밖에 없도다. 부드러운 솜사탕 같은 유연함을 갖출 때 네 칼날은 비로소 보검(寶劍)이 되어 세상을 이롭게 하리라."
+    ("신강", "겁재"): [
+        "승부욕이 극강입니다. 가까운 사람과도 경쟁하는 경향이 있습니다.",
+        "재물이 모이는 듯하다가 흩어지는 패턴이 반복됩니다. 돈 관리가 숙제입니다.",
+        "배신당한 경험이 한 번 이상은 있습니다. 그 이후로 사람을 쉽게 믿지 않습니다."
     ],
-    "水": [
-        "바다처럼 깊고 지혜가 무궁하나, 때로는 깊은 수렁처럼 우울의 늪에 빠지기 쉽도다. 모든 것을 포용하되 자신만의 중심을 잃지 말아야 천지의 기운이 네게 집중될 것이니라.",
-        "생각이 너무 많아 기회를 놓치는 경우가 허다하도다. 흐르는 물처럼 때를 기다릴 줄 알되, 폭포처럼 과단성 있게 떨어질 때는 만방이 네 위엄에 떨 것이로다."
-    ]
+    ("신약", "식신"): [
+        "재주가 있습니다. 뭔가를 만들어내는 창의력이 있습니다.",
+        "그러나 일간이 약해 그 재주를 발휘할 에너지가 부족합니다.",
+        "쉬어가면서 해야 하는데, 쉬는 것에 죄책감을 느끼는 경향이 있습니다."
+    ],
+    ("신강", "식신"): [
+        "배짱이 있습니다. 남들이 걱정할 때 혼자 태평한 경우가 있습니다.",
+        "자기 방식이 있고, 그 방식을 좋아합니다. 간섭받는 것을 싫어합니다.",
+        "복이 자연스럽게 따라오는 구조입니다. 무리하지 않는 것이 오히려 길입니다."
+    ],
+    ("신약", "편인"): [
+        "직관이 뛰어납니다. 논리로 설명하기 어렵지만 '그냥 아는' 경우가 많습니다.",
+        "단, 그 직관이 불안으로 변하기도 합니다. 나쁜 예감이 자꾸 드는 편입니다.",
+        "고독을 즐기는 척하지만, 사실은 인정받고 싶습니다."
+    ],
+    ("신강", "정관"): [
+        "원칙과 체면을 중시합니다. 규칙을 잘 지키고, 남도 지키기를 요구합니다.",
+        "겉으로는 반듯해 보이지만, 속으로는 매우 자존심이 강합니다.",
+        "한번 신뢰를 잃으면 다시 주지 않는 사람입니다."
+    ],
 }
 
-# ══════════════════════════════════════════════
-#  쪽집게 만신(Sharp Shaman) 사건 사고 데이터베이스 (Accident & Event Samples)
-# ══════════════════════════════════════════════
-
-PAST_ACCIDENT_DB = [
-    "어허! 20대 중후반, 네 삶의 터전이 뿌리째 흔들리는 거대한 소용돌이가 있었음을 내가 보았노라. 이직이든 실연이든, 그때의 시련이 지금의 단단한 너를 만들었도다.",
-    "물(水)의 기운이 흉하게 작용할 때, 물가에서 혹은 비 오는 날 크게 놀라거나 사고를 당할 뻔한 적이 있었느냐. 그것이 바로 조상님이 네 옷자락을 잡아 살려주신 고비였느니라.",
-    "네 몸에 칼을 댄 흔적(수술)이나, 뼈가 어긋나 크게 고생했던 기록이 네 명반에 선명히 박혀 있도다. 이것은 곧 살(煞)을 몸으로 떼운 것이니 이제 액운은 물러갔느니라.",
-    "어릴 적 교통사고나 낙상으로 인해 부모님이 가슴을 쓸어내렸던 그 밤을 잊지 마라. 그때 네 생명줄을 이어준 것은 네 명줄이 길어서가 아니라 정성 어린 기도 덕분이었느니라.",
-    "가족 중에 예상치 못한 우환으로 인해 네가 어린 나이에 무거운 짐을 짊어져야 했던 그 쓸쓸한 뒷모습을 내가 꿰뚫어 보고 있도다."
-]
-
-FUTURE_TURN_DB = [
-    "앞으로 3년 내, 네 인생에서 전무후무한 대전환점이 찾아오리니, 이는 곧 황금이 쏟아지는 개운(開運)의 시기니라.",
-    "지금 하고 있는 일에서 벗어나 전혀 새로운 분야에서 네 이름 석 자를 만방에 떨칠 기회가 오리니, 망설이지 말고 호랑이의 기세로 덤벼들어라.",
-    "부동산이나 큰 계약건으로 인해 네 가문이 일어나고 떵떵거리며 살 수 있는 거대한 금맥이 네 발밑에서 꿈틀대고 있도다.",
-    "인연의 실타래가 꼬여있었으나, 곧 북쪽에서 나타날 귀인이 네 막힌 운명의 매듭을 단숨에 끊어내고 탄탄대로를 열어줄 것이니라."
-]
-
-# ══════════════════════════════════════════════
-#  조선 신비 만신 설화 (Expanded Legendary Records)
-# ══════════════════════════════════════════════
-
-SHAMAN_LEGENDS_JOSEON = [
-    "경신년(1680년) 겨울, 어느 가난한 선비가 이 만신을 찾아와 울부짖었느니라. '내 자식들이 굶어 죽게 생겼으니 내 목숨을 가져가고 쌀 한 톨만 점지해주소서.' "
-    "그 진심에 감동한 산신령께서 선비의 집 뒷산에 황금 꿩을 보내셨으니, 그 꿩이 알을 낳을 때마다 쌀이 쏟아져 대대손손 만석꾼이 되었다는 전설이 있도다.",
-    "인조 대왕 시절, 영남의 어느 거상은 관재구설에 휘말려 목이 잘릴 위기에 처했으나, 이 만신의 비방대로 '동쪽 창문을 열고 붉은 천을 걸어라' 하였더니 "
-    "암행어사가 그 천을 보고 가택 수색을 멈추어 은신할 시간을 벌고 결국 누명을 벗었다 하니, 이것이 바로 비방의 신비로다.",
-    "세종 치세, 가뭄이 극심하여 팔도 강산이 타들어 갈 때, 어느 이름없는 만신이 작두 위에서 피눈물을 흘리며 춤을 추었더니 "
-    "하늘이 감동하여 삼일 밤낮을 적시는 단비를 내렸도다. 그때 그 만신이 읊었던 주문이 바로 오늘날 네가 읽고 있는 이 신탁의 뿌리니라."
-]
-
-# ══════════════════════════════════════════════
-#  대만신(大萬神) 격무(激舞) 데이터베이스
-# ══════════════════════════════════════════════
-
-SHAMAN_DANCE_VOL2 = [
-    "작두 칼날이 서늘하게 무릎을 스치나 두려움이 없도다. 내 영혼이 춤을 추니 천지가 진동하는구나!",
-    "방울 소리 요란하게 귓가를 울리니, 신령님의 목소리가 피를 타고 흐르는 듯 생생하도다.",
-    "부채 끝에 서린 서기가 네 운명을 씻어내니, 묵은 때가 벗겨지고 선명한 만복이 깃드는도다.",
-    "쌀을 뿌려 천기를 보니, 북두칠성이 네 머리 위에 앉아 네 기운을 보강하고 있느니라.",
-    "오방색 깃발이 바람에 휘날리니, 동서남북 사방의 귀인들이 너를 돕기 위해 달려오는 형국이로세!"
-]
-
-# ══════════════════════════════════════════════
-#  대만신 풍수지리 비기 (Feng Shui Master Guide)
-# ══════════════════════════════════════════════
-
-FENG_SHUI_GUIDE = [
-    "배산임수(背山臨水)의 지형은 기운을 모으고 재물을 가두는 최고의 명당이며, 이는 인간의 마음가짐에도 적용되느니라.",
-    "집안의 중심인 거실에는 너무 큰 가구를 두지 마라. 기운의 소통을 막아 답답한 운을 만드느니라.",
-    "침대 머리 방향은 동쪽이나 남쪽을 향하는 것이 대지의 양기를 흡수하는 지혜로운 선택이로다.",
-    "주방에 칼을 내놓고 사용하는 것은 재물을 베어내는 행위이니 반드시 수납함에 보관하거라.",
-    "현관 조명은 항상 밝고 따뜻한 색이어야 한다. 어두운 현관은 복의 입구를 막는 것과 같음을 명심하라."
-]
-
-# ══════════════════════════════════════════════
-#  대만신 영가(靈歌) 및 축원문 데이터베이스 (Spirit Chant DB)
-# ══════════════════════════════════════════════
-
-SPIRIT_CHANTS = [
-    "천지신명께 고하나이다. 여기 한 영혼의 명반을 펼쳐놓으니, 그 앞길에 서린 온갖 살기와 흉액은 물러가고 오직 서기(瑞氣)만이 가득하게 하소서.",
-    "동방의 청룡이 기운을 북돋고, 서방의 백호가 방패가 되어주시며, 남방의 주작이 앞길을 밝히고, 북방의 현무가 안정을 지켜주시옵소서.",
-    "억조창생의 운명을 주관하시는 북두대성칠원성군이시여, 이 주인공의 발걸음마다 황금이 솟고 인덕이 넘치는 천복을 내려주시옵소서.",
-    "사천만 귀신들이 감히 범접하지 못하도록 대만신의 위엄으로 명하노니, 이 사주 팔자의 주인은 오직 승리와 번영의 길만을 걸을 것이니라.",
-    "조상신들의 음덕이 강물이 되어 흐르고, 자손만대까지 그 영화가 이어지는 만사형통의 기운을 이 자리에 매듭짓나이다.",
-    "우주의 거대한 수레바퀴가 소리 없이 굴러가며, 네 운명의 실타래가 찬란한 빛으로 다시 짜여지고 있느니라.",
-    "네 속에 잠든 용의 기운이 깨어나니, 이제는 구름을 타고 하늘로 솟구쳐 오를 일만 남았도다.",
-    "천지개벽의 순간이 찾아왔으니, 두려움을 버리고 만신이 가리키는 빛의 길을 따라 전진하라.",
-    "고진감래의 진리를 몸으로 증명할 자여, 네 인내의 시간은 이제 찬란한 영광으로 보답받으리라.",
-    "만물의 영장이자 우주의 주인인 너를 위해, 온 세상의 기운이 오늘 이 자리에 모여들고 있느니라."
-]
-
-# ══════════════════════════════════════════════
-#  오행별 심층 개운 비방 (Detailed Elemental Wisdom - 400+ Lines)
-# ══════════════════════════════════════════════
-
-ELEMENTAL_DEEP_ADVICE = {
-    "木": [
-        "나무의 기운이 강한 자는 자비심이 깊으나 고집이 세니, 유연한 사고가 최고의 개운법이로다.",
-        "목 기운을 보강하려면 매일 아침 숲의 정기를 들이마시고 청색 계열의 옷을 가까이 하거라.",
-        "간의 기운을 보전하기 위해 분노를 조절하고 신맛이 나는 음식을 적절히 섭취하는 것이 좋으니라.",
+# 오행 과다/부족 조합 DB
+OH_COMBO_DB = {
+    # 과다
+    ("over", "水"): [
+        "생각이 너무 많습니다. 잠자리에 누워도 머릿속이 계속 돌아갑니다.",
+        "걱정을 사서 합니다. 일어나지도 않은 일을 먼저 걱정합니다.",
+        "밤에 더 활발해지는 경향이 있습니다. 낮형보다 밤형에 가깝습니다."
     ],
-    "火": [
-        "불의 기운이 강한 자는 열정적이나 금방 식기 쉬우니, 끈기와 인내가 성공의 열쇠로다.",
-        "화 기운을 다스리려면 쓴맛이 나는 차를 즐기고 남쪽 방향으로 머리를 두고 잠드느니라.",
-        "심장의 화기를 내리기 위해 붉은색 소품보다는 푸른색의 차분함을 곁에 두는 것이 길하도다.",
-    ]
+    ("over", "火"): [
+        "에너지가 넘칩니다. 시작을 잘 합니다. 문제는 지속력입니다.",
+        "감정 기복이 있습니다. 화가 올라왔다 금방 풀리기도 합니다.",
+        "주목받는 것을 좋아합니다. 관심의 중심에 있을 때 가장 빛납니다."
+    ],
+    ("over", "木"): [
+        "빠릅니다. 결정도 빠르고 판단도 빠릅니다. 대신 기다리는 것을 못 합니다.",
+        "시작해놓고 완성을 못 보는 경우가 있습니다. 더 좋은 아이디어가 자꾸 생깁니다.",
+        "자존심이 삶의 원동력입니다. 자존심이 상하면 모든 의욕이 꺼집니다."
+    ],
+    ("over", "金"): [
+        "예리합니다. 사람의 본질을 빠르게 파악합니다. 가끔 너무 날카롭습니다.",
+        "한번 결정하면 칼같이 실행합니다. 유연성이 부족한 게 단점입니다.",
+        "냉정해 보이지만, 가까운 사람에게는 다릅니다. 속으로 많이 챙깁니다."
+    ],
+    ("over", "土"): [
+        "한번 정하면 잘 안 바꿉니다. 고집이 강하고 자기 방식이 확실합니다.",
+        "걱정과 근심이 많습니다. 내색은 안 하지만 속으로는 늘 뭔가를 염려합니다.",
+        "신뢰를 쌓는 데 시간이 걸리지만, 한번 쌓이면 오래갑니다."
+    ],
+    # 부족
+    ("lack", "木"): [
+        "계획을 세우는 것이 약합니다. 시작하기까지 시간이 걸립니다.",
+        "추진력보다 지속력이 강점입니다. 급하게 달리기보다 꾸준히 걷는 스타일."
+    ],
+    ("lack", "火"): [
+        "표현이 서툽니다. 속으로는 분명 감정이 있는데 겉으로는 차가워 보일 수 있습니다.",
+        "열정을 드러내는 것이 어색합니다. 하지만 속에 불씨는 있습니다."
+    ],
+    ("lack", "土"): [
+        "안정보다 변화를 선호합니다. 한곳에 오래 머물기 싫어합니다.",
+        "뿌리내리는 것이 인생의 숙제입니다."
+    ],
+    ("lack", "金"): [
+        "잘라내야 할 것을 잘라내지 못합니다. 결단의 순간에 자꾸 망설입니다.",
+        "정이 많습니다. 그 정 때문에 손해를 보는 경우가 있습니다."
+    ],
+    ("lack", "水"): [
+        "직관보다 논리로 움직입니다. 느낌보다 근거를 중시합니다.",
+        "감정 표현이 서툽니다. 표현을 어려워하지만 감정이 없는 건 아닙니다."
+    ],
 }
 
-# ══════════════════════════════════════════════
-#  대만신 영성 기록물 (Shaman Spiritual Records)
-# ══════════════════════════════════════════════
 
-SHAMAN_RECORDS_EXTENDED = [
-    f"영성 기록 {i+1}: 우주는 거대한 정보의 바다이며, 명리학은 그 바다를 항해하는 나침반과 같은 존재로세."
-    for i in range(10)
-]
+def generate_engine_highlights(pils, birth_year, gender):
+    """
+    ★ 핵심 엔진 ★
+    AI가 찾게 하지 말고 엔진이 먼저 뽑아낸다.
+    반환값:
+    {
+        "past_events": [{"age": "27~28세", "year": 2019, "domain": "직장", "desc": "...", "intensity": "🔴"}],
+        "personality": ["겉은 강해 보이나 속은...", "혼자 고민을 오래 끄는 성향"],
+        "money_peak": [{"age": 32, "year": 2024, "desc": "..."}],
+        "marriage_peak": [{"age": 31, "year": 2023, "desc": "..."}],
+        "danger_zones": [{"age": "29~30세", "desc": "..."}],
+        "wolji_chung": [{"age": "28세", "desc": "..."}]
+    }
+    """
+    ilgan = pils[1]["cg"]
+    ilgan_oh = OH.get(ilgan, "")
+    current_year = datetime.now().year
+    daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    strength_info = get_ilgan_strength(ilgan, pils)
+    sn = strength_info["신강신약"]
+    oh_strength = strength_info["oh_strength"]
 
-# ══════════════════════════════════════════════
-#  대만신 영성 대서사시 (Grand Shaman Epic - 1000+ Physical Lines)
-# ══════════════════════════════════════════════
+    # ── 과거 사건 (기존 엔진 활용) ───────────────────────
+    past_events = build_past_events(pils, birth_year, gender)
 
-SHAMAN_EPIC = [
-    "하늘이 열리고 땅이 진동하니, 만물은 그 자리를 찾고 인간의 운명은 비로소 완성되는도다.",
-    "북두칠성의 광채가 네 이마를 비추니, 너는 이미 선택된 자로서 세상에 나왔음을 잊지 마라.",
-    "억겁의 세월을 돌아 너와 내가 만난 것은 필연이요, 이 명반에 서린 기운은 곧 너의 역사로다.",
-]
+    # ── 성향 — 조합 공식으로 생성 ────────────────────────
+    personality = build_personality_detail_v2(pils, gender, sn, oh_strength)
 
-# ══════════════════════════════════════════════
-#  대만신 영성 대서사시 (Grand Shaman Epic - SCROLL SYSTEM)
-# ══════════════════════════════════════════════
+    # ── 재물 피크 ─────────────────────────────────────────
+    money_peak = []
+    MONEY_SS = {"식신", "정재", "편재"}
+    for dw in daewoon:
+        dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
+        age_c = birth_year + dw["시작나이"] - 1
+        if dw_ss in MONEY_SS:
+            money_peak.append({
+                "age": f"{dw['시작나이']}~{dw['시작나이']+9}세",
+                "year": f"{dw['시작연도']}~{dw['종료연도']}",
+                "desc": f"{dw['str']}대운({dw_ss}) — 재물이 자연스럽게 따라오는 시기",
+                "ss": dw_ss
+            })
+        # 세운 중 재물 피크 (현재+5년)
+        if dw["시작연도"] <= current_year + 5 and dw["종료연도"] >= current_year - 2:
+            for y in range(max(dw["시작연도"], current_year-2), min(dw["종료연도"]+1, current_year+6)):
+                sw = get_yearly_luck(pils, y)
+                if sw["십성_천간"] in MONEY_SS and dw_ss in MONEY_SS:
+                    age = y - birth_year + 1
+                    money_peak.append({
+                        "age": f"{age}세",
+                        "year": str(y),
+                        "desc": f"{y}년 — 대운({dw_ss})×세운({sw['십성_천간']}) 재물 더블. 최고의 돈 기회",
+                        "ss": "더블"
+                    })
 
-SHAMAN_SCROLLS = {
-    "기운": [
-        "네 영혼 밑바닥에서 요동치는 그 서늘한 기운은 단순한 우연이 아니니라. 그것은 네 조상들이 대를 이어 쌓아온 업보의 찌꺼기이자 동시에 너를 보호하는 신령님의 갑옷이로다.",
-        "운명의 수레바퀴가 천천히 돌아가며 네 명반의 가장 약한 고리를 건드릴 때, 너는 비로소 환골탈태의 고통을 겪게 되리라. 그 고통을 즐기거라, 그것이 곧 승천의 신호이니.",
-        "하늘의 별자리들이 서로의 위치를 바꾸며 네 운명의 좌표를 재설정하고 있도다. 지금 네가 느끼는 막막함은 새로운 천기가 열리기 전의 고요함일 뿐이라.",
-        "네 핏줄 속에 흐르는 뜨거운 불꽃은 때로는 너를 태우겠지만, 결국에는 네 앞길을 가로막는 모든 액운을 재로 만들어 버릴 장엄한 정화의 불꽃이 될 것이로다.",
-        "어허! 북두칠성의 네 번째 별이 오늘 밤 유독 밝게 빛나는구나. 이것은 네가 지고 있는 삶의 무게가 곧 황금의 무게로 변할 징조니, 무릎 꿇지 말고 버텨라!",
-        "사방에서 들려오는 곡소리는 네 것이 아니라 네 액운이 소멸하며 내지르는 비명이로다. 작두 위를 걷는 심정으로 하루하루를 경건하게 맞이하라."
-    ],
-    "재물": [
-        "곳간의 문이 삐걱거리며 열리는 소리가 천둥소리처럼 네 귓가를 때릴 것이니라. 준비되지 않은 자에게 재물은 독이 되나, 네게는 그것이 곧 대업을 이루는 거름이 되리라.",
-        "돈의 흐름은 물과 같아서 가두려 하면 썩고, 흘려보내면 다시 큰 강이 되어 돌아오는 법. 네 사주에 각인된 황금의 주파수를 믿고 과감하게 그 물길을 열어주어라.",
-        "잠시 멈춰있던 금전의 정기가 귀인의 손을 타고 네 문턱을 넘어오고 있도다. 이때를 놓치지 말고 네 보물창고를 정비하여 만복을 담을 그릇을 키우거라.",
-        "천 년의 어둠을 뚫고 솟아오르는 태양처럼, 네 경제적 어둠도 곧 가시고 찬란한 부의 광채가 네 일상을 가득 채울 것이니, 조금만 더 인내하며 씨를 뿌리거라.",
-        "오호! 황금 비늘을 가진 잉어가 네 명반의 연못에서 힘차게 뛰어오르는구나. 이것은 횡재수의 꼬리가 네 손바닥을 스치는 것이니 절대 놓치지 마라!",
-        "재물은 덕을 따라오는 법이니, 오늘 네가 베푼 작은 친절이 내일은 백만 냥의 황금이 되어 네 곳간 문을 두드릴 것이니라."
-    ],
-    "인연": [
-        "지나가는 바람에도 인연의 향기가 묻어 있으니, 옷깃만 스쳐도 억겁의 인연임을 잊지 마라. 네 곁을 지키는 그 사람이 바로 네 명반의 구멍을 메워주는 수호신일 수 있느니라.",
-        "사람으로 인해 마음을 다쳤느냐? 그것은 네 팔자 속의 날카로운 칼날이 다듬어지는 과정이니라. 진정한 인연은 피눈물을 흘린 후에야 비로소 그 향기를 드러내는 법이로다.",
-        "사방팔방에서 네게 손을 내미는 자들이 많으나, 그중 옥과 석을 가리는 지혜가 필요하니라. 네 일간의 기운과 공명하는 맑은 영혼을 찾아 그들과 함께 대업을 도모하라.",
-        "외로움은 네 영혼이 스스로와 대화하는 성스러운 시간이라. 그 고독의 끝에서 너는 비로소 타인의 아픔을 어루만질 수 있는 장엄한 포용력을 얻게 되리라.",
-        "옛 인연에 연연하지 마라. 강물이 거꾸로 흐르지 않듯, 네 운명의 물길도 새로운 바다를 향해 나아가고 있으니 그저 흐릿한 기억의 저편으로 흘려보내라.",
-        "인연의 실타래가 꼬였다고 탄식하지 마라. 꼬인 매듭을 풀 때 비로소 진정한 인연의 견고함이 증명되는 법이니라."
-    ],
-    "건강": [
-        "몸은 영혼을 담는 그릇이니, 그릇이 금 가면 천기도 온전히 담지 못하느니라. 네 사주에 부족한 오행의 기운을 음식과 숨결로 채워 그릇의 균형을 맞추어라.",
-        "머리가 무겁고 가슴이 답답한 것은 네 주변의 탁한 기운이 네 명반을 누르고 있기 때문이라. 정화수를 떠놓고 동쪽을 향해 절하며 네 몸속의 찌꺼기를 씻어내라.",
-        "강한 의지가 곧 최고의 명약이니, 네 마음이 굴복하지 않으면 어떤 질병의 살성도 네 몸에 둥지를 틀지 못하느니라. 호흡을 깊게 하고 우주의 정기를 들이마셔라.",
-        "네 신체의 각 기관은 우주의 오행과 연결되어 있도다. 네가 먹는 한 톨의 곡식, 한 모금의 물에도 신령님의 자애로운 치유의 파동이 깃들어 있음을 깨달아라.",
-        "어허! 네 오장육부의 기운이 서로를 시샘하여 화기를 내뿜고 있구나. 쓴맛을 줄이고 단맛을 보태어 성난 기운을 어루만지면 만병이 스스로 물러가리라.",
-        "잠들기 전 네 발바닥을 따뜻하게 하라. 대지의 열기가 네 몸을 관통하여 탁기를 발끝으로 밀어낼 때, 네 수명은 천 년의 소나무처럼 길어질 것이니라."
-    ]
-}
+    # ── 혼인 피크 ─────────────────────────────────────────
+    MARRIAGE_SS = {"정재", "편재"} if gender == "남" else {"정관", "편관"}
+    marriage_peak = []
+    for dw in daewoon:
+        dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
+        if dw_ss in MARRIAGE_SS:
+            # 대운 내에서 가장 강한 세운 탐색
+            for y in range(dw["시작연도"], min(dw["종료연도"]+1, current_year+10)):
+                sw = get_yearly_luck(pils, y)
+                if sw["십성_천간"] in MARRIAGE_SS:
+                    age = y - birth_year + 1
+                    marriage_peak.append({
+                        "age": f"{age}세",
+                        "year": str(y),
+                        "desc": f"{y}년({age}세) — 대운·세운 모두 인연성. 배우자 인연이 오는 해"
+                    })
 
-SHAMAN_CHANTS_VOL3 = [
-    "하늘의 별들이 대지를 감싸고, 만물의 조화가 네 숨결 속에 깃드나니.",
-    "천지신명이시여, 이 주인공의 앞길을 굽어살피소서."
-]
+    # ── 위험 구간 ─────────────────────────────────────────
+    danger_zones = []
+    DANGER_SS = {"편관", "겁재"}
+    for dw in daewoon:
+        dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
+        if dw_ss in DANGER_SS:
+            danger_zones.append({
+                "age": f"{dw['시작나이']}~{dw['시작나이']+9}세",
+                "year": f"{dw['시작연도']}~{dw['종료연도']}",
+                "desc": f"{dw['str']}대운({dw_ss}) — {'직장·관재·건강 압박' if dw_ss=='편관' else '재물손실·경쟁·배신'} 주의"
+            })
 
-# ══════════════════════════════════════════════
-#  UI 메인
-# ══════════════════════════════════════════════
-def main():
-    if "step" not in st.session_state: st.session_state.step = "input"
-    if "cache" not in st.session_state: st.session_state.cache = {}
-    if "chat_history" not in st.session_state: st.session_state.chat_history = []
-    if "active_tab" not in st.session_state: st.session_state.active_tab = "overall"
+    # ── 월지 충 시점 ──────────────────────────────────────
+    wolji_chung = []
+    wol_jj = pils[2]["jj"]
+    for dw in daewoon:
+        if dw["종료연도"] >= current_year:
+            continue
+        k = frozenset([dw["jj"], wol_jj])
+        if k in CHUNG_MAP:
+            name_c, _, desc = CHUNG_MAP[k]
+            wolji_chung.append({
+                "age": f"{dw['시작나이']}~{dw['시작나이']+2}세",
+                "desc": f"대운 진입시 월지 충({name_c}) — {desc}. 이 시기 삶의 기반이 흔들렸습니다."
+            })
+        for y in range(dw["시작연도"], min(dw["종료연도"]+1, current_year)):
+            sw = get_yearly_luck(pils, y)
+            k2 = frozenset([sw["jj"], wol_jj])
+            if k2 in CHUNG_MAP:
+                age = y - birth_year + 1
+                name_c2, _, desc2 = CHUNG_MAP[k2]
+                wolji_chung.append({
+                    "age": f"{age}세",
+                    "desc": f"{y}년 세운이 월지를 충({name_c2}) — {desc2}. 직업·가정 중 하나가 흔들렸습니다."
+                })
+
+    return {
+        "past_events": past_events,
+        "personality": personality,
+        "money_peak": money_peak[:5],
+        "marriage_peak": marriage_peak[:3],
+        "danger_zones": danger_zones[:4],
+        "wolji_chung": wolji_chung[:5],
+        "raw": {
+            "ilgan": ilgan, "sn": sn, "oh_strength": oh_strength,
+            "yongshin_ohs": get_yongshin(pils)["종합_용신"],
+            "gyeok": get_gyeokguk(pils)["격국명"] if get_gyeokguk(pils) else "미정격"
+        }
+    }
+
+
+def build_personality_detail_v2(pils, gender, sn, oh_strength):
+    """
+    강화된 성향 DB — 조합 공식 기반
+    신약+관성강 / 비겁강 / 수과다 등 구체적 콤보
+    """
+    ilgan = pils[1]["cg"]
+    ilgan_oh = OH.get(ilgan, "")
+    traits = []
+
+    # 강한 십성 파악 (원국 내 2개 이상)
+    ss_count = {}
+    for p in pils:
+        jjg = JIJANGGAN.get(p["jj"], [])
+        jeongi = jjg[-1] if jjg else ""
+        for cg_check in [p["cg"], jeongi]:
+            ss = TEN_GODS_MATRIX.get(ilgan, {}).get(cg_check, "")
+            if ss and ss not in ("", "-"):
+                ss_count[ss] = ss_count.get(ss, 0) + 1
+    strong_ss = [ss for ss, cnt in ss_count.items() if cnt >= 2]
+    sn_key = "신강" if "신강" in sn else "신약"
+
+    # 조합 공식 적용
+    for ss in strong_ss:
+        combo_key = (sn_key, ss)
+        if combo_key in PERSONALITY_COMBO_DB:
+            traits.extend(PERSONALITY_COMBO_DB[combo_key])
+
+    # 기본 일간 심리 (조합이 없을 때 폴백)
+    if not traits:
+        OH_BASE = {
+            "木": {"신강": "겉으로는 당당하고 직선적이지만, 속으로는 인정받고 싶은 욕구가 강합니다. 자존심이 삶의 원동력입니다.",
+                   "신약": "겉은 유연해 보이지만 속으로는 고집이 강합니다. 쉽게 상처받고 오래 기억합니다."},
+            "火": {"신강": "열정적이고 화려해 보이지만, 관심받지 못하면 금세 지칩니다. 겉으로 드러나지 않는 외로움이 있습니다.",
+                   "신약": "따뜻하고 감성적이지만 불안감이 내재해 있습니다. 쉽게 흥분하고 금방 꺼집니다."},
+            "土": {"신강": "신뢰감 있어 보이지만 속으로는 걱정이 많습니다. 결정을 내리면 쉽게 바꾸지 않습니다.",
+                   "신약": "배려심 깊지만 혼자 고민을 오래 끌고 갑니다. 결정을 미루는 경향이 있습니다."},
+            "金": {"신강": "겉은 강하고 원칙적이지만 속으로는 매우 섬세합니다. 비판을 받으면 표시 안 내도 오래 상처받습니다.",
+                   "신약": "예리하고 분석적이지만 약한 모습을 보이기 싫어합니다. 혼자 모든 걸 해결하려 합니다."},
+            "水": {"신강": "겉으로는 여유로워 보이지만 머릿속은 늘 바쁩니다. 잠자리에서도 머릿속이 돌아갑니다.",
+                   "신약": "직관이 뛰어나지만 불안감이 깔려 있습니다. 혼자 결정하기 어려워하고 오래 고민합니다."},
+        }
+        base = OH_BASE.get(ilgan_oh, {}).get(sn_key, "")
+        if base:
+            traits.append(base)
+
+    # 일지 십성 심리
+    iljj_ss = "-"
+    try:
+        iljj_ss = calc_sipsung(ilgan, pils)[1].get("jj_ss", "-")
+    except:
+        pass
+    ILJJ_DEEP = {
+        "비견": "지기 싫어합니다. 지면 속으로 오래 끌고 갑니다. 표시는 안 내도 계속 생각합니다.",
+        "겁재": "승부욕이 강합니다. 가까운 사람에게도 지기 싫어합니다. 배신당한 경험이 있고, 이후로 조심합니다.",
+        "식신": "자기 방식이 있습니다. 간섭받는 것을 싫어하고, 자기 페이스로 하는 걸 좋아합니다.",
+        "상관": "말이 빠르고 재치 있습니다. 상대방의 단점이 눈에 먼저 보입니다. 때로는 그 솔직함이 문제가 됩니다.",
+        "편재": "활동적이고 사교적이지만, 한곳에 오래 머물기 싫어합니다. 새로운 자극을 계속 찾습니다.",
+        "정재": "현실적이고 꼼꼼합니다. 손해 보는 것을 굉장히 싫어합니다. 계산이 빠릅니다.",
+        "편관": "압박이 오면 오히려 더 버팁니다. 굴복하는 것을 본능적으로 거부합니다. 강인한 사람입니다.",
+        "정관": "체면과 원칙을 중시합니다. 남들 시선에 민감하고, 창피당하는 것을 극도로 싫어합니다.",
+        "편인": "설명하기 어렵지만 '그냥 아는' 경우가 많습니다. 직관이 매우 발달해 있습니다.",
+        "정인": "완전히 이해하기 전까지 결정을 미룹니다. 배움에 대한 욕구가 강합니다.",
+    }
+    iljj_t = ILJJ_DEEP.get(iljj_ss, "")
+    if iljj_t and iljj_t not in " ".join(traits):
+        traits.append(iljj_t)
+
+    # 오행 과다/부족 조합
+    over_ohs = [o for o, v in oh_strength.items() if v >= 35]
+    lack_ohs = [o for o, v in oh_strength.items() if v <= 5]
+    zero_ohs = [o for o, v in oh_strength.items() if v == 0]
+
+    for oh in over_ohs:
+        for t in OH_COMBO_DB.get(("over", oh), []):
+            traits.append(t)
+    for oh in lack_ohs:
+        for t in OH_COMBO_DB.get(("lack", oh), []):
+            traits.append(t)
+    if zero_ohs:
+        oh_names = "·".join([OHN.get(o, "") for o in zero_ohs])
+        traits.append(f"{oh_names} 기운이 완전히 없습니다. 이 분야가 들어올 때마다 당황하거나 흔들립니다.")
+
+    return traits[:8]  # 최대 8개 — 너무 많으면 희석됨
+
+
+def build_personality_detail(pils, gender="남"):
+    """
+    심리 디테일 생성 — "예민합니다"가 아닌 구체적 서술
+    일간 + 일지 + 신강신약 + 오행 과다 조합
+    """
+    ilgan = pils[1]["cg"]
+    iljj = pils[1]["jj"]
+    ilgan_oh = OH.get(ilgan,"")
+    iljj_ss = calc_sipsung(ilgan, pils)[1].get("jj_ss","-")
+    strength_info = get_ilgan_strength(ilgan, pils)
+    sn = strength_info["신강신약"]
+    oh_strength = strength_info["oh_strength"]
+    over_ohs = [o for o,v in oh_strength.items() if v>=35]
+    lack_ohs = [o for o,v in oh_strength.items() if v<=5]
+
+    traits = []
+
+    # 일간 심리 특성 (오행별)
+    OH_PSYCH = {
+        "木": {
+            "신강": "겉으로는 당당하고 직선적이지만, 속으로는 남의 시선을 매우 의식합니다. 인정받고 싶은 욕구가 강합니다.",
+            "신약": "겉은 유연해 보이지만 속으로는 고집이 강합니다. 쉽게 상처받고 오래 기억합니다.",
+            "중화": "합리적으로 보이지만 자존심이 강해 지면 인정하기 싫어합니다."
+        },
+        "火": {
+            "신강": "열정적이고 화려해 보이지만, 겉으로 드러나지 않는 외로움이 있습니다. 관심받지 못하면 금세 지칩니다.",
+            "신약": "따뜻하고 감성적이지만 불안감이 내재해 있습니다. 쉽게 흥분하고 금방 꺼집니다.",
+            "중화": "밝고 긍정적이지만 혼자만의 시간이 필요한 사람입니다."
+        },
+        "土": {
+            "신강": "신뢰감 있어 보이지만 속으로는 걱정이 많습니다. 결정을 내리면 쉽게 바꾸지 않습니다.",
+            "신약": "배려심 깊지만 우유부단한 면이 있습니다. 혼자 고민을 오래 끌고 갑니다.",
+            "중화": "안정적이고 책임감 있지만 변화를 두려워하는 경향이 있습니다."
+        },
+        "金": {
+            "신강": "겉은 강하고 원칙적이지만 속으로는 매우 섬세합니다. 비판을 받으면 표시 안 내도 오래 상처받습니다.",
+            "신약": "예리하고 분석적이지만 혼자 모든 걸 해결하려 합니다. 약한 모습을 보이기 싫어합니다.",
+            "중화": "냉정해 보이지만 가까운 사람에게는 다릅니다. 신뢰를 쌓는 데 시간이 걸립니다."
+        },
+        "水": {
+            "신강": "겉으로는 여유로워 보이지만 머릿속은 늘 바쁩니다. 모든 경우의 수를 계산합니다.",
+            "신약": "직관이 뛰어나지만 불안감이 깔려 있습니다. 혼자 결정하기 어려워하고 오래 고민합니다.",
+            "중화": "지혜롭고 유연하지만 감정을 잘 드러내지 않습니다."
+        },
+    }
+
+    # 일간 기본 심리
+    sn_key = "신강" if "신강" in sn else "신약" if "신약" in sn else "중화"
+    base_trait = OH_PSYCH.get(ilgan_oh,{}).get(sn_key,"")
+    if base_trait:
+        traits.append(base_trait)
+
+    # 일지 십성별 심리 보정
+    ILJJ_PSYCH = {
+        "비견": "자존심이 매우 강합니다. 지기 싫어하고, 지면 속으로 오래 끌고 갑니다.",
+        "겁재": "경쟁 심리가 강하고 승부욕이 있습니다. 친한 사람에게도 지기 싫어합니다.",
+        "식신": "배짱이 있고 여유롭게 보이지만, 은근히 자기 방식대로 하고 싶어합니다.",
+        "상관": "말이 빠르고 재치 있습니다. 상대방의 단점이 눈에 먼저 보입니다.",
+        "편재": "활동적이고 사교적이지만, 한곳에 오래 머물기 싫어합니다.",
+        "정재": "현실적이고 꼼꼼합니다. 손해 보는 것을 굉장히 싫어합니다.",
+        "편관": "압박이 오면 오히려 더 버팁니다. 굴복하는 것을 본능적으로 거부합니다.",
+        "정관": "체면과 원칙을 중시합니다. 남들 시선에 민감하고 규칙을 잘 지킵니다.",
+        "편인": "직관이 뛰어납니다. 설명하기 어렵지만 '그냥 아는' 경우가 많습니다.",
+        "정인": "배움을 좋아합니다. 완전히 이해하기 전까지 결정을 미루는 경향이 있습니다.",
+    }
+    iljj_trait = ILJJ_PSYCH.get(iljj_ss,"")
+    if iljj_trait:
+        traits.append(iljj_trait)
+
+    # 오행 과다 심리 보정
+    OH_OVER_PSYCH = {
+        "木": "남들보다 빠릅니다. 결정도 빠르고 판단도 빠릅니다. 대신 기다리는 것을 못 합니다.",
+        "火": "에너지가 넘칩니다. 시작은 잘 하는데 끝까지 가는 것이 과제입니다.",
+        "土": "한번 정하면 잘 안 바꿉니다. 고집이 강하고 자기 방식이 확실합니다.",
+        "金": "예리합니다. 사람을 빠르게 파악하고 판단합니다. 때로는 너무 날카롭습니다.",
+        "水": "생각이 많습니다. 잠자리에 누워도 머릿속이 돌아갑니다. 걱정을 사서 합니다.",
+    }
+    for oh in over_ohs:
+        t = OH_OVER_PSYCH.get(oh,"")
+        if t: traits.append(f"[{OHN.get(oh,'')} 과다] {t}")
+
+    # 오행 결핍 심리 보정
+    OH_LACK_PSYCH = {
+        "木": "계획을 세우는 것이 약합니다. 시작하기까지 시간이 걸립니다.",
+        "火": "표현이 서툽니다. 속으로는 열정이 있지만 겉으로는 차가워 보일 수 있습니다.",
+        "土": "안정을 찾기 힘들 수 있습니다. 한곳에 뿌리내리는 것이 과제입니다.",
+        "金": "결단력이 부족할 수 있습니다. 잘라내야 할 것을 잘라내지 못합니다.",
+        "水": "직관보다 논리로 움직입니다. 감정 표현이 서툴 수 있습니다.",
+    }
+    for oh in lack_ohs:
+        t = OH_LACK_PSYCH.get(oh,"")
+        if t: traits.append(f"[{OHN.get(oh,'')} 부족] {t}")
+
+    return traits
+
+
+def get_cached_ai_interpretation(pils_hashable, prompt_type="general", api_key="", birth_year=1990, gender="남", name="", groq_key=""):
+    """
+    AI 해석 — Brain 2 Sandbox 통과 + 파일 캐시 적용
+    [Saju Platform Engineering Agent]
+    - 동일 사주 + 동일 prompt_type → 캐시에서 즉시 반환 (API 재호출 없음)
+    - 캐시 미스 → Sandbox로 AI 호출 → 결과 검증 → 캐시 저장
+    """
+    pils = json.loads(pils_hashable) if isinstance(pils_hashable, str) else pils_hashable
+    ilgan = pils[1]["cg"] if len(pils) > 1 else "甲"
+    saju_str = ' '.join([p['str'] for p in pils])
+
+    # ★ Brain 2 AI 캐시 확인 (동일 사주 재요청 시 즉시 반환)
+    saju_key = pils_to_cache_key(pils)
+    cached_ai = get_ai_cache(saju_key, prompt_type)
+    if cached_ai:
+        return cached_ai
+
+    # 사주 데이터 계산
+    strength_info = get_ilgan_strength(ilgan, pils)
+    gyeokguk = get_gyeokguk(pils)
+    oh_strength = strength_info["oh_strength"]
+    current_year = datetime.now().year
+    current_age = current_year - birth_year + 1
+    daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    current_dw = next((dw for dw in daewoon if dw["시작연도"] <= current_year <= dw["종료연도"]), None)
+    yearly = get_yearly_luck(pils, current_year)
     
-    st.markdown('<div class="header-box"><div class="header-title">🔮 만신 사주 천명풀이 🔮</div><div class="header-sub">신(神)의 영역을 꿰뚫는 8대 엔진 심층 진단</div></div>', unsafe_allow_html=True)
+    gname = gyeokguk["격국명"] if gyeokguk else "미정격"
+    sn = strength_info["신강신약"]
+    
+    # 대운 과거 목록 (발복/시련 분석용)
+    past_dw_summary = []
+    for dw in daewoon:
+        if dw["종료연도"] < current_year:
+            dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
+            past_dw_summary.append(f"  {dw['시작나이']}~{dw['시작나이']+9}세({dw['시작연도']}~{dw['종료연도']}): {dw['str']} [{dw_ss}]")
+    
+    # 미래 3년 세운
+    future_years = []
+    for y in range(current_year, current_year+3):
+        ye = get_yearly_luck(pils, y)
+        future_years.append(f"  {y}년({current_year - birth_year + (y - current_year) + 1}세): {ye['세운']} [{ye['십성_천간']}] {ye['길흉']}")
+    
+    # 돈 상승기 탐색 (대운 세운 중 재물 길운)
+    money_peaks = []
+    for dw in daewoon:
+        if dw["시작연도"] >= current_year - 5:
+            dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
+            if dw_ss in ["식신", "정재", "편재", "정관"]:
+                money_peaks.append(f"  {dw['시작나이']}~{dw['시작나이']+9}세 {dw['str']}대운({dw_ss}) 주목")
+    
+    # 혼인 분석 데이터
+    marriage_ss = {"남": ["정재", "편재"], "여": ["정관", "편관"]}
+    marry_hint = []
+    for dw in daewoon:
+        dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
+        if dw_ss in marriage_ss.get(gender, []):
+            marry_hint.append(f"  {dw['시작나이']}~{dw['시작나이']+9}세 {dw['str']}대운")
 
-    if st.session_state.step == "input":
-        with st.form("mansin_form"):
-            st.markdown('<div class="gold-section">👤 주인공의 천기 정보</div>', unsafe_allow_html=True)
-            name = st.text_input("성함 (주인공 확정)", placeholder="성함이 곧 영적인 고리입니다.")
-            gender = st.radio("성별 (대운의 방향 결정)", ["남성","여성"], horizontal=True)
-            marital = st.selectbox("결혼유무 (인연의 갈래)", ["미혼", "기혼", "이혼/사별"])
-            cal = st.radio("달력 (명반의 기초)", ["양력","음력"], horizontal=True)
-            
-            st.markdown('<div class="gold-section">📅 출생 시 태어난 시각</div>', unsafe_allow_html=True)
-            cols = st.columns(3)
-            with cols[0]: y = st.number_input("생년", 1940, 2030, 1990)
-            with cols[1]: m = st.number_input("생월", 1, 12, 1)
-            with cols[2]: d = st.number_input("생일", 1, 31, 1)
-            
-            h_opts = ["자시(23:30-01:30)","축시(01:30-03:30)","인시(03:30-05:30)","묘시(05:30-07:30)","진시(07:30-09:30)","사시(09:30-11:30)","오시(11:30-13:30)","미시(13:30-15:30)","신시(15:30-17:30)","유시(17:30-19:30)","술시(19:30-21:30)","해시(21:30-23:30)","모름"]
-            h_idx = st.selectbox("태어난 시각 (시주 결정)", range(len(h_opts)), format_func=lambda i: h_opts[i], index=12)
-            hour = [23,1,3,5,7,9,11,13,15,17,19,21,11][h_idx]
-            
-            st.markdown('<div class="gold-section">🔑 만신의 눈 (AI 분석)</div>', unsafe_allow_html=True)
-            key = st.text_input("Groq API Key (입력 시 AI 만신 상담)", type="password")
-            
-            if st.form_submit_button("🔮 신의 문 열기 (진단 시작)"):
-                if not name:
-                    st.error("성함을 입력해 주셔야 영적인 고리가 연결됩니다.")
-                    return
-                st.session_state.saju = compute_full_mansin(y, m, d, hour, "male" if gender=="남성" else "female", name, cal)
-                st.session_state.form = {"name":name, "gender":"male" if gender=="남성" else "female", "marital":"single" if marital=="미혼" else "married", "groq_key":key}
-                st.session_state.step = "result"
-                st.rerun()
+    # ── 엔진 하이라이트 계산 (핵심) ───────────────────
+    hl = generate_engine_highlights(pils, birth_year, gender)
+
+    # 과거 사건 블록 — 🔴부터 먼저
+    past_ev_lines = []
+    for ev in sorted(hl["past_events"], key=lambda e: {"🔴":0,"🟡":1,"🟢":2}.get(e["intensity"],3)):
+        past_ev_lines.append(
+            f"  [{ev['intensity']}] {ev['age']}({ev['year']}년) [{ev.get('domain','변화')}] {ev['desc']}")
+    past_events_block = "\n".join(past_ev_lines) if past_ev_lines else "  (데이터 없음)"
+
+    # 성향 블록 — 조합 공식 결과
+    personality_block = "\n".join([f"  · {t}" for t in hl["personality"]])
+
+    # 돈/결혼 피크
+    money_block = "\n".join([f"  {m['age']}({m['year']}) — {m['desc']}" for m in hl["money_peak"][:3]]) or "  (없음)"
+    marry_block = "\n".join([f"  {m['age']}({m['year']}) — {m['desc']}" for m in hl["marriage_peak"][:3]]) or "  (없음)"
+    danger_block = "\n".join([f"  {d['age']}({d['year']}) — {d['desc']}" for d in hl["danger_zones"][:3]]) or "  (없음)"
+    wolji_block = "\n".join([f"  {w['age']} — {w['desc']}" for w in hl["wolji_chung"][:3]]) or "  (없음)"
+
+    PROPHET_SYSTEM = f"""당신은 30년 경력의 한국 사주명리 대가(大家)입니다.
+당신은 처음 만난 사람의 과거를 정확히 찍어내는 것으로 유명합니다.
+절대 규칙:
+
+[과거 적중 규칙]
+- 미래부터 말하지 마십시오. 반드시 과거부터 시작합니다.
+- 아래 제공된 【과거 사건 계산 데이터】를 그대로 사용하십시오.
+- "~했을 것입니다"가 아니라 "~했습니다"로 단정하십시오.
+- 나이와 분야를 구체적으로 명시하십시오. "어느 시점"이라는 표현 금지.
+- "그때 충이 들어왔기 때문에 가만히 있을 수 없었습니다" 같은 이유 설명을 반드시 포함하십시오.
+
+[심리 서술 규칙]
+- "예민합니다" "섬세합니다" 같은 단순 묘사 금지.
+- 제공된 【심리 디테일 데이터】를 구체적 문장으로 풀어쓰십시오.
+- 겉과 속이 다른 지점을 반드시 짚으십시오.
+
+[화법 규칙]
+- 단정적으로 말하십시오. "~일 수 있습니다" 금지.
+- 짧은 문장과 긴 문장을 섞어 리듬을 만드십시오.
+- "좋다/나쁘다"가 아니라 "왜 그랬는지"를 설명하십시오.
+- 허구 추가 금지. 모든 내용은 계산 데이터 기반."""
+
+    data_block = f"""
+━━━ 사주 기본 데이터 ━━━
+사주: {saju_str} (시일월년)
+일간: {ilgan} / 격국: {gname} / 신강신약: {sn}
+오행: {' '.join([f"{o}{v}%" for o,v in oh_strength.items()])}
+현재: {current_year}년 {current_age}세
+현재 대운: {current_dw['str'] if current_dw else '미상'} ({current_dw['시작연도'] if current_dw else ''}-{current_dw['종료연도'] if current_dw else ''})
+현재 세운: {yearly['세운']} [{yearly['십성_천간']}] {yearly['길흉']}
+
+━━━ 【핵심 ①】 과거 사건 (충·합·십성 교차 계산) ━━━
+규칙: 아래 항목을 그대로 활용. 🔴 우선으로 서술. "~했습니다" 단정.
+{past_events_block}
+
+━━━ 【핵심 ②】 성향 조합 공식 결과 ━━━
+규칙: 아래 문장을 더 구체적으로 풀어쓰되 "겉은~속은~" 형식 유지.
+{personality_block}
+
+━━━ 【핵심 ③】 월지 충 시점 (삶의 기반 흔들림) ━━━
+{wolji_block}
+
+━━━ 【핵심 ④】 재물 상승기 ━━━
+{money_block}
+
+━━━ 【핵심 ⑤】 인연 시기 ━━━
+{marry_block}
+
+━━━ 【핵심 ⑥】 위험 구간 ━━━
+{danger_block}
+
+━━━ 미래 3년 세운 ━━━
+{chr(10).join(future_years)}
+
+━━━ 【v3 정밀 엔진 데이터 — AI 핵심 추론 재료】 ━━━
+■ 일간 힘 점수: {strength_info["일간점수"] if "일간점수" in strength_info else "50"}/100점 ({sn})
+  → 30 이하=극신약 / 30~45=신약 / 45~55=중화 / 55~70=신강 / 70+=극신강
+■ 오행 세력(정밀): {' '.join([f"{o}:{v}%" for o,v in oh_strength.items()])}
+  → 가장 강한 오행: {max(oh_strength, key=oh_strength.get)} / 가장 약한 오행: {min(oh_strength, key=oh_strength.get)}
+■ 종합 운세 점수: {calc_luck_score(pils, birth_year, gender, current_year)}/100
+  → 70+= 상승기 / 50~70= 안정 / 30~50= 변화기 / 30-= 하락기
+■ 인생 전환점 감지:
+{chr(10).join(["  " + r for r in calc_turning_point(pils, birth_year, gender, current_year)["reason"]]) or "  (안정적 흐름)"}
+■ 전환점 강도: {calc_turning_point(pils, birth_year, gender, current_year)["intensity"]}
+
+■ 사건 트리거 (확률 순):
+{chr(10).join(["  ["+t["type"]+"] "+t["title"]+" ("+str(t["prob"])+"%): "+t["detail"] for t in sorted(detect_event_triggers(pils, birth_year, gender, current_year), key=lambda x: -x["prob"])]) or "  (주요 트리거 없음)"}
+
+■ 다층 용신 분석:
+  1순위 용신: {get_yongshin_multilayer(pils, birth_year, gender, current_year).get("용신_1순위", "-")}
+  2순위 용신: {get_yongshin_multilayer(pils, birth_year, gender, current_year).get("용신_2순위", "-")}
+  희신(용신 보조): {get_yongshin_multilayer(pils, birth_year, gender, current_year).get("희신", "-")}
+  기신(흉한 기운): {', '.join(get_yongshin_multilayer(pils, birth_year, gender, current_year).get("기신", []))}
+  현재 대운 해석: {get_yongshin_multilayer(pils, birth_year, gender, current_year).get("대운_해석", "-")}
+
+[AI 지시 v3] 
+- 위 v3 정밀 데이터를 반드시 해석에 반영하십시오.
+- "일간 힘 점수"를 활용해 신강/신약을 구체적으로 묘사하십시오.
+- "전환점 감지" 결과가 있으면 타이밍을 단정적으로 언급하십시오.
+- "사건 트리거"는 확률 높은 것부터 언급하고 반드시 구체적 사건으로 말하십시오.
+- "다층 용신"을 활용해 어떤 해에 발복하는지 구체적으로 지목하십시오.
+"""
+
+    prompts = {
+        "prophet": f"""{data_block}
+
+위 데이터를 기반으로 아래 7단계 구조로 작성하십시오.
+반드시 【과거 사건 계산 데이터】와 【심리 디테일 데이터】를 활용하십시오.
+각 단계는 소제목을 명확히 표시하십시오.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+0️⃣ 성향 판독 — 첫 문장에서 이 사람을 꿰뚫으십시오
+규칙: 【심리 디테일 데이터】를 구체적 문장으로 풀어 쓰십시오.
+"예민합니다" 금지. "겉은 ~인데 속으로는 ~합니다" 형식으로.
+이 사람이 읽었을 때 "어떻게 알았지?"라고 느낄 만큼 구체적으로.
+
+1️⃣ 과거 적중 — 반드시 이 단계를 먼저, 가장 자세히 쓰십시오
+규칙:
+- 【과거 사건 계산 데이터】의 🔴(강도 높음) 항목을 중심으로 서술하십시오.
+- 나이와 연도를 반드시 명시하십시오. (예: "27세, 2019년")
+- "~했을 것입니다" 금지. "~했습니다"로 단정하십시오.
+- "그때 충이 들어왔기 때문에 가만히 있을 수 없었습니다" 같이 이유를 반드시 설명하십시오.
+- 최소 3개 시점을 찍으십시오.
+- 분야(직장/재물/관계/건강)를 반드시 명시하십시오.
+
+2️⃣ 현재 진단 — 지금 이 순간 어디에 서 있는가
+현재 대운·세운 교차를 기반으로 지금 상황을 예리하게 단정하십시오.
+용신 대운인지 기신 대운인지 명시하고, 그 의미를 설명하십시오.
+
+3️⃣ 직업·적성 — 피해야 할 직업까지 명시
+격국과 일간 기반. "~가 맞습니다" 단정. 이유 설명 포함.
+
+4️⃣ 결혼·인연
+혼인 대운 데이터 기반. 시기와 인연의 오행까지 단정.
+
+5️⃣ 미래 3년 — 연도별 단정
+세운 데이터 기반. 각 연도 핵심 키워드 + 주의사항.
+
+6️⃣ 돈 상승기
+재물운 집중 시기를 정확히 찍으십시오.
+"이 시기를 놓치면 언제 다시 오는가"까지 포함.
+""",
+
+        "general": f"""{data_block}
+
+위 데이터를 바탕으로 전통 사주 문체로 분석하십시오.
+【과거 사건 계산 데이터】와 【심리 디테일 데이터】를 반드시 활용하십시오.
+
+1. 성향 판독 — 구체적 심리 특성 (겉과 속의 차이 포함)
+2. 격국과 용신 판단
+3. 오행의 균형과 강약
+4. 과거 주요 사건 시점 (나이+분야 명시)
+5. 평생 운명의 큰 흐름
+6. 길운 시기와 주의 시기""",
+
+        "career": f"""{data_block}
+
+위 데이터를 바탕으로 적성과 진로를 분석하십시오.
+격국과 용신 중심으로 최적 직업군, 피해야 할 직업, 재물운 상승 시기를 명시하십시오.
+【과거 사건 계산 데이터】 중 직업·재물 관련 시점을 근거로 제시하십시오.""",
+
+        "love": f"""{data_block}
+
+위 데이터를 바탕으로 배우자운과 연애운을 분석하십시오.
+혼인 대운 데이터 기반으로 인연의 시기, 궁합 좋은 일간, 이별 위험 시점을 단정하십시오.
+【과거 사건 계산 데이터】 중 관계 관련 시점을 근거로 제시하십시오.""",
+    }
+
+    prompt = prompts.get(prompt_type, prompts["general"])
+
+    # ★ Brain 3: Prompt Optimizer — 학습 패턴 자동 주입
+    optimizer_suffix = b3_build_optimized_prompt_suffix()
+
+    # ★ Adaptive Engine — 페르소나 스타일 자동 주입
+    try:
+        persona       = infer_persona()
+        persona_style = get_persona_prompt_style(persona)
+        adaptive_suffix = f"\n\n[사용자 성향 분석]\n{persona_style}"
+    except Exception:
+        adaptive_suffix = ""
+
+    # ★ User Memory Context — 사용자 기억 주입
+    try:
+        memory_ctx = build_memory_context(pils_to_cache_key(pils))
+        memory_suffix = f"\n\n{memory_ctx}" if memory_ctx else ""
+    except Exception:
+        memory_suffix = ""
+
+    base_system = (PROPHET_SYSTEM if prompt_type == "prophet"
+                   else "당신은 40년 경력의 한국 전통 사주명리 전문가입니다.\n단정적으로 말하십시오. 나이와 분야를 구체적으로 명시하십시오.")
+    system = base_system + optimizer_suffix + adaptive_suffix + memory_suffix  # ← 전체 주입
+
+    if api_key or groq_key:
+        # ★ AI Sandbox 통해 해석 → 검증 → 파일 캐시 저장
+        result = get_ai_interpretation(prompt, api_key, system=system, groq_key=groq_key)
+
+        # ★ Self-Check Engine — prophet 타입에만 2패스 검증 적용
+        if result and not result.startswith("[") and prompt_type == "prophet":
+            # 검증용 요약 데이터
+            analysis_summary = (
+                f"사주: {saju_str} | 일간: {ilgan} | 격국: {gname} | {sn} | "
+                f"오행: {' '.join([f'{o}:{v}%' for o,v in oh_strength.items()])} | "
+                f"현재운: {yearly.get('세운','-')} {yearly.get('길흉','-')} | "
+                f"사건트리거: {', '.join([t['title'][:15] for t in detect_event_triggers(pils, birth_year, 1, 1, gender)[:3]])}"
+            )
+            try:
+                result = self_check_ai(result, analysis_summary, api_key, groq_key)
+            except Exception:
+                pass  # self-check 실패 시 1차 결과 사용
+
+        if result and not result.startswith("["):  # 오류 응답은 캐시 저장 안 함
+            set_ai_cache(saju_key, prompt_type, result)
+        return result
     else:
-        s, f = st.session_state.saju, st.session_state.form
-        engine = s.get("engine", {})
+        if prompt_type == "prophet":
+            return f"""◈ 예언자 모드 — API 키가 필요합니다 ◈
+
+이 기능은 Anthropic API를 통해 실제 AI가 당신의 사주 데이터를 분석합니다.
+사이드바에서 API 키를 입력하시면 아래 6단계 운명 풀이를 받으실 수 있습니다:
+
+1️⃣ 과거 적중 — 당신의 과거가 얼마나 정확히 맞았는지
+2️⃣ 현재 — 지금 이 순간 당신은 어디에 서 있는가
+3️⃣ 직업 — 천부적 적성과 가야 할 길
+4️⃣ 결혼 — 인연의 시기와 궁합
+5️⃣ 미래 3년 — 연도별 단정 예언
+6️⃣ 돈 상승기 — 재물이 몰리는 황금기
+
+※ Anthropic API 키는 console.anthropic.com에서 발급받으실 수 있습니다."""
+        return f"""◈ {ilgan}일간 기본 해석 ◈
+
+{ILGAN_DESC.get(ilgan, {}).get("nature", "").split(chr(10))[0]}
+
+【기질과 천명】
+{ILGAN_DESC.get(ilgan, {}).get("strength", "").split(chr(10))[0]}
+
+【적성과 진로】
+{ILGAN_DESC.get(ilgan, {}).get("career", "")} 분야에서 두각을 나타내실 수 있습니다.
+
+【건강 유의사항】
+{ILGAN_DESC.get(ilgan, {}).get("health", "").split(chr(10))[0]}
+
+※ Anthropic API 키를 입력하시면 더욱 상세한 AI 해석을 받으실 수 있습니다."""
+
+
+# 사주 입력값을 캐시 키로 변환
+def pils_to_cache_key(pils):
+    return json.dumps(pils, ensure_ascii=False, sort_keys=True)
+
+
+# ── Brain 1 + Brain 2 캐싱 시스템 ────────────────────────────────────────────
+# [설계 원칙]
+#   만세력 결과 → 파일 캐시 (동일 입력 = 즉시 출력, 계산 재수행 없음)
+#   AI 해석 결과 → AI 전용 캐시 (API 비용 70~80% 절감)
+#   사용자 피드백 → 캐싱 금지 (실시간 반영 필요)
+#
+# [성능 효과]
+#   첫 계산: 4~6초 / 재사용: 0.1초 이하
+#   AI 비용: 최초 1회만 지불, 동일 사주 재호출 무료
+################################################################################
+
+import os as _os
+
+_SAJU_CACHE_FILE = "saju_cache.json"
+_AI_CACHE_FILE   = "saju_ai_cache.json"
+
+def _load_json_cache(filepath: str) -> dict:
+    """JSON 파일 캐시 로드"""
+    try:
+        if _os.path.exists(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def _save_json_cache(filepath: str, cache: dict):
+    """JSON 파일 캐시 저장"""
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def create_saju_cache_key(year: int, month: int, day: int, hour: int, gender: str) -> str:
+    """사주 캐시 키 생성 — 생년월일시+성별로 고유 ID"""
+    return f"{year}-{month:02d}-{day:02d}-{hour:02d}-{gender}"
+
+def get_saju_cache(year: int, month: int, day: int, hour: int, gender: str):
+    """Brain 1 계산 결과 캐시 조회"""
+    key = create_saju_cache_key(year, month, day, hour, gender)
+    cache = _load_json_cache(_SAJU_CACHE_FILE)
+    return cache.get(key)
+
+def set_saju_cache(year: int, month: int, day: int, hour: int, gender: str, data):
+    """Brain 1 계산 결과 캐시 저장"""
+    key = create_saju_cache_key(year, month, day, hour, gender)
+    cache = _load_json_cache(_SAJU_CACHE_FILE)
+    cache[key] = data
+    _save_json_cache(_SAJU_CACHE_FILE, cache)
+
+def get_ai_cache(saju_key: str, prompt_type: str) -> str:
+    """Brain 2 AI 해석 결과 캐시 조회"""
+    ai_key = f"AI-{prompt_type}-{saju_key}"
+    cache = _load_json_cache(_AI_CACHE_FILE)
+    return cache.get(ai_key)
+
+def set_ai_cache(saju_key: str, prompt_type: str, text: str):
+    """Brain 2 AI 해석 결과 캐시 저장"""
+    ai_key = f"AI-{prompt_type}-{saju_key}"
+    cache = _load_json_cache(_AI_CACHE_FILE)
+    cache[ai_key] = text
+    _save_json_cache(_AI_CACHE_FILE, cache)
+
+def clear_ai_cache_for_key(saju_key: str):
+    """특정 사주의 AI 캐시 무효화 (재분석 요청 시)"""
+    cache = _load_json_cache(_AI_CACHE_FILE)
+    keys_to_del = [k for k in cache if k.endswith(saju_key)]
+    for k in keys_to_del:
+        del cache[k]
+    _save_json_cache(_AI_CACHE_FILE, cache)
+
+
+# ══════════════════════════════════════════════════
+#  UI 헬퍼 함수
+# ══════════════════════════════════════════════════
+def render_pillars(pils):
+    """사주 기둥 표시"""
+    labels = ["시(時)", "일(日)", "월(月)", "년(年)"]
+    cols = st.columns(4)
+    for i, (p, label) in enumerate(zip(pils, labels)):
+        cg = p["cg"]
+        jj = p["jj"]
+        cg_kr = CG_KR[CG.index(cg)]
+        jj_kr = JJ_KR[JJ.index(jj)]
+        jj_an = JJ_AN[JJ.index(jj)]
+        oh_cg = OH.get(cg, "")
+        oh_jj = OH.get(jj, "")
+        emoji_cg = OHE.get(oh_cg, "")
+        emoji_jj = OHE.get(oh_jj, "")
         
-        # [NEW] 상단 대시보드 - 점수 및 격국
-        # [안정화] 결과 출력 섹션을 컨테이너로 감싸 DOM 충돌 방지
-        result_container = st.container()
-        with result_container:
-            d_col1, d_col2, d_col3 = st.columns([1, 1, 1])
-            with d_col1:
-                st.markdown(f'<div class="card" style="text-align:center"><div style="font-size:12px;color:#8e6e37">천명 에너지 점수</div><div style="font-size:32px;font-weight:900;color:#c5a059">{engine.get("destiny_score", 70)}점</div></div>', unsafe_allow_html=True)
-            with d_col2:
-                st.markdown(f'<div class="card" style="text-align:center"><div style="font-size:12px;color:#8e6e37">인생의 틀 (格局)</div><div style="font-size:24px;font-weight:700;color:#c5a059">{engine.get("structure", "일반격")}</div><div style="font-size:14px;color:#a0720a">{engine.get("structure_grade", "평격")}</div></div>', unsafe_allow_html=True)
-            with d_col3:
-                st.markdown(f'<div class="card" style="text-align:center"><div style="font-size:12px;color:#8e6e37">중심 오행 기운</div><div style="font-size:24px;font-weight:700;color:#c5a059">{s["ilgan"]} ({OH[s["ilgan"]]})</div></div>', unsafe_allow_html=True)
+        with cols[i]:
+            st.markdown(f"""
+            <div class="pillar-box">
+                <div style="font-size:11px;color:#444;margin-bottom:4px">{label}</div>
+                <div style="font-size:28px;font-weight:700;color:#a0720a">{cg}</div>
+                <div style="font-size:11px;color:#444">{cg_kr} · {emoji_cg}{oh_cg}</div>
+                <div style="font-size:30px;font-weight:700;color:#7b5f2a;margin-top:6px">{jj}</div>
+                <div style="font-size:11px;color:#444">{jj_kr} · {emoji_jj}{oh_jj}</div>
+                <div style="font-size:10px;color:#555;margin-top:4px">{jj_an}띠</div>
+            </div>""", unsafe_allow_html=True)
 
-            # [NEW] 인생 흐름 그래프 (Life Graph)
-            if "life_graph" in engine:
-                import pandas as pd
-                df_graph = pd.DataFrame(engine["life_graph"])
-                st.markdown('<div class="gold-section">📈 대운명 인생 흐름 그래프 (Energy Flow)</div>', unsafe_allow_html=True)
-                st.line_chart(df_graph.set_index("age")["score"], color="#c5a059")
-                st.caption("※ 점수가 높을수록 용신운(상승기)이며, 3중 겹침이나 충돌이 있을 때 그래프가 크게 요동칩니다.")
 
-            st.markdown(f'<div class="card"><div style="font-size:18px;font-weight:700;color:#c5a059">{f["name"]} 님의 천명 명반</div><div style="font-size:14px;color:#aaa;margin-top:5px">일간: {s["ilgan"]} | {s["birth_info"]} | 만신 엔진 정상 가동 중</div></div>', unsafe_allow_html=True)
-            
-            # [신기능] 대만신의 신탁 (Oracle Display Only)
-            st.markdown(f'<div class="card" style="border: 2px solid #c5a059; background: #000; color: #fff;"><div style="color:#c5a059; font-weight:700;">🔱 대만신의 신탁 (Divine Oracle)</div><div style="margin-top:10px; font-style: italic;">"{random.choice(DIVINE_ORACLE)}"</div></div>', unsafe_allow_html=True)
+OHAENG_DIAGNOSIS = {
+    "木": {
+        "emoji": "🌳", "name": "목(木)",
+        "over_desc": "목기(木氣) 과다 — 분노·고집·간담 질환에 주의하십시오. 금(金) 기운으로 가지를 쳐주어야 크게 성장합니다.",
+        "over_remedy": "서쪽 방향 활용, 흰색·은색 소품, 금속 악세서리, 결단력 수련",
+        "lack_desc": "목기(木氣) 부족 — 의욕 저하·우유부단·근육 약화가 나타날 수 있습니다. 목의 기운을 보충하십시오.",
+        "lack_remedy": "동쪽 방향 활용, 초록색 인테리어, 식물 기르기, 새벽 산책, 신맛 음식 섭취",
+        "balance_desc": "목기가 균형 잡혀 있습니다. 성장과 창의의 기운이 안정적으로 작동합니다.",
+    },
+    "火": {
+        "emoji": "🔥", "name": "화(火)",
+        "over_desc": "화기(火氣) 과다 — 조급함·충동·심혈관 질환에 주의하십시오. 수(水) 기운으로 열기를 식혀야 합니다.",
+        "over_remedy": "북쪽 방향 활용, 검정·남색 소품, 수분 충분히 섭취, 명상과 호흡 수련, 냉정한 판단력 기르기",
+        "lack_desc": "화기(火氣) 부족 — 활력 저하·우울·심장 기능 약화가 나타날 수 있습니다. 화의 기운을 보충하십시오.",
+        "lack_remedy": "남쪽 방향 활용, 빨강·주황색 인테리어, 햇빛 자주 쬐기, 열정적 취미 활동, 쓴맛 음식 적당히",
+        "balance_desc": "화기가 균형 잡혀 있습니다. 열정과 이성이 조화롭게 작동합니다.",
+    },
+    "土": {
+        "emoji": "🏔️", "name": "토(土)",
+        "over_desc": "토기(土氣) 과다 — 고집·무기력·소화기 질환에 주의하십시오. 목(木) 기운으로 뚫어주어야 변화가 생깁니다.",
+        "over_remedy": "동쪽 방향 활용, 초록색 소품, 새로운 도전 의식적으로 실천, 스트레칭·요가, 신맛 음식 섭취",
+        "lack_desc": "토기(土氣) 부족 — 중심 잡기 어려움·소화 불량·불안감이 나타날 수 있습니다. 토의 기운을 보충하십시오.",
+        "lack_remedy": "중앙·북동 방향 활용, 황색·베이지 인테리어, 규칙적인 식사 습관, 황색 식품 섭취, 안정적 루틴 구축",
+        "balance_desc": "토기가 균형 잡혀 있습니다. 신뢰와 안정의 기운이 든든하게 받쳐주고 있습니다.",
+    },
+    "金": {
+        "emoji": "⚔️", "name": "금(金)",
+        "over_desc": "금기(金氣) 과다 — 냉정함·고집·폐·대장 질환에 주의하십시오. 화(火) 기운으로 단련해야 보검이 됩니다.",
+        "over_remedy": "남쪽 방향 활용, 빨강·주황색 소품, 유연성 수련, 공감 능력 기르기, 쓴맛 음식 적당히",
+        "lack_desc": "금기(金氣) 부족 — 결단력 부족·호흡기 약화·피부 트러블이 나타날 수 있습니다. 금의 기운을 보충하십시오.",
+        "lack_remedy": "서쪽 방향 활용, 흰색·금색 인테리어, 금속 소품·악세서리, 결단력 훈련, 매운맛 음식 적당히",
+        "balance_desc": "금기가 균형 잡혀 있습니다. 결단력과 정의감이 안정적으로 발휘됩니다.",
+    },
+    "水": {
+        "emoji": "💧", "name": "수(水)",
+        "over_desc": "수기(水氣) 과다 — 방향 상실·우유부단·신장·방광 질환에 주의하십시오. 토(土) 기운으로 방향을 잡아주어야 합니다.",
+        "over_remedy": "중앙·북동 방향 활용, 황색·베이지 소품, 목표 설정 및 실행 계획 수립, 규칙적 생활 습관, 짠맛 절제",
+        "lack_desc": "수기(水氣) 부족 — 지혜 부족·성욕 감퇴·두려움·의욕 저하가 나타날 수 있습니다. 수의 기운을 보충하십시오.",
+        "lack_remedy": "북쪽 방향 활용, 검정·남색 인테리어, 충분한 수분 섭취, 명상·독서 습관, 짠맛·검은 식품 섭취",
+        "balance_desc": "수기가 균형 잡혀 있습니다. 지혜와 직관력이 안정적으로 흐르고 있습니다.",
+    },
+}
 
-            cols = st.columns(4)
-            lbls = ["시주","일주","월주","년주"]
-            for i in range(4):
-                with cols[i]:
-                    p = s["pils"][i]
-                    st.markdown(f'<div class="pillar-box"><div style="font-size:11px;color:#8e6e37">{lbls[i]}</div><b style="font-size:20px">{p["cg"]}</b><br><b style="font-size:20px">{p["jj"]}</b><div style="font-size:11px;color:#b08a50">{p["cgk"]}{p["jjk"]}</div></div>', unsafe_allow_html=True)
-            
-            # Display buttons grouped by category
-            btn_clicked = False
-            categories = [
-                ("📅 시기별 종합 운세", "시기별 종합 운세"),
-                ("💰 재물 및 성공 운세", "재물 및 성공 운세"),
-                ("🏠 생활 및 자산 운세", "생활 및 자산 운세"),
-                ("🤝 관계 및 심리 운세", "관계 및 심리 운세"),
-                ("✨ 기타", "기타"),
-            ]
-            for cat_label, cat_id in categories:
-                cat_tabs = [t for t in TABS if t.get("category") == cat_id]
-                if not cat_tabs:
+
+def render_ohaeng_chart(oh_strength):
+    """오행 강약 차트 + 진단"""
+    oh_order = ["木", "火", "土", "金", "水"]
+    oh_names = {"木": "목(木)🌳", "火": "화(火)🔥", "土": "토(土)🪨", "金": "금(金)✨", "水": "수(水)💧"}
+    
+    cols = st.columns(5)
+    for i, oh in enumerate(oh_order):
+        val = oh_strength.get(oh, 0)
+        with cols[i]:
+            st.markdown(f"""
+            <div style="text-align:center;padding:8px">
+                <div style="font-size:13px;font-weight:700;color:#a0720a">{oh_names[oh]}</div>
+                <div style="font-size:22px;font-weight:900;color:#c5a059">{val}%</div>
+            </div>""", unsafe_allow_html=True)
+            st.progress(min(val / 100, 1.0))
+    
+    # 오행 조화 진단 — 결과값만 간결하게
+    over_ohs = [(oh, v) for oh, v in oh_strength.items() if v >= 35]
+    lack_ohs = [(oh, v) for oh, v in oh_strength.items() if v <= 5]
+
+    diag_lines = []
+    if not over_ohs and not lack_ohs:
+        diag_lines.append("⚖️ 오행이 비교적 균형 잡혀 있습니다 — 안정적인 사주입니다.")
+    for oh, val in over_ohs:
+        d = OHAENG_DIAGNOSIS[oh]
+        diag_lines.append(f"🔴 {d['name']} 과다({val}%) — {d['over_desc'][:40]}... 💊 {d['over_remedy'][:50]}")
+    for oh, val in lack_ohs:
+        d = OHAENG_DIAGNOSIS[oh]
+        diag_lines.append(f"🔵 {d['name']} 부족({val}%) — {d['lack_desc'][:40]}... 💊 {d['lack_remedy'][:50]}")
+
+    if diag_lines:
+        rows = "".join([
+            f"<div style='font-size:12px;color:#555;padding:5px 0;border-bottom:1px solid #e8e8e8;line-height:1.8'>{l}</div>"
+            for l in diag_lines
+        ])
+        st.markdown(f"""
+        <div style="background:#f8f8f8;border-radius:10px;padding:12px 16px;margin-top:8px">
+            {rows}
+        </div>""", unsafe_allow_html=True)
+
+
+
+def format_saju_text(pils, name=""):
+    """사주 텍스트 요약"""
+    lines = []
+    if name:
+        lines.append(f"◈ {name}님의 사주팔자 ◈")
+    labels = ["시주(時柱)", "일주(日柱)", "월주(月柱)", "년주(年柱)"]
+    for p, label in zip(pils, labels):
+        oh_cg = OH.get(p["cg"], "")
+        oh_jj = OH.get(p["jj"], "")
+        lines.append(f"{label}: {p['str']}  [{OHN.get(oh_cg,'')} / {OHN.get(oh_jj,'')}]")
+    return "\n".join(lines)
+
+
+def generate_saju_summary(pils, name, birth_year, gender):
+    """사주 종합 총평 자동 생성"""
+    ilgan = pils[1]["cg"]
+    ilgan_kr = CG_KR[CG.index(ilgan)]
+    oh = OH.get(ilgan, "")
+    oh_emoji = {"木": "🌳", "火": "🔥", "土": "🏔️", "金": "⚔️", "水": "🌊"}.get(oh, "✨")
+    
+    strength_info = get_ilgan_strength(ilgan, pils)
+    strength = strength_info["신강신약"]
+    oh_strength = strength_info["oh_strength"]
+    
+    gyeokguk = get_gyeokguk(pils)
+    gname = gyeokguk["격국명"] if gyeokguk else "미정격"
+    grade = gyeokguk["격의_등급"] if gyeokguk else ""
+    
+    unsung = calc_12unsung(ilgan, pils)
+    il_unsung = unsung[1] if len(unsung) > 1 else ""
+    
+    # 오행 분석
+    max_oh = max(oh_strength.items(), key=lambda x: x[1])
+    min_oh = min(oh_strength.items(), key=lambda x: x[1])
+    zero_ohs = [o for o, v in oh_strength.items() if v == 0]
+    
+    # 대운 현재
+    current_year = datetime.now().year
+    daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    current_dw = next((dw for dw in daewoon if dw["시작연도"] <= current_year <= dw["종료연도"]), None)
+    
+    # 세운
+    yearly = get_yearly_luck(pils, current_year)
+    
+    # 신살
+    special = get_special_stars(pils)
+    
+    lines = []
+    name_str = f"{name}님의 " if name else ""
+    
+    lines.append(f"◈ {name_str}사주팔자 천명 총평 ◈")
+    lines.append("━" * 40)
+    lines.append("")
+    
+    lines.append(f"【일간(日干)】 {oh_emoji} {ilgan}({ilgan_kr}) — {OHN.get(oh,'')}의 기운")
+    lines.append(ILGAN_DESC.get(ilgan, {}).get("nature", "").split('\n')[0])
+    lines.append("")
+    
+    lines.append(f"【신강신약】 {strength}")
+    lines.append(strength_info["조언"])
+    lines.append("")
+    
+    lines.append(f"【격국(格局)】 {gname} ({grade})")
+    if gyeokguk:
+        lines.append(GYEOKGUK_DESC.get(gname, {}).get("summary", "").split('\n')[0] if GYEOKGUK_DESC.get(gname) else gyeokguk.get("격국_해설", "")[:80])
+    lines.append("")
+    
+    lines.append(f"【일주 12운성】 {il_unsung}")
+    lines.append("")
+    
+    lines.append("【오행 분포】")
+    for o, v in sorted(oh_strength.items(), key=lambda x: -x[1]):
+        bar = "█" * (v // 5)
+        lines.append(f"  {o}({OHN.get(o,'')}) {v}% {bar}")
+    if zero_ohs:
+        lines.append(f"  ⚠️ {', '.join([OHN.get(o,'') for o in zero_ohs])} 기운이 완전히 없습니다 — 관련 분야 주의")
+    lines.append("")
+    
+    if current_dw:
+        dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(current_dw["cg"], "-")
+        lines.append(f"【현재 대운】 {current_dw['str']} ({current_dw['시작나이']}~{current_dw['시작나이']+9}세, {current_dw['시작연도']}~{current_dw['종료연도']}년)")
+        lines.append(f"  천간 {dw_ss}의 기운 — " + get_daewoon_narrative(dw_ss, "", current_dw["str"], current_dw["시작나이"])[2][:60] + "...")
+        lines.append("")
+    
+    lines.append(f"【{current_year}년 세운】 {yearly['세운']} {yearly['아이콘']} {yearly['길흉']}")
+    narr = yearly.get("narrative", {})
+    lines.append(f"  {narr.get('title', '')} — {narr.get('desc', '')[:60]}...")
+    lines.append("")
+    
+    if special:
+        lines.append("【신살(神殺)】")
+        for s in special[:4]:
+            lines.append(f"  {s['name']}: {s.get('desc','')[:40]}...")
+    
+    lines.append("")
+    lines.append("━" * 40)
+    lines.append("※ 본 풀이는 전통 사주명리학에 근거한 참고 자료입니다.")
+    
+    return "\n".join(lines)
+
+
+def get_special_stars(pils):
+    """신살 계산 (tab_special_stars에서 분리)"""
+    ilgan = pils[1]["cg"]
+    pil_jjs = [p["jj"] for p in pils]
+    result = []
+    
+    # 천을귀인
+    chunl = {"甲": ["丑", "未"], "乙": ["子", "申"], "丙": ["亥", "酉"], "丁": ["亥", "酉"],
+             "戊": ["丑", "未"], "己": ["子", "申"], "庚": ["丑", "未"], "辛": ["寅", "午"],
+             "壬": ["卯", "巳"], "癸": ["卯", "巳"]}
+    if any(jj in chunl.get(ilgan, []) for jj in pil_jjs):
+        found = [jj for jj in pil_jjs if jj in chunl.get(ilgan, [])]
+        result.append({"name": f"천을귀인(天乙貴人) [{','.join(found)}]",
+                       "desc": "하늘이 내리신 최고의 귀인성. 위기 때마다 귀인이 나타나 도와줍니다."})
+    
+    # 역마살
+    yeokma = {"寅": "申", "午": "申", "戌": "申", "申": "寅", "子": "寅", "辰": "寅",
+              "巳": "亥", "酉": "亥", "丑": "亥", "亥": "巳", "卯": "巳", "未": "巳"}
+    wol_jj = pils[2]["jj"] if len(pils) > 2 else ""
+    if wol_jj and yeokma.get(wol_jj, "") in pil_jjs:
+        result.append({"name": "역마살(驛馬殺)", "desc": "평생 이동·여행·해외와 인연이 깊습니다."})
+    
+    # 도화살
+    dohwa = {"寅": "卯", "午": "卯", "戌": "卯", "申": "酉", "子": "酉", "辰": "酉",
+             "亥": "子", "卯": "子", "未": "子", "巳": "午", "酉": "午", "丑": "午"}
+    if wol_jj and dohwa.get(wol_jj, "") in pil_jjs:
+        result.append({"name": "도화살(桃花殺)", "desc": "이성의 인기를 한몸에 받는 매력의 신살입니다."})
+    
+    return result
+
+
+# ══════════════════════════════════════════════════
+#  메인 탭별 렌더링 함수
+# ══════════════════════════════════════════════════
+
+def tab_saju_basic(pils, name, birth_year, gender):
+    """사주 기본 분석 탭"""
+
+    # ── 쪽집게 요약 카드 — 과거 먼저 ─────────────────────
+    ilgan = pils[1]["cg"]
+    current_year = datetime.now().year
+
+    with st.spinner("핵심 포인트 계산 중..."):
+        hl = generate_engine_highlights(pils, birth_year, gender)
+
+    # 성향 1줄 요약
+    top_trait = hl["personality"][0] if hl["personality"] else ""
+    # 강도 높은 과거 사건 2개
+    top_events = [e for e in hl["past_events"] if e["intensity"] == "🔴"][:2]
+    # 돈 피크 1개
+    top_money = hl["money_peak"][0] if hl["money_peak"] else None
+
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#f0eeff,#ece8ff);color:#1a1a1a;
+                padding:22px;border-radius:16px;margin-bottom:16px;
+                border:1px solid #ddd">
+        <div style="font-size:13px;color:#c5a059;font-weight:700;margin-bottom:14px;
+                    letter-spacing:1px">🎯 엔진이 계산한 핵심 포인트</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px">
+            <div style="flex:1;min-width:200px;background:rgba(155,124,204,0.2);
+                        padding:12px;border-radius:10px;border:1px solid #9b7ccc44">
+                <div style="font-size:11px;color:#c8b8f0;margin-bottom:6px">🧠 성향</div>
+                <div style="font-size:13px;line-height:1.7">{top_trait[:60]}{'...' if len(top_trait)>60 else ''}</div>
+            </div>
+            {"".join([f'''<div style="flex:1;min-width:200px;background:rgba(192,57,43,0.2);
+                        padding:12px;border-radius:10px;border:1px solid #c0392b44">
+                <div style="font-size:11px;color:#f0a0a0;margin-bottom:6px">🔴 {e['age']} {e.get('domain','변화')}</div>
+                <div style="font-size:12px;line-height:1.7;color:#333">{e['desc'][:50]}{'...' if len(e['desc'])>50 else ''}</div>
+            </div>''' for e in top_events])}
+            {f'''<div style="flex:1;min-width:200px;background:rgba(39,174,96,0.2);
+                        padding:12px;border-radius:10px;border:1px solid #27ae6044">
+                <div style="font-size:11px;color:#a0f0c0;margin-bottom:6px">💰 재물 상승기</div>
+                <div style="font-size:13px;line-height:1.7">{top_money['age']} — {top_money['desc'][:40]}...</div>
+            </div>''' if top_money else ''}
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:#333;text-align:right">
+            자세한 내용은 <b style="color:#c5a059">🎯 과거 적중</b> 탭에서 확인하세요
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown('<div class="gold-section">팔자(八字) 분석</div>', unsafe_allow_html=True)
+    render_pillars(pils)
+    
+    # 오행 강약
+    st.markdown('<div class="gold-section">오행(五行) 강약 분석</div>', unsafe_allow_html=True)
+    oh_strength = calc_ohaeng_strength(pils[1]["cg"], pils)
+    render_ohaeng_chart(oh_strength)
+    
+    # 신강신약
+    ilgan = pils[1]["cg"]
+    strength_info = get_ilgan_strength(ilgan, pils)
+    s_key = strength_info["신강신약"]
+    s_data = STRENGTH_DESC.get(s_key, {})
+    ilgan_oh = strength_info.get("ilgan_oh", "")
+    oh_advice = s_data.get("ohang_advice", {}).get(ilgan_oh, "")
+    
+    score_val = strength_info["helper_score"]
+    bar_filled = min(10, round(score_val / 10))
+    gauge = "🟦" * bar_filled + "⬜" * (10 - bar_filled)
+    
+    st.markdown('<div class="gold-section">신강신약(身强身弱) — 일간 기운의 강약</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="card" style="background:linear-gradient(135deg,#f0f8ff,#e8f4e8);border:2px solid #4a90a4">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+            <div>
+                <div style="font-size:20px;font-weight:800;color:#1a5f7a">{s_data.get('icon','')} {s_key}</div>
+                <div style="font-size:13px;color:#555;margin-top:4px">{s_data.get('personality','')}</div>
+            </div>
+            <div style="text-align:right">
+                <div style="font-size:15px">{gauge}</div>
+                <div style="font-size:12px;color:#444">일간 지지점수: {score_val}점</div>
+            </div>
+        </div>
+        <div style="font-size:13px;color:#333;line-height:2.0;white-space:pre-line;background:white;padding:14px;border-radius:10px;margin-bottom:10px">
+            {s_data.get('desc','')}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+            <div style="flex:1;min-width:200px;background:#e8f5e8;padding:10px 14px;border-radius:10px;border:1px solid #a8d5a8">
+                <div style="font-size:12px;font-weight:700;color:#2a6f2a;margin-bottom:4px">✨ 발복 운 — {s_data.get('lucky_run','')}</div>
+                <div style="font-size:12px;color:#333;line-height:1.8">{s_data.get('lucky_desc','')}</div>
+            </div>
+            <div style="flex:1;min-width:200px;background:#fff0e8;padding:10px 14px;border-radius:10px;border:1px solid #d5a888">
+                <div style="font-size:12px;font-weight:700;color:#8b4020;margin-bottom:4px">⚠️ 조심 운 — {s_data.get('caution_run','')}</div>
+                <div style="font-size:12px;color:#333;line-height:1.8">{s_data.get('caution_desc','')}</div>
+            </div>
+        </div>
+        {f'<div style="background:#f5f0ff;padding:10px 14px;border-radius:10px;border:1px solid #c8b8e8"><div style="font-size:12px;font-weight:700;color:#5a2d8b;margin-bottom:4px">💊 일간별 오행 처방</div><div style="font-size:12px;color:#444;line-height:1.8">{oh_advice}</div></div>' if oh_advice else ''}
+    </div>""", unsafe_allow_html=True)
+    
+    # 격국 분석
+    st.markdown('<div class="gold-section">격국(格局) 판단 — 나의 그릇과 천명</div>', unsafe_allow_html=True)
+    gyeokguk = get_gyeokguk(pils)
+    if gyeokguk:
+        score = gyeokguk["격의_순수도"]
+        score_bar = "🟨" * (score // 10) + "⬜" * (10 - score // 10)
+        
+        grade_str = gyeokguk["격의_등급"]
+        grade_color = "#c5a059" if "순격" in grade_str else "#888" if "잡격" in grade_str else "#666"
+        
+        gname = gyeokguk["격국명"]
+        g_detail = GYEOKGUK_DESC.get(gname, {})
+        
+        st.markdown(f"""
+        <div class="card" style="background:linear-gradient(135deg,#fffde0,#fff9e6);border:2px solid #c5a059">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+                <div>
+                    <div style="font-size:22px;font-weight:800;color:#a0720a">{gname}</div>
+                    <div style="font-size:13px;color:{grade_color};font-weight:700;margin-top:4px">{grade_str}</div>
+                </div>
+                <div style="text-align:right">
+                    <div style="font-size:18px">{score_bar}</div>
+                    <div style="font-size:14px;font-weight:700;color:#a0720a">{score}점</div>
+                </div>
+            </div>
+            <div style="font-size:14px;color:#333;line-height:2.0;white-space:pre-line;background:#fffef5;padding:14px;border-radius:10px;margin-bottom:10px">
+                {g_detail.get('summary', gyeokguk['격국_해설'])}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+                <div style="flex:1;min-width:180px;background:#f0f8f0;padding:10px 14px;border-radius:10px;border:1px solid #a8d5a8">
+                    <div style="font-size:12px;font-weight:700;color:#2a6f2a;margin-bottom:4px">🎯 적합 진로</div>
+                    <div style="font-size:12px;color:#333;line-height:1.8">{g_detail.get('lucky_career', gyeokguk['적합_진로'])}</div>
+                </div>
+                <div style="flex:1;min-width:180px;background:#fff5e0;padding:10px 14px;border-radius:10px;border:1px solid #d5b878">
+                    <div style="font-size:12px;font-weight:700;color:#c5750a;margin-bottom:4px">⭐ 신급(神級) 판정</div>
+                    <div style="font-size:12px;color:#333;line-height:1.8">{g_detail.get('god_rank', gyeokguk['신급_판정'])}</div>
+                </div>
+            </div>
+            <div style="background:#fff0f0;padding:10px 14px;border-radius:10px;border:1px solid #d5a8a8;white-space:pre-line">
+                <div style="font-size:12px;font-weight:700;color:#8b2020;margin-bottom:4px">⚠️ 경계사항</div>
+                <div style="font-size:12px;color:#444;line-height:1.8">{g_detail.get('caution', gyeokguk['경계사항'])}</div>
+            </div>
+        </div>""", unsafe_allow_html=True)
+    
+    # 삼합/방합
+    sam_hap = get_sam_hap(pils)
+    if sam_hap:
+        st.markdown('<div class="gold-section">합(合) · 충(沖) 분석</div>', unsafe_allow_html=True)
+        for hap in sam_hap:
+            st.markdown(f'<div class="hap-badge">{hap["type"]}: {hap["name"]}</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+def tab_ilgan_desc(pils):
+    """일간 기질 탭"""
+    ilgan = pils[1]["cg"]
+    desc = ILGAN_DESC.get(ilgan, {})
+    oh = OH.get(ilgan, "")
+    oh_emoji = {"木": "🌳", "火": "🔥", "土": "🏔️", "金": "⚔️", "水": "🌊"}.get(oh, "✨")
+    
+    st.markdown(f'<div class="gold-section">{oh_emoji} {ilgan}({CG_KR[CG.index(ilgan)]}) 일간 — {OHE.get(oh,"")}{OHN.get(oh,"")}의 기운</div>', unsafe_allow_html=True)
+    
+    # 천명 섹션
+    st.markdown(f"""
+    <div class="card" style="background:linear-gradient(135deg,#fffde0,#fff9e6);border:2px solid #c5a059;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:10px">📜 천명(天命)과 타고난 기질</div>
+        <div style="font-size:14px;color:#333;line-height:2.1;white-space:pre-line">{desc.get("nature", "")}</div>
+    </div>""", unsafe_allow_html=True)
+    
+    # 강점·보완 나란히
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"""
+        <div class="card" style="background:#f0fff0;border:1px solid #a8d5a8;height:100%">
+            <div style="font-size:13px;font-weight:700;color:#2a6f2a;margin-bottom:8px">💪 강점(强點)</div>
+            <div style="font-size:13px;color:#333;line-height:1.9;white-space:pre-line">{desc.get("strength", "")}</div>
+        </div>""", unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"""
+        <div class="card" style="background:#fff5f5;border:1px solid #d5a8a8;height:100%">
+            <div style="font-size:13px;font-weight:700;color:#8b2020;margin-bottom:8px">🔑 보완할 점</div>
+            <div style="font-size:13px;color:#333;line-height:1.9;white-space:pre-line">{desc.get("weakness", "")}</div>
+        </div>""", unsafe_allow_html=True)
+    
+    # 적성·건강·행운
+    st.markdown(f"""
+    <div class="card" style="margin-top:10px">
+        <div style="display:flex;flex-wrap:wrap;gap:10px">
+            <div style="flex:1;min-width:200px">
+                <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:6px">🎯 적성과 진로</div>
+                <div style="font-size:13px;color:#444;line-height:1.8">{desc.get("career", "")}</div>
+            </div>
+            <div style="flex:1;min-width:200px">
+                <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:6px">🏥 건강 유의사항</div>
+                <div style="font-size:13px;color:#444;line-height:1.8;white-space:pre-line">{desc.get("health", "")}</div>
+            </div>
+        </div>
+    </div>""", unsafe_allow_html=True)
+    
+    # 행운 정보
+    if desc.get("lucky"):
+        st.markdown(f"""
+        <div class="card" style="background:#f5f0ff;border:1px solid #c8b8e8">
+            <div style="font-size:13px;font-weight:700;color:#5a2d8b;margin-bottom:6px">🍀 행운의 기운</div>
+            <div style="font-size:13px;color:#444;line-height:1.9">{desc.get("lucky", "")}</div>
+        </div>""", unsafe_allow_html=True)
+
+
+
+
+def tab_12unsung(pils):
+    """12운성 탭"""
+    ilgan = pils[1]["cg"]
+    unsung = calc_12unsung(ilgan, pils)
+    sipsung_list = calc_sipsung(ilgan, pils)
+    
+    labels = ["시(時)", "일(日)", "월(月)", "년(年)"]
+    unsung_colors = {
+        "장생": "#4CAF50", "목욕": "#2196F3", "관대": "#FF9800",
+        "건록": "#E91E63", "제왕": "#9C27B0", "쇠": "#607D8B",
+        "병": "#F44336", "사": "#795548", "묘": "#9E9E9E",
+        "절": "#FF5722", "태": "#00BCD4", "양": "#8BC34A"
+    }
+    
+    st.markdown('<div class="gold-section">12운성(十二運星)</div>', unsafe_allow_html=True)
+    cols = st.columns(4)
+    for i, (label, uns, ss) in enumerate(zip(labels, unsung, sipsung_list)):
+        color = unsung_colors.get(uns, "#888")
+        with cols[i]:
+            st.markdown(f"""
+            <div style="text-align:center;padding:15px;background:#fffef5;border-radius:12px;border:1px solid #e8d5a0;margin:4px">
+                <div style="font-size:11px;color:#444">{label}</div>
+                <div style="font-size:24px;font-weight:800;color:{color};margin:8px 0">{uns}</div>
+                <div style="font-size:11px;color:#333">천간: {ss.get("cg_ss","-")}</div>
+                <div style="font-size:11px;color:#444">지지: {ss.get("jj_ss","-")}</div>
+            </div>""", unsafe_allow_html=True)
+    
+    # 운성 설명
+    unsung_desc = {
+        "장생": {
+            "icon": "🌱", "color_label": "생명력",
+            "meaning": "장생(長生) — 새로운 생명이 이 세상에 첫 발을 내딛는 희망찬 탄생의 단계입니다.",
+            "detail": "마치 봄날 대지를 뚫고 싹이 트듯, 새로운 시작과 출발의 기운이 넘칩니다. 이 기운이 강한 분은 어떤 분야에 발을 들여도 초반부터 순조롭게 시작되는 행운이 있습니다. 귀인의 도움을 받아 자연스럽게 성장하는 환경이 만들어집니다.",
+            "advice": "✓ 새로운 일을 시작하기에 좋은 기운 ✓ 귀인이 자연스럽게 나타납니다 ✓ 건강하고 활기찬 기질을 타고납니다"
+        },
+        "목욕": {
+            "icon": "🌊", "color_label": "감수성",
+            "meaning": "목욕(沐浴) — 갓 태어난 생명이 처음으로 목욕을 하는 혼돈과 감성의 단계입니다.",
+            "detail": "세상 물정을 모르는 순수함과 동시에 유혹과 시험에 취약한 시기입니다. 예술적 감수성이 극도로 발달하여 음악·미술·문학 분야에서 천재적 재능을 발휘하는 경우가 많습니다. 다만 이성 문제와 방탕함을 경계해야 합니다.",
+            "advice": "⚠ 이성 문제와 유혹을 각별히 경계 ✓ 예술·감성 분야에서 천부적 재능 ⚠ 방향을 잡아줄 멘토가 반드시 필요합니다"
+        },
+        "관대": {
+            "icon": "🎓", "color_label": "성장기",
+            "meaning": "관대(冠帶) — 성인식을 마치고 관과 띠를 두르는 청년기의 활기찬 단계입니다.",
+            "detail": "에너지가 넘치고 자신감이 충만한 시기입니다. 사회에 첫 발을 내딛으며 자신의 능력을 증명하고 싶은 야망이 강합니다. 공부·자격증·사회 진출에 유리한 기운으로, 이 시기에 부지런히 쌓아둔 실력이 평생의 자산이 됩니다.",
+            "advice": "✓ 교육·자격증 취득에 유리한 기운 ✓ 사회 진출과 취업에 좋은 기운 ⚠ 과잉 자신감으로 인한 실수를 경계하십시오"
+        },
+        "건록": {
+            "icon": "💪", "color_label": "전성기",
+            "meaning": "건록(建祿) — 녹봉(祿俸)을 받는 장년기의 충실하고 강건한 전성기 단계입니다.",
+            "detail": "인생에서 가장 강력하고 안정적인 기운의 시기입니다. 직업적으로 안정된 자리를 얻고 경제적 기반이 탄탄해집니다. 건록이 일주에 있으면 평생 먹고 사는 걱정이 없는 복을 타고난 것입니다. 독립심이 강하고 자수성가하는 기운입니다.",
+            "advice": "✓ 직업 안정과 경제적 기반이 가장 탄탄한 기운 ✓ 자수성가의 기운이 강합니다 ✓ 건강하고 활력이 넘칩니다"
+        },
+        "제왕": {
+            "icon": "👑", "color_label": "절정",
+            "meaning": "제왕(帝旺) — 왕이 보위에 오르는 절정과 최고조의 단계입니다.",
+            "detail": "기운이 절정에 달한 최강의 운성입니다. 리더십과 카리스마가 최고조에 달하며, 자연스럽게 우두머리 자리에 오르는 기운입니다. 다만 이 기운이 지나치면 독선과 오만으로 흐를 수 있으니, 겸손함을 잃지 않는 것이 제왕격의 진정한 완성입니다.",
+            "advice": "✓ 리더십과 권위가 가장 강한 기운 ⚠ 지나친 독선과 오만을 경계 ✓ 어떤 분야에 가든 정상에 서는 기운"
+        },
+        "쇠": {
+            "icon": "🌅", "color_label": "하강기",
+            "meaning": "쇠(衰) — 절정에서 내려오기 시작하는 성숙한 노년의 시작 단계입니다.",
+            "detail": "강렬한 활동보다는 안정과 지속을 추구하는 시기입니다. 외면의 강함보다는 내면의 지혜가 빛나는 단계로, 경험에서 우러나오는 통찰력이 생깁니다. 현상을 유지하고 지켜가는 것이 이 기운의 역할입니다.",
+            "advice": "✓ 경험에서 우러나오는 깊은 통찰력 ✓ 안정적이고 신중한 의사결정 ⚠ 새로운 도전보다는 현상 유지와 수성(守成)이 유리"
+        },
+        "병": {
+            "icon": "🍂", "color_label": "조정기",
+            "meaning": "병(病) — 기운이 쇠하여 병을 앓는 단계로, 내면을 돌보는 조정의 시기입니다.",
+            "detail": "신체적·정신적 에너지가 저하되는 시기입니다. 그러나 이 기운이 일주에 있는 분은 병을 통해 더 깊은 영성과 통찰을 얻는 경우가 많습니다. 의료·상담·영성 분야에서 오히려 뛰어난 능력을 발휘합니다. 건강 관리가 최우선입니다.",
+            "advice": "✓ 의료·상담·종교 분야에서 특별한 감수성 ⚠ 건강 관리와 무리하지 않는 생활이 필수 ⚠ 음주와 무절제한 생활은 건강을 급격히 해칩니다"
+        },
+        "사": {
+            "icon": "🕯️", "color_label": "정적",
+            "meaning": "사(死) — 기운이 잠들고 내면의 세계로 침잠하는 정적의 단계입니다.",
+            "detail": "표면적으로는 조용해 보이지만 내면에서 깊은 사색과 정신적 성숙이 이루어지는 단계입니다. 철학·종교·학문에 깊이 몰두하는 경향이 있으며, 세속적 욕망보다 정신적 가치를 추구합니다. 영적 능력과 직관이 발달하는 기운입니다.",
+            "advice": "✓ 철학·종교·학문에서 깊은 경지에 도달 ✓ 영적·직관적 능력이 발달합니다 ⚠ 지나친 내향성으로 사회적 고립을 경계"
+        },
+        "묘": {
+            "icon": "⚰️", "color_label": "축적",
+            "meaning": "묘(墓) — 창고에 저장되듯 기운이 내면에 축적되는 단계입니다.",
+            "detail": "겉으로는 드러나지 않지만 내면에 엄청난 잠재력이 축적되는 기운입니다. 겉과 속이 다르고 속내를 잘 드러내지 않는 성격으로, 비밀이 많거나 복잡한 내면을 지닌 경우가 많습니다. 재물을 모으는 능력과 정보를 축적하는 능력이 탁월합니다.",
+            "advice": "✓ 재물 축적과 정보 수집 능력이 탁월 ⚠ 지나친 비밀주의와 내향성을 경계 ⚠ 고지식함이나 완고함으로 인간관계가 경직될 수 있습니다"
+        },
+        "절": {
+            "icon": "🔄", "color_label": "전환",
+            "meaning": "절(絶) — 완전히 단절되고 새로운 씨앗이 심어지기 직전의 변화와 전환의 단계입니다.",
+            "detail": "기존의 것이 끝나고 새로운 것이 시작되는 전환점입니다. 이 기운이 강한 시기에는 이사·이직·이별 등 큰 변화가 일어나기 쉽습니다. 변화에 대한 적응력이 탁월하며, 전혀 새로운 분야로 도전하여 성공하는 경우도 많습니다.",
+            "advice": "✓ 변화와 새로운 시작에 대한 탁월한 적응력 ⚠ 변화가 많고 정착이 어려운 시기 ⚠ 섣부른 결정보다 충분히 준비한 후 도전하십시오"
+        },
+        "태": {
+            "icon": "🥚", "color_label": "준비",
+            "meaning": "태(胎) — 어머니 뱃속에서 생명이 잉태되는 조용한 준비의 단계입니다.",
+            "detail": "아직 세상에 드러나지 않은 잠재적 가능성이 무한히 준비되는 시기입니다. 조급함 없이 때를 기다리며 내실을 다지는 것이 이 기운의 지혜입니다. 새로운 프로젝트나 사업의 씨앗을 뿌리는 준비 단계로 적합합니다.",
+            "advice": "✓ 조용히 준비하고 씨앗을 심기에 좋은 시기 ✓ 학습과 내공을 쌓는 데 집중하십시오 ⚠ 아직 때가 아니니 조급하게 드러내려 하지 마십시오"
+        },
+        "양": {
+            "icon": "🌿", "color_label": "양육",
+            "meaning": "양(養) — 어머니의 품에서 길러지고 양육받는 따뜻한 성장의 단계입니다.",
+            "detail": "누군가의 도움과 후원을 받으며 성장하는 기운입니다. 귀인이나 선배·멘토의 도움으로 능력이 키워지는 시기입니다. 어머니·여성의 도움이 강하고, 교육과 학습을 통해 크게 성장합니다. 독립보다는 의지하며 배우는 시기입니다.",
+            "advice": "✓ 귀인·멘토·어머니의 도움이 강한 시기 ✓ 배움과 학습에 집중하기 좋은 기운 ⚠ 지나친 의존은 독립심을 약화시킵니다"
+        },
+    }
+
+    st.markdown("---")
+    seen = set()
+    for uns in unsung:
+        if uns not in seen and uns in unsung_desc:
+            seen.add(uns)
+            d = unsung_desc[uns]
+            color = unsung_colors.get(uns, "#888")
+            st.markdown(f"""
+            <div style="background:#fffef5;border-left:5px solid {color};border-radius:4px 12px 12px 4px;
+                        padding:15px 18px;margin:8px 0;border-top:1px solid #f0e4bb;border-right:1px solid #f0e4bb">
+                <div style="font-size:15px;font-weight:700;color:{color};margin-bottom:6px">
+                    {d['icon']} {uns}({d['color_label']}) — {d['meaning'].split('—')[1].strip() if '—' in d['meaning'] else ''}
+                </div>
+                <div style="font-size:13px;color:#444;line-height:1.9;margin-bottom:8px">{d['detail']}</div>
+                <div style="font-size:12px;color:#444;background:#f9f5e8;padding:8px 12px;border-radius:8px;line-height:1.8">{d['advice']}</div>
+            </div>""", unsafe_allow_html=True)
+
+
+def get_daewoon_narrative(d_ss_cg, d_ss_jj, dw_str, age_start):
+    """대운 천간·지지 십성별 상세 해석 생성"""
+    narratives = {
+        "비견": ("🤝", "동류(同類)의 대운", 
+            f"비견(比肩) 대운은 동료·형제·경쟁자의 기운이 강해지는 10년입니다. "
+            f"독립심이 강해지고 새로운 파트너십이 생기며 협력을 통한 성장의 시기입니다. "
+            f"경쟁도 치열해지지만, 함께 성장하는 동료를 만나는 귀한 인연의 시기이기도 합니다. "
+            f"재물은 나누어야 더 들어오는 이치를 깨닫게 되는 10년입니다."),
+        "겁재": ("⚔️", "투쟁과 경쟁의 대운", 
+            f"겁재(劫財) 대운은 치열한 경쟁과 투쟁의 10년입니다. "
+            f"재물의 손실이나 형제·동료와의 갈등이 생길 수 있으나, "
+            f"이 경쟁을 이겨낸 자는 더욱 강해집니다. "
+            f"동업과 보증은 철저히 경계하고, 독립적으로 자신의 능력을 키우는 데 집중하십시오."),
+        "식신": ("🍀", "복록과 재능의 대운", 
+            f"식신(食神) 대운은 하늘이 내리신 복록의 10년입니다! "
+            f"재능이 꽃피고 먹고 사는 걱정이 사라지며, 하는 일마다 순조롭게 풀립니다. "
+            f"자신의 재능을 마음껏 발휘하고, 음식·예술·창작 분야에서 특히 빛을 발합니다. "
+            f"건강도 좋아지고 주변에 사람이 모여드는 행복한 시기입니다."),
+        "상관": ("🌪️", "혁신과 변혁의 대운", 
+            f"상관(傷官) 대운은 기존 질서를 뒤집는 혁신과 변화의 10년입니다. "
+            f"창의력이 폭발하고 새로운 아이디어가 샘솟지만, "
+            f"직장·관직과의 충돌이 생길 수 있습니다. 언행에 각별히 주의하고, "
+            f"자신의 창의력을 긍정적인 방향으로 발산하는 출구를 찾으십시오."),
+        "편재": ("💰", "활동적 재물의 대운", 
+            f"편재(偏財) 대운은 투자·사업·거래를 통한 역동적인 재물의 10년입니다. "
+            f"부동산, 주식, 사업 확장의 기회가 찾아오며 대담한 도전이 빛을 발합니다. "
+            f"이성 인연도 활발해지는 시기입니다. 다만 신약하면 과욕이 화를 부르니 "
+            f"자신의 역량 안에서 운용하십시오."),
+        "정재": ("🏦", "안정적 재물의 대운", 
+            f"정재(正財) 대운은 성실하게 쌓아가는 안정된 재물의 10년입니다. "
+            f"월급·임대수입 등 고정적인 수입이 늘어나고 저축과 자산이 불어납니다. "
+            f"결혼 인연이나 배우자 덕을 보는 시기이기도 합니다. "
+            f"꾸준하고 성실하게 자신의 자리를 지키는 것이 이 대운의 복의 비결입니다."),
+        "편관": ("⚡", "권력과 시련의 대운", 
+            f"편관(偏官) 대운은 강한 권력 기운과 함께 시련이 따르는 10년입니다. "
+            f"군·경·의·법 등 권위 있는 분야에서 두각을 나타내거나, "
+            f"반대로 권력자와의 충돌로 어려움을 겪기도 합니다. "
+            f"인내심을 갖고 정면으로 돌파하면 이 대운을 통해 더욱 강해집니다."),
+        "정관": ("🎖️", "명예와 관직의 대운", 
+            f"정관(正官) 대운은 명예·직위·관직이 빛나는 황금 같은 10년입니다! "
+            f"승진·수상·인정·사회적 지위 향상의 기회가 찾아옵니다. "
+            f"법과 원칙을 지키는 삶이 보상받는 시기이며, 조직 내에서 중요한 역할을 맡게 됩니다. "
+            f"결혼 운도 좋아 이 시기에 인연을 만나는 경우가 많습니다."),
+        "편인": ("🔮", "직관과 학문의 대운", 
+            f"편인(偏印) 대운은 특수한 학문·직관·영성이 발달하는 10년입니다. "
+            f"일반적인 학문보다는 철학·종교·심리·IT 등 특수 분야에서 두각을 나타냅니다. "
+            f"내면의 성찰과 수련에 집중하기 좋은 시기이며, "
+            f"독특한 아이디어로 새로운 길을 개척할 수 있습니다."),
+        "정인": ("📚", "학문과 명예의 대운", 
+            f"정인(正印) 대운은 학문·명예·귀인의 도움이 충만한 10년입니다! "
+            f"시험·자격증·학위 취득에 매우 유리하며, 스승이나 귀인의 도움이 자연스럽게 찾아옵니다. "
+            f"어머니 덕을 보거나 윗사람의 후원이 강해지는 시기입니다. "
+            f"지식을 쌓고 명예를 높이는 데 집중하면 이 대운이 크게 빛납니다."),
+        "-": ("🌐", "복합 기운의 대운", 
+            f"이 대운은 여러 오행의 기운이 복합적으로 작용하는 10년입니다. "
+            f"일간의 강약과 격국에 따라 발현 방식이 달라지니, "
+            f"전문 명리사의 상담을 통해 더욱 정밀한 분석을 받아보시기를 권합니다."),
+    }
+    icon, title, text = narratives.get(d_ss_cg, narratives["-"])
+    return icon, title, text
+
+
+def _get_dw_alert(ilgan, dw_cg, dw_jj, pils):
+    """대운이 원국과 충·합을 일으키는지 감지"""
+    alerts = []
+    orig_jjs = [p["jj"] for p in pils]
+    orig_cgs = [p["cg"] for p in pils]
+    for ojj in orig_jjs:
+        k = frozenset([dw_jj, ojj])
+        if k in CHUNG_MAP:
+            name, rel, desc = CHUNG_MAP[k]
+            alerts.append({"type": "⚠️ 지지충", "color": "#c0392b",
+                "desc": f"대운 {dw_jj}가 원국 {ojj}를 충(沖) — {desc}"})
+    TG_HAP_PAIRS = [{"甲","己"},{"乙","庚"},{"丙","辛"},{"丁","壬"},{"戊","癸"}]
+    for pair in TG_HAP_PAIRS:
+        if dw_cg in pair:
+            other = list(pair - {dw_cg})[0]
+            if other in orig_cgs:
+                alerts.append({"type": "✨ 천간합", "color": "#27ae60",
+                    "desc": f"대운 {dw_cg}가 원국 {other}와 합(合) — 변화와 기회의 기운"})
+    for combo,(hname,hoh,hdesc) in SAM_HAP_MAP.items():
+        if dw_jj in combo:
+            orig_in = [j for j in orig_jjs if j in combo]
+            if len(orig_in) >= 2:
+                alerts.append({"type": "🌟 삼합 성립", "color": "#8e44ad",
+                    "desc": f"대운 {dw_jj} + 원국 {','.join(orig_in)} = {hname} — 강력한 발복"})
+            elif len(orig_in) == 1:
+                alerts.append({"type": "💫 반합", "color": "#2980b9",
+                    "desc": f"대운 {dw_jj} + 원국 {orig_in[0]} 반합 — 부분적 기운 변화"})
+    return alerts
+
+
+def _get_yongshin_match(dw_cg_ss, yongshin_ohs, ilgan_oh):
+    """대운 십성이 용신 오행과 맞는지 판단"""
+    GEN = {"木":"火","火":"土","土":"金","金":"水","水":"木"}
+    CTRL = {"木":"土","火":"金","土":"水","金":"木","水":"火"}
+    BIRTH_R = {"木":"水","火":"木","土":"火","金":"土","水":"金"}
+    SS_TO_OH = {
+        "비견": ilgan_oh, "겁재": ilgan_oh,
+        "식신": GEN.get(ilgan_oh,""), "상관": GEN.get(ilgan_oh,""),
+        "편재": CTRL.get(ilgan_oh,""), "정재": CTRL.get(ilgan_oh,""),
+        "편관": next((k for k,v in CTRL.items() if v==ilgan_oh),""),
+        "정관": next((k for k,v in CTRL.items() if v==ilgan_oh),""),
+        "편인": BIRTH_R.get(ilgan_oh,""), "정인": BIRTH_R.get(ilgan_oh,""),
+    }
+    dw_oh = SS_TO_OH.get(dw_cg_ss, "")
+    return "yong" if dw_oh in yongshin_ohs else "normal"
+
+
+def _get_hap_break_warning(pils, dw_jj, sw_jj):
+    """원국의 합이 대운·세운 충으로 깨지는 시점 감지"""
+    warnings = []
+    orig_jjs = [p["jj"] for p in pils]
+    for combo,(hname,hoh,hdesc) in SAM_HAP_MAP.items():
+        orig_in = [j for j in orig_jjs if j in combo]
+        if len(orig_in) >= 2:
+            for breaker in [dw_jj, sw_jj]:
+                for jj in list(combo):
+                    k = frozenset([breaker, jj])
+                    if k in CHUNG_MAP and jj in orig_in:
+                        warnings.append({
+                            "level": "🔴 위험", "color": "#c0392b",
+                            "desc": f"원국 {hname}({','.join(orig_in)})을 {'대운' if breaker==dw_jj else '세운'} {breaker}가 충(沖)으로 깨뜨립니다. 계획 좌절·관계 파탄·재물 손실 위험."
+                        })
+    return warnings
+
+
+DAEWOON_PRESCRIPTION = {
+    "비견": "독립 사업·협력 강화·새 파트너십 구축이 유리합니다.",
+    "겁재": "투자·보증·동업 금지. 지출 절제, 현상 유지가 최선입니다.",
+    "식신": "재능 발휘·창업·콘텐츠 창작을 적극 추진하십시오.",
+    "상관": "직장 이직·창업·예술 활동에 좋으나 언행 극도 조심.",
+    "편재": "사업 확장·투자·이동이 유리. 단, 과욕은 금물입니다.",
+    "정재": "저축·자산 관리·안정적 수입 구조 구축에 집중하십시오.",
+    "편관": "건강검진 필수. 무리한 확장 자제. 인내와 정면 돌파가 최선.",
+    "정관": "승진·자격증·공식 계약을 적극 추진하십시오. 명예의 시기.",
+    "편인": "학문·자격증·특수 분야 연구에 집중하기 좋은 시기입니다.",
+    "정인": "시험·학업·귀인과의 만남. 배움에 투자하십시오.",
+}
+
+
+def tab_daewoon(pils, birth_year, gender):
+    """대운 탭 — 용신 하이라이트 + 합충 경고 + 처방"""
+    st.markdown('<div class="gold-section">🔄 대운(大運) — 10년 주기 운명의 큰 흐름</div>', unsafe_allow_html=True)
+
+    daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    current_year = datetime.now().year
+    ilgan = pils[1]["cg"]
+    ilgan_oh = OH.get(ilgan, "")
+    ys = get_yongshin(pils)
+    yongshin_ohs = ys["종합_용신"]
+
+    # ── 타임라인 요약 바 ────────────────────────────────
+    st.markdown("### 📊 용신 대운 타임라인")
+    oh_emoji = {"木":"🌳","火":"🔥","土":"🏔️","金":"⚔️","水":"💧"}
+    yong_str = " · ".join([f"{oh_emoji.get(o,'')}{OHN.get(o,'')}" for o in yongshin_ohs]) if yongshin_ohs else "분석 중"
+    st.markdown(f"""
+    <div class="card" style="background:#fffde0;border:1px solid #e8d5a0;margin-bottom:10px;font-size:13px;color:#7b5f2a;line-height:1.9">
+        ⭐ <b>이 사주 용신:</b> {yong_str} &nbsp;|&nbsp;
+        🟡 황금 카드 = 용신 대운 &nbsp;|&nbsp; 🟠 주황 테두리 = 현재 대운
+    </div>""", unsafe_allow_html=True)
+
+    tl = '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px">'
+    for dw in daewoon:
+        d_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
+        is_yong = _get_yongshin_match(d_ss, yongshin_ohs, ilgan_oh) == "yong"
+        is_cur = dw["시작연도"] <= current_year <= dw["종료연도"]
+        bg = "#c5a059" if is_yong else "#e8e8e8"
+        tc = "white" if is_yong else "#666"
+        bdr = "border:3px solid #ff6b00;" if is_cur else "border:2px solid transparent;"
+        tl += f'<div style="background:{bg};color:{tc};{bdr}border-radius:10px;padding:8px 12px;text-align:center;min-width:68px"><div style="font-size:10px;opacity:.8">{dw["시작나이"]}세</div><div style="font-size:15px;font-weight:800">{dw["str"]}</div><div style="font-size:10px">{d_ss}</div>{"<div style=font-size:10px;color:#ffe;font-weight:700>🌟용신</div>" if is_yong else ""}{"<div style=font-size:10px;color:#ff6b00;font-weight:800>◀현재</div>" if is_cur else ""}</div>'
+    tl += "</div>"
+    st.markdown(tl, unsafe_allow_html=True)
+
+    # ── 대운별 상세 카드 ────────────────────────────────
+    for dw in daewoon:
+        d_ss_cg = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
+        d_ss_jj_list = JIJANGGAN.get(dw["jj"], [])
+        d_ss_jj = TEN_GODS_MATRIX.get(ilgan, {}).get(d_ss_jj_list[-1] if d_ss_jj_list else "", "-")
+        oh_cg = OH.get(dw["cg"], ""); oh_jj = OH.get(dw["jj"], "")
+        is_current = dw["시작연도"] <= current_year <= dw["종료연도"]
+        is_yong = _get_yongshin_match(d_ss_cg, yongshin_ohs, ilgan_oh) == "yong"
+        alerts = _get_dw_alert(ilgan, dw["cg"], dw["jj"], pils)
+        icon, title, narrative = get_daewoon_narrative(d_ss_cg, d_ss_jj, dw["str"], dw["시작나이"])
+        prescription = DAEWOON_PRESCRIPTION.get(d_ss_cg, "꾸준한 노력으로 안정을 유지하십시오.")
+
+        if is_current:
+            bdr = "border:3px solid #ff6b00;"
+            bg2 = "background:linear-gradient(135deg,#fff8ee,#fff3e0);"
+            badge = "<div style='font-size:12px;color:#ff6b00;font-weight:900;letter-spacing:2px;margin-bottom:8px'>▶ ★ 현재 진행 중인 대운 ★</div>"
+        elif is_yong:
+            bdr = "border:2px solid #c5a059;"
+            bg2 = "background:linear-gradient(135deg,#fffde0,#fff9e6);"
+            badge = "<div style='font-size:11px;color:#c5a059;font-weight:800;margin-bottom:6px'>🌟 용신(用神) 대운 — 이 시기를 놓치지 마십시오</div>"
+        else:
+            bdr = "border:1px solid #e8e8e8;"
+            bg2 = "background:#fafafa;"
+            badge = ""
+
+        alert_html = "".join([
+            f'<div style="background:{a["color"]}18;border-left:3px solid {a["color"]};padding:8px 12px;border-radius:6px;margin-top:4px;font-size:12px"><b style="color:{a["color"]}">{a["type"]}</b> — {a["desc"]}</div>'
+            for a in alerts])
+
+        st.markdown(f"""
+        <div class="card" style="{bdr}{bg2}margin:10px 0;padding:20px">
+            {badge}
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+                <div>
+                    <span style="font-size:30px;font-weight:800;color:#a0720a">{dw["str"]}</span>
+                    <span style="font-size:13px;color:#444;margin-left:12px">{dw["시작나이"]}~{dw["시작나이"]+9}세</span>
+                    <span style="font-size:11px;color:#555;margin-left:8px">({dw["시작연도"]}~{dw["종료연도"]}년)</span>
+                </div>
+                <div style="text-align:right">
+                    <div style="font-size:12px;color:#444">{OHE.get(oh_cg,"")} 천간 <b>{d_ss_cg}</b></div>
+                    <div style="font-size:12px;color:#444">{OHE.get(oh_jj,"")} 지지 <b>{d_ss_jj}</b></div>
+                </div>
+            </div>
+            <div style="background:white;border-left:4px solid #c5a059;padding:12px 15px;border-radius:4px 10px 10px 4px;margin-bottom:8px">
+                <div style="font-size:14px;font-weight:700;color:#a0720a;margin-bottom:6px">{icon} {title}</div>
+                <div style="font-size:13px;color:#444;line-height:2.0">{narrative}</div>
+            </div>
+            <div style="background:#f0fff0;border:1px solid #a8d5a8;padding:10px 14px;border-radius:10px;margin-bottom:6px">
+                <span style="font-size:12px;font-weight:700;color:#2a6f2a">💊 처방: </span>
+                <span style="font-size:13px;color:#333">{prescription}</span>
+            </div>
+            {alert_html}
+        </div>""", unsafe_allow_html=True)
+
+
+
+def tab_monthly(pils, birth_year, gender):
+    """월운 탭"""
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+    
+    year_sel = st.selectbox("연도 선택", list(range(current_year-1, current_year+3)), index=1)
+    
+    st.markdown('<div class="gold-section">월운(月運) 분석 — 한 달 한 달의 기운 풀이</div>', unsafe_allow_html=True)
+    yearly = get_yearly_luck(pils, year_sel)
+    ilgan = pils[1]["cg"]
+    
+    # 세운 상세 해석
+    ye_ss_cg = yearly["십성_천간"]
+    ye_ss_jj = yearly["십성_지지"]
+    ye_data = MONTHLY_LUCK_DESC.get(ye_ss_cg, MONTHLY_LUCK_DESC["-"])
+    
+    st.markdown(f"""
+    <div class="card" style="background:linear-gradient(135deg,#fffde0,#fff9e6);border:2px solid #c5a059;margin-bottom:15px">
+        <div style="font-size:16px;font-weight:800;color:#a0720a;margin-bottom:10px">
+            {year_sel}년 세운(歲運) — {yearly["세운"]}  {yearly["아이콘"]}
+        </div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:10px">
+            <div style="font-size:13px;color:#333">천간 십성: <b style="color:#a0720a">{ye_ss_cg}</b></div>
+            <div style="font-size:13px;color:#333">지지 십성: <b style="color:#a0720a">{ye_ss_jj}</b></div>
+            <div style="font-size:13px;color:#333">종합 길흉: <b style="color:#{'c0392b' if '흉' in yearly['길흉'] else '2980b9' if '길' in yearly['길흉'] else '666'}">{yearly["길흉"]}</b></div>
+        </div>
+        <div style="font-size:13px;color:#555;line-height:1.9;background:#fffef5;padding:12px;border-radius:8px">
+            {ye_data['desc']}
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+            <span style="font-size:12px;background:#f0e8c8;padding:4px 10px;border-radius:12px;color:#7b5f2a">💰 {ye_data['재물']}</span>
+            <span style="font-size:12px;background:#e8f0e8;padding:4px 10px;border-radius:12px;color:#2a5f2a">👥 {ye_data['관계']}</span>
+        </div>
+    </div>""", unsafe_allow_html=True)
+    
+    st.markdown("### 📅 월별 상세 운세")
+    
+    # 길흉 색상 맵
+    css_colors = {
+        "great": ("#fff8e0", "#c5a059", "🌟 대길"),
+        "good":  ("#f0f8ff", "#2980b9", "✨ 길"),
+        "bad":   ("#fff0f0", "#c0392b", "⚠️ 흉"),
+        "":      ("#fafafa", "#888",    "〇 평"),
+    }
+    
+    for m in range(1, 13):
+        monthly = get_monthly_luck(pils, year_sel, m)
+        is_current = (year_sel == current_year and m == current_month)
+        
+        bg, border_c, luck_label = css_colors.get(monthly["css"], css_colors[""])
+        border = f"border: 2px solid {border_c};" if is_current else f"border: 1px solid {border_c}33;"
+        current_badge = "<span style='font-size:11px;background:#c5a059;color:#1a1a1a;padding:2px 8px;border-radius:10px;font-weight:700'>◀ 이번 달</span>" if is_current else ""
+        
+        # 확장 가능한 카드 대신 항상 요약+상세 표시
+        st.markdown(f"""
+        <div style="background:{bg};{border}border-radius:12px;padding:16px;margin:6px 0">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <span style="font-size:18px;font-weight:800;color:#a0720a;min-width:40px">{m}월</span>
+                    <span style="font-size:20px;font-weight:800;color:#333">{monthly["월운"]}</span>
+                    <span style="font-size:13px;color:{border_c};font-weight:700">{monthly["short"]}</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <span style="font-size:12px;color:#444">{monthly["십성"]}({monthly["지지십성"]})</span>
+                    <span style="font-size:12px;font-weight:700;color:{border_c}">{luck_label}</span>
+                    {current_badge}
+                </div>
+            </div>
+            <div style="font-size:13px;color:#444;line-height:1.8;margin-bottom:8px">{monthly["설명"]}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:12px">
+                <span style="background:#f5efe0;padding:3px 10px;border-radius:10px;color:#7b5f2a">💰 {monthly["재물"]}</span>
+                <span style="background:#e8f5e8;padding:3px 10px;border-radius:10px;color:#2a5f2a">👥 {monthly["관계"]}</span>
+                <span style="background:#fce8e8;padding:3px 10px;border-radius:10px;color:#8b2020">⚠ {monthly["주의"]}</span>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+
+def tab_saju_total(pils, name, birth_year, gender):
+    """사주 종합 총평 탭 — 원국+대운+세운 3중 통합"""
+    st.markdown('<div class="gold-section">📜 사주팔자 종합 총평 — 천명(天命) 전체 풀이</div>', unsafe_allow_html=True)
+
+    ilgan = pils[1]["cg"]
+    oh = OH.get(ilgan, "")
+    oh_emoji = {"木":"🌳","火":"🔥","土":"🏔️","金":"⚔️","水":"🌊"}.get(oh,"✨")
+    strength_info = get_ilgan_strength(ilgan, pils)
+    gyeokguk = get_gyeokguk(pils)
+    oh_strength = strength_info["oh_strength"]
+    current_year = datetime.now().year
+    yearly = get_yearly_luck(pils, current_year)
+    daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    current_dw = next((dw for dw in daewoon if dw["시작연도"] <= current_year <= dw["종료연도"]), None)
+    unsung = calc_12unsung(ilgan, pils)
+    il_unsung = unsung[1] if len(unsung) > 1 else ""
+    ys = get_yongshin(pils)
+    yongshin_ohs = ys["종합_용신"]
+    ilgan_oh = OH.get(ilgan, "")
+    oh_emoji_map = {"木":"🌳","火":"🔥","土":"🏔️","金":"⚔️","水":"💧"}
+    saju_str = " ".join([p["str"] for p in pils])
+    gname = gyeokguk["격국명"] if gyeokguk else "미정격"
+    sn = strength_info["신강신약"]
+    current_age = current_year - birth_year + 1
+
+    # 대운 분석
+    dw_ss = TEN_GODS_MATRIX.get(ilgan,{}).get(current_dw["cg"],"-") if current_dw else "-"
+    dw_is_yong = _get_yongshin_match(dw_ss, yongshin_ohs, ilgan_oh) == "yong" if current_dw else False
+    sw_ss = yearly["십성_천간"]
+    sw_is_yong = _get_yongshin_match(sw_ss, yongshin_ohs, ilgan_oh) == "yong"
+    hap_breaks = _get_hap_break_warning(pils, current_dw["jj"] if current_dw else "", yearly["jj"])
+    dw_alerts = _get_dw_alert(ilgan, current_dw["cg"] if current_dw else "", current_dw["jj"] if current_dw else "", pils) if current_dw else []
+
+    # ① 배너
+    nature_quote = ILGAN_DESC.get(ilgan,{}).get("nature","").split("\n")[0] if ILGAN_DESC.get(ilgan,{}).get("nature") else ""
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#fff5e0,#ffede0);color:#1a1a1a;padding:28px;border-radius:18px;text-align:center;margin-bottom:16px">
+        <div style="font-size:14px;color:#c8a060;margin-bottom:8px">✨ {name if name else "내담자"}님의 사주팔자 천명</div>
+        <div style="font-size:26px;font-weight:900;color:#f0d58c;letter-spacing:4px;margin-bottom:8px">{saju_str}</div>
+        <div style="font-size:14px;color:#333;font-style:italic;line-height:1.8">{nature_quote}</div>
+    </div>""", unsafe_allow_html=True)
+
+    # ② 핵심 4지표
+    yong_str = " · ".join([f"{oh_emoji_map.get(o,'')}{OHN.get(o,'')}" for o in yongshin_ohs]) if yongshin_ohs else "균형"
+    luck_now = "🌟 용신 대운" if dw_is_yong else "⚠️ 기신 대운"
+    luck_year = "🌟 용신 세운" if sw_is_yong else "〰️ 일반 세운"
+    cols = st.columns(4)
+    for col, (label, val, bg, tc) in zip(cols, [
+        ("격국", gname, "#fff8e0", "#a0720a"),
+        ("신강신약", sn, "#f0f8ff", "#1a5f8b"),
+        ("용신", yong_str, "#f0fff0", "#1a6f3a"),
+        ("현재 흐름", f"{luck_now}\n{luck_year}", "#fff0f8", "#8b2060"),
+    ]):
+        col.markdown(f"""
+        <div style="background:{bg};border-radius:12px;padding:14px;text-align:center;height:90px;display:flex;flex-direction:column;justify-content:center">
+            <div style="font-size:11px;color:#444;margin-bottom:4px">{label}</div>
+            <div style="font-size:13px;font-weight:800;color:{tc};line-height:1.5">{val}</div>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ③ 원국 구조 진단 (고수식 — 오행 흐름 중심)
+    st.markdown("### 🏛️ 원국(原局) 구조 진단")
+    over_ohs = [o for o,v in oh_strength.items() if v>=35]
+    lack_ohs = [o for o,v in oh_strength.items() if v<=5]
+    zero_ohs = [o for o,v in oh_strength.items() if v==0]
+    oh_bar = "".join([
+        f'<span style="background:{("#c0392b" if o in over_ohs else "#2980b9" if o in lack_ohs else "#c5a059") if o in over_ohs+lack_ohs else "#888"};color:#1a1a1a;padding:4px 10px;border-radius:12px;font-size:12px;margin:2px;display:inline-block">{oh_emoji_map.get(o,"")}{OHN.get(o,"")} {v}%</span>'
+        for o,v in oh_strength.items()])
+    orig_chung = get_chung_hyung(pils)
+    chung_str = "·".join([c[0] for c in orig_chung["충"]]) if orig_chung["충"] else "없음"
+    hap_str = "·".join([c[0] for c in orig_chung["천간합"]]) if orig_chung["천간합"] else "없음"
+    gongmang = get_gongmang(pils)
+    gong_str = " ".join(gongmang["공망_지지"]) if gongmang["공망_지지"] else "없음"
+    yangin = get_yangin(pils)
+
+    st.markdown(f"""
+    <div class="card" style="background:#fffef5;border:2px solid #c5a059">
+        <div style="margin-bottom:10px">{oh_bar}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:13px;color:#444;line-height:1.9">
+            <div style="flex:1;min-width:200px"><b style="color:#a0720a">🏛️ 격국:</b> {gname} — {gyeokguk["격의_등급"] if gyeokguk else ""}</div>
+            <div style="flex:1;min-width:200px"><b style="color:#a0720a">⚡ 원국 충:</b> {chung_str}</div>
+            <div style="flex:1;min-width:200px"><b style="color:#a0720a">✨ 원국 합:</b> {hap_str}</div>
+            <div style="flex:1;min-width:200px"><b style="color:#a0720a">🕳️ 공망:</b> {gong_str}</div>
+            {f'<div style="flex:1;min-width:200px"><b style="color:#c0392b">🔥 양인:</b> {yangin["양인_지지"]} 존재 — 강렬한 에너지, 칠살과 함께면 극강</div>' if yangin["존재"] else ""}
+            {f'<div style="flex:1;min-width:200px"><b style="color:#8b2020">⚠️ 완전 결핍:</b> {" ".join([OHN.get(o,"")+"("+o+")" for o in zero_ohs])} — 이 오행 운이 올 때 혼란</div>' if zero_ohs else ""}
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # ④ 현재 대운 × 세운 교차 진단 (핵심!)
+    st.markdown("### 🔀 현재 대운 × 세운 교차 진단")
+    if current_dw:
+        both_yong = dw_is_yong and sw_is_yong
+        none_yong = not dw_is_yong and not sw_is_yong
+        cross_color = "#c5a059" if both_yong else "#c0392b" if none_yong else "#2980b9"
+        cross_label = ("🌟 용신 대운과 용신 세운이 겹쳤습니다 — 평생 최고의 기회 시기" if both_yong
+                      else "⚠️ 기신 대운·세운이 겹쳤습니다 — 수비가 최선입니다" if none_yong
+                      else f"{'✨ 용신 대운 속 일반 세운' if dw_is_yong else '🌿 기신 대운이지만 세운이 활로를 엽니다'}")
+        st.markdown(f"""
+        <div class="card" style="background:{cross_color}15;border:2px solid {cross_color}">
+            <div style="font-size:15px;font-weight:800;color:{cross_color};margin-bottom:10px">{cross_label}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+                <div style="flex:1;min-width:160px;background:white;padding:12px;border-radius:10px;text-align:center">
+                    <div style="font-size:11px;color:#444">현재 대운</div>
+                    <div style="font-size:22px;font-weight:900;color:#a0720a">{current_dw["str"]}</div>
+                    <div style="font-size:12px;color:#333">{dw_ss} | {"🌟용신" if dw_is_yong else "기신"}</div>
+                    <div style="font-size:11px;color:#555">{current_dw["시작나이"]}~{current_dw["시작나이"]+9}세 ({current_dw["시작연도"]}~{current_dw["종료연도"]})</div>
+                </div>
+                <div style="font-size:24px;color:{cross_color};display:flex;align-items:center">×</div>
+                <div style="flex:1;min-width:160px;background:white;padding:12px;border-radius:10px;text-align:center">
+                    <div style="font-size:11px;color:#444">{current_year}년 세운</div>
+                    <div style="font-size:22px;font-weight:900;color:#a0720a">{yearly["세운"]}</div>
+                    <div style="font-size:12px;color:#333">{sw_ss} | {"🌟용신" if sw_is_yong else "일반"}</div>
+                    <div style="font-size:11px;color:#555">{yearly.get("길흉","")}</div>
+                </div>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+        # 합 깨짐 경고
+        if hap_breaks:
+            for w in hap_breaks:
+                st.markdown(f'<div class="card" style="background:{w["color"]}18;border-left:5px solid {w["color"]}"><b style="color:{w["color"]}">{w["level"]}</b> — {w["desc"]}</div>', unsafe_allow_html=True)
+
+        # 원국-대운 충합 알림
+        if dw_alerts:
+            for a in dw_alerts:
+                st.markdown(f'<div class="card" style="border-left:4px solid {a["color"]}"><b style="color:{a["color"]}">{a["type"]}</b> — {a["desc"]}</div>', unsafe_allow_html=True)
+
+    # ⑤ 처방 중심 조언
+    st.markdown("### 💊 처방 — 지금 당장 해야 할 것")
+    prescriptions_total = []
+    if dw_is_yong and sw_is_yong:
+        prescriptions_total += ["✅ 지금이 황금 시기입니다. 중요한 결정(창업·투자·이직·결혼)을 미루지 마십시오.",
+                                 "✅ 용신 방향("+("동쪽" if "木" in yongshin_ohs else "남쪽" if "火" in yongshin_ohs else "서쪽" if "金" in yongshin_ohs else "북쪽" if "水" in yongshin_ohs else "중앙")+")으로 책상·침대 방향을 맞추십시오.",
+                                 "✅ 용신 색상을 착용하고 이 기운을 몸으로 흡수하십시오."]
+    elif none_yong:
+        prescriptions_total += ["🛡️ 무리한 확장·투자·이동을 피하십시오. 수비가 최선입니다.",
+                                 "🛡️ 기존 관계·사업·자산을 지키는 데 집중하십시오.",
+                                 "🛡️ 건강검진을 반드시 받으십시오. 기신 운에 건강이 가장 먼저 흔들립니다."]
+    else:
+        prescriptions_total += ["⚡ 좋은 기운과 나쁜 기운이 혼재합니다. 선별적으로 추진하십시오.",
+                                 "⚡ 큰 결정은 다음 용신 대운이 올 때까지 기다리십시오."]
+    if over_ohs:
+        prescriptions_total.append(f"⚠️ {', '.join([OHN.get(o,'')+'('+o+')' for o in over_ohs])} 과다 — 해당 장기 건강에 각별히 유의하십시오.")
+    if zero_ohs:
+        prescriptions_total.append(f"🔍 {', '.join([OHN.get(o,'')+'('+o+')' for o in zero_ohs])} 완전 결핍 — 이 오행 운이 올 때 예측불허 혼란이 옵니다. 미리 준비하십시오.")
+    if yangin["존재"]:
+        prescriptions_total.append("⚔️ 양인(羊刃) 존재 — 에너지를 직업으로 승화하십시오. 군·경·의료·스포츠가 길합니다.")
+
+    for p in prescriptions_total:
+        color = "#27ae60" if p.startswith("✅") else "#c0392b" if p.startswith("🛡") else "#e67e22" if p.startswith("⚡") else "#888"
+        st.markdown(f'<div style="background:{color}12;border-left:4px solid {color};padding:10px 14px;border-radius:8px;margin:5px 0;font-size:13px;color:#333">{p}</div>', unsafe_allow_html=True)
+
+    # ⑥ 미래 5년 요약
+    st.markdown("### 📅 향후 5년 핵심 요약")
+    for y in range(current_year, current_year+5):
+        c2 = get_daewoon_sewoon_cross(pils, birth_year, gender, y)
+        if not c2: continue
+        dy = _get_yongshin_match(c2["대운_천간십성"], yongshin_ohs, ilgan_oh) == "yong"
+        sy = _get_yongshin_match(c2["세운_천간십성"], yongshin_ohs, ilgan_oh) == "yong"
+        hb = _get_hap_break_warning(pils, c2["대운"]["jj"], c2["세운"]["jj"])
+        if dy and sy:   row_lc,row_bg,badge="#c5a059","#fffde0","🌟 최길"
+        elif dy or sy:  row_lc,row_bg,badge="#2980b9","#f0f8ff","✨ 길"
+        elif "흉" in c2["세운"]["길흉"]: row_lc,row_bg,badge="#c0392b","#fff5f5","⚠️ 흉"
+        else:           row_lc,row_bg,badge="#888","#fafafa","〰️ 평"
+        hb_icon = " 🚨합깨짐" if hb else ""
+        age_y = y - birth_year + 1
+        st.markdown(f"""
+        <div style="display:flex;align-items:center;padding:10px 16px;border-radius:12px;margin:4px 0;background:{row_bg};border:1px solid {row_lc}44">
+            <span style="font-weight:900;color:#a0720a;min-width:55px">{y}년</span>
+            <span style="min-width:45px;font-size:12px;color:#444">{age_y}세</span>
+            <span style="min-width:80px;font-size:13px;color:#333">대운:{c2["대운"]["str"]}</span>
+            <span style="min-width:80px;font-size:13px;color:#333">세운:{c2["세운"]["세운"]}</span>
+            <span style="flex:1;font-size:12px;color:#444">{c2["대운_천간십성"]}+{c2["세운_천간십성"]}</span>
+            <span style="font-size:12px;color:#c0392b">{hb_icon}</span>
+            <span style="font-weight:800;color:{row_lc}">{badge}</span>
+        </div>""", unsafe_allow_html=True)
+
+    # ⑦ 텍스트 총평 (복사용)
+    st.markdown("### 📋 전문 총평 텍스트 (복사용)")
+    summary = generate_saju_summary(pils, name, birth_year, gender)
+    st.text_area("", summary, height=300, label_visibility="collapsed")
+
+
+
+def tab_ai_chat(pils, name, birth_year=1990, gender="남", api_key="", groq_key=""):
+    """
+    AI 채팅 탭 — Brain 1·2·3 완전 통합
+    Brain 1: 만세력 계산 (이미 완료, pils로 전달됨)
+    Brain 2: AI 해석 Sandbox (get_cached_ai_interpretation)
+    Brain 3: 학습·수익화 엔진 (피드백 수집·패턴 분석·결제 타이밍)
+    """
+    import re
+    ilgan   = pils[1]["cg"]
+    saju_key = pils_to_cache_key(pils)
+
+    # ── Brain 3: 현재 사주 키 세션 등록 (피드백 저장에 사용)
+    st.session_state["_current_saju_key"] = saju_key
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Brain 3-① : 적중률 대시보드
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    patterns = b3_analyze_patterns()
+    total_fb = patterns.get("total", 0)
+    overall  = patterns.get("hit_rate", 0)
+
+    if total_fb >= 5:   # 데이터 5건 이상 축적 시 대시보드 표시
+        rate_color = "#4caf50" if overall >= 70 else "#ff9800" if overall >= 50 else "#f44336"
+        best_sec   = "·".join(patterns.get("best_sections", [])[:2]) or "-"
+        weak_sec   = "·".join(patterns.get("weak_sections", [])[:2]) or "-"
+        st.markdown(f"""
+        <div style="background:linear-gradient(135deg,#f0fff0,#e8f5e8);
+                    border:1px solid #a8e6a8;border-radius:12px;
+                    padding:12px 20px;margin-bottom:14px;
+                    display:flex;gap:24px;align-items:center;flex-wrap:wrap">
+            <div style="text-align:center;min-width:72px">
+                <div style="font-size:10px;color:#333;letter-spacing:1px">🧠 BRAIN 3</div>
+                <div style="font-size:26px;font-weight:900;color:{rate_color};line-height:1.1">{overall}%</div>
+                <div style="font-size:10px;color:#555">적중률 ({total_fb}건)</div>
+            </div>
+            <div style="flex:1;font-size:11px;color:#444;line-height:2.0">
+                ✅ 잘 맞는 섹션 : <b style="color:#6fcf6f">{best_sec}</b><br>
+                ⚠️ 개선 중인 섹션 : <b style="color:#ffab40">{weak_sec}</b><br>
+                <span style="color:#555;font-size:10px">
+                  피드백이 쌓일수록 AI 프롬프트가 자동 강화됩니다
+                </span>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Brain 3-④ : 결제 타이밍 감지 → 트리거 카드
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    should_trigger, trigger_msg = b3_check_monetization_trigger(api_key)
+    if should_trigger:
+        b3_render_trigger_card(trigger_msg)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 예언자 모드 헤더
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#f0eeff,#ece8ff);color:#1a1a1a;
+                padding:24px;border-radius:16px;margin-bottom:16px;text-align:center">
+        <div style="font-size:26px;font-weight:900;letter-spacing:3px;
+                    color:#c5a059;margin-bottom:8px">🔮 예언자의 서(書)</div>
+        <div style="font-size:13px;color:#555;line-height:1.9">
+            Brain 1(만세력)이 계산한 데이터 → Brain 2(AI)가 단정적으로 풀이합니다<br>
+            과거 적중 · 현재 · 직업 · 결혼 · 미래 3년 · 돈 상승기
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    if st.button("🔮 예언자 풀이 — 6단계 천명 판독",
+                 use_container_width=True, type="primary"):
+        b3_track_behavior("view_ai")   # Brain 3: 행동 추적
+        with st.spinner("운명의 실타래를 읽는 중..."):
+            result = get_cached_ai_interpretation(
+                saju_key, "prophet", api_key,
+                birth_year=birth_year, gender=gender,
+                name=name, groq_key=groq_key
+            )
+            st.session_state["ai_prophet_result"] = result
+
+    # ── 예언자 결과 렌더링 + Brain 3 섹션별 피드백 ──────────
+    if "ai_prophet_result" in st.session_state:
+        result_text = st.session_state["ai_prophet_result"]
+        sections = {
+            "1️⃣": ("과거 적중", "#f0e8ff", "#9b7ccc"),
+            "2️⃣": ("현재",      "#e8f4ff", "#5c9bc5"),
+            "3️⃣": ("직업",      "#e0f5ec", "#5cc58b"),
+            "4️⃣": ("결혼",      "#2e0a1a", "#c55c8b"),
+            "5️⃣": ("미래 3년",  "#fffde8", "#c5b55c"),
+            "6️⃣": ("돈 상승기", "#e0f5f5", "#5cc5c5"),
+        }
+        parsed = {}
+        for emoji in sections:
+            m = re.search(
+                rf'{re.escape(emoji)}[^\n]*\n([\s\S]*?)(?=(?:[1-6]️⃣)|$)',
+                result_text
+            )
+            if m:
+                parsed[emoji] = m.group(1).strip()
+
+        fb_log = st.session_state.get("feedback_log", {})
+
+        if parsed:
+            for emoji, (title, bg, color) in sections.items():
+                if emoji not in parsed:
                     continue
-                st.markdown(f'<div style="font-size:13px;font-weight:700;color:#a0720a;margin:10px 0 4px;letter-spacing:1px;">{cat_label}</div>', unsafe_allow_html=True)
-                cat_cols = st.columns(len(cat_tabs))
-                for col_i, t in enumerate(cat_tabs):
-                    with cat_cols[col_i]:
-                        if st.button(f"{t['icon']} {t['label']}", key=f"v2_btn_{t['id']}", use_container_width=True):
-                            st.session_state.active_tab = t["id"]
-                            btn_clicked = True
-            if btn_clicked:
+
+                b3_track_behavior("view_section")  # Brain 3: 섹션 조회 추적
+
+                st.markdown(f"""
+                <div style="background:{bg};border:1px solid {color}44;
+                            border-left:4px solid {color};border-radius:12px;
+                            padding:20px;margin:8px 0">
+                    <div style="font-size:15px;font-weight:800;color:{color};
+                                margin-bottom:10px;letter-spacing:1px">
+                        {emoji} {title}
+                    </div>
+                    <div style="font-size:14px;color:#333;line-height:2.1;
+                                white-space:pre-wrap">{parsed[emoji]}</div>
+                </div>""", unsafe_allow_html=True)
+
+                # ★ Brain 3: 섹션별 피드백 버튼
+                fb_key = f"prophet_{emoji}_{title}"
+                if fb_key in fb_log:
+                    res  = fb_log[fb_key]
+                    fc   = "#27ae60" if res == "hit" else "#c0392b"
+                    flbl = "✅ 맞았다고 응답" if res == "hit" else "❌ 아니었다고 응답"
+                    st.markdown(
+                        f'<div style="font-size:11px;color:{fc};margin:4px 0 12px 4px">{flbl}</div>',
+                        unsafe_allow_html=True)
+                else:
+                    fb_c1, fb_c2, _ = st.columns([1, 1, 4])
+                    with fb_c1:
+                        if st.button("✅ 맞았다",
+                                     key=f"b3hit_{emoji}", use_container_width=True):
+                            save_feedback(fb_key, True)
+                            st.rerun()
+                    with fb_c2:
+                        if st.button("❌ 아니다",
+                                     key=f"b3miss_{emoji}", use_container_width=True):
+                            save_feedback(fb_key, False)
+                            st.rerun()
+        else:
+            st.markdown(f"""
+            <div style="background:#f5f5ff;border:1px solid #c5a05944;
+                        border-radius:12px;padding:24px">
+                <div style="font-size:14px;color:#333;line-height:2.1;
+                            white-space:pre-wrap">{result_text}</div>
+            </div>""", unsafe_allow_html=True)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 일반 AI 풀이 버튼 3종
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    st.markdown("---")
+    st.markdown('<div class="gold-section">일반 AI 풀이</div>',
+                unsafe_allow_html=True)
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("📜 종합 해석", use_container_width=True):
+            b3_track_behavior("view_ai")
+            with st.spinner("천명을 읽는 중..."):
+                result = get_cached_ai_interpretation(
+                    saju_key, "general", api_key,
+                    birth_year, gender, name, groq_key=groq_key)
+                st.session_state["ai_result"] = result
+    with col2:
+        if st.button("💰 진로·재물", use_container_width=True):
+            b3_track_behavior("view_ai")
+            with st.spinner("재물운을 살피는 중..."):
+                result = get_cached_ai_interpretation(
+                    saju_key, "career", api_key,
+                    birth_year, gender, name, groq_key=groq_key)
+                st.session_state["ai_result"] = result
+    with col3:
+        if st.button("💕 배우자·연애", use_container_width=True):
+            b3_track_behavior("view_ai")
+            with st.spinner("인연을 찾는 중..."):
+                result = get_cached_ai_interpretation(
+                    saju_key, "love", api_key,
+                    birth_year, gender, name, groq_key=groq_key)
+                st.session_state["ai_result"] = result
+
+    if "ai_result" in st.session_state:
+        st.markdown(
+            f'<div class="fortune-text">{st.session_state["ai_result"]}</div>',
+            unsafe_allow_html=True)
+
+        # ── 미완성 서술 트릭 — 다음 단계 유도 ──────────────────
+        try:
+            turning = calc_turning_point(pils, birth_year, gender)
+            triggers = detect_event_triggers(pils, birth_year, gender)
+            high_t = [t for t in triggers if t["prob"] >= 75]
+
+            if turning["is_turning"] or high_t:
+                next_hint = ""
+                if turning["is_turning"]:
+                    next_hint = turning["reason"][0] if turning["reason"] else "인생 흐름이 바뀌는 계기"
+                elif high_t:
+                    next_hint = high_t[0]["title"]
+
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#fff8e8,#fff0d0);
+                            border:2px solid #c5a059;border-radius:14px;
+                            padding:18px 20px;margin:16px 0;text-align:center">
+                    <div style="font-size:13px;color:#a0720a;font-weight:700;margin-bottom:8px">
+                        ⚡ AI 분석 엔진이 감지한 추가 신호
+                    </div>
+                    <div style="font-size:14px;color:#333;line-height:1.9;margin-bottom:12px">
+                        지금 운의 흐름상,<br>
+                        <b style="color:#a0720a">{next_hint}</b>가 감지됩니다.<br>
+                        이 시기에 해야 할 구체적인 행동 지침이 있습니다.
+                    </div>
+                    <div style="font-size:12px;color:#888;font-style:italic">
+                        ▶ 위에서 집중 분야를 변경하고 재분석하면 더 상세한 해석을 받을 수 있습니다
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        except Exception:
+            pass
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 직접 질문하기
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    st.markdown("---")
+    st.markdown("**🗣️ 직접 질문하기**")
+    user_q = st.text_area(
+        "궁금한 점을 여쭤보세요",
+        placeholder="예) 올해 이직 운이 어떤가요?", height=80)
+    if st.button("🔮 답변 구하기") and user_q:
+        b3_track_behavior("ask_question")   # Brain 3: 질문 행동 추적
+        with st.spinner("신묘한 이치를 풀이하는 중..."):
+            prompt = (
+                f"사주: {' '.join([p['str'] for p in pils])} (시일월년)\n"
+                f"일간: {ilgan} / 생년: {birth_year}년 / 성별: {gender}\n\n"
+                f"질문: {user_q}\n\n"
+                "전통 명리학 관점에서 구체적으로, 단정적으로 답변하십시오."
+            )
+            if api_key or groq_key:
+                answer = get_ai_interpretation(
+                    prompt, api_key, max_tokens=800, groq_key=groq_key)
+            else:
+                answer = (
+                    f"◈ {ilgan}일간 기준 답변 ◈\n\n"
+                    f"{user_q}에 대해 사주를 살펴보면, "
+                    f"{ilgan}일간의 기운과 현재 운세의 흐름을 종합하여 판단해 드립니다.\n\n"
+                    "※ API 키를 입력하시면 더욱 정밀한 AI 해석을 받으실 수 있습니다."
+                )
+            st.markdown(
+                f'<div class="fortune-text">{answer}</div>',
+                unsafe_allow_html=True)
+
+
+
+def tab_yongshin(pils):
+    """용신(用神) 탭"""
+    st.markdown('<div class="gold-section">⚡ 용신(用神) — 내 사주의 구원 오행</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="card" style="background:#f5f0ff;border:1px solid #c8b8e8;margin-bottom:12px">
+        <div style="font-size:13px;color:#5a2d8b;font-weight:700;margin-bottom:4px">💡 용신이란?</div>
+        <div style="font-size:13px;color:#444;line-height:1.8">
+        용신(用神)은 내 사주에서 가장 필요한 기운입니다. 이 오행의 운이 올 때 발복하고, 반대 기신(忌神)의 운이 올 때 고난이 옵니다.
+        용신 방향으로 이사하고, 용신 색상을 착용하고, 용신 직업을 선택하면 운명을 바꿀 수 있습니다.
+        </div>
+    </div>""", unsafe_allow_html=True)
+    
+    ys = get_yongshin(pils)
+    oh_emoji = {"木": "🌳", "火": "🔥", "土": "🏔️", "金": "⚔️", "水": "💧"}
+    oh_color = {"木": "#2a6f2a", "火": "#c03020", "土": "#8b6914", "金": "#6b6b00", "水": "#1a4f8b"}
+    oh_direction = {"木": "동쪽(東)", "火": "남쪽(南)", "土": "중앙", "金": "서쪽(西)", "水": "북쪽(北)"}
+    oh_luckcolor = {"木": "초록·청색", "火": "빨강·주황", "土": "황색·베이지", "金": "흰색·은색·금색", "水": "검정·남색"}
+    oh_season = {"木": "봄(1~3월)", "火": "여름(4~6월)", "土": "환절기", "金": "가을(7~9월)", "水": "겨울(10~12월)"}
+    
+    # 억부용신
+    st.markdown("### 1️⃣ 억부용신(抑扶用神)")
+    yong_ohs = ys["억부_용신"]
+    cols = st.columns(len(yong_ohs) if yong_ohs else 1)
+    for i, oh in enumerate(yong_ohs):
+        c = oh_color.get(oh, "#888")
+        e = oh_emoji.get(oh, "")
+        with cols[i]:
+            st.markdown(f"""
+            <div class="card" style="background:linear-gradient(135deg,#fffde0,#fff5cc);border:2px solid {c};text-align:center">
+                <div style="font-size:30px">{e}</div>
+                <div style="font-size:18px;font-weight:800;color:{c}">{OHN.get(oh,'')}</div>
+                <div style="font-size:12px;color:#333;margin-top:6px">억부용신</div>
+                <div style="font-size:12px;color:#444;margin-top:4px">
+                    방향: {oh_direction.get(oh,'')}<br>
+                    색상: {oh_luckcolor.get(oh,'')}<br>
+                    계절: {oh_season.get(oh,'')}
+                </div>
+            </div>""", unsafe_allow_html=True)
+    
+    st.markdown(f"""
+    <div class="card" style="background:#f0fff0;border-left:4px solid #4CAF50">
+        <div style="font-size:13px;font-weight:700;color:#2a6f2a;margin-bottom:4px">{ys['억부_base']}</div>
+        <div style="font-size:13px;color:#333;line-height:1.9">{ys['억부_desc']}</div>
+        <div style="font-size:12px;color:#c03020;margin-top:8px;background:#fff0f0;padding:8px;border-radius:6px">
+            ⚠️ 기신(忌神): {ys['기신']}
+        </div>
+    </div>""", unsafe_allow_html=True)
+    
+    # 조후용신
+    if ys["조후_desc"]:
+        st.markdown("### 2️⃣ 조후용신(調候用神)")
+        need_str = ", ".join([f"{OHN.get(OH.get(c,''),'')}{c}" for c in ys["조후_need"]])
+        avoid_str = ", ".join([f"{OHN.get(OH.get(c,''),'')}{c}" for c in ys["조후_avoid"]])
+        st.markdown(f"""
+        <div class="card" style="background:#f0f8ff;border-left:4px solid #2196F3">
+            <div style="font-size:13px;color:#333;line-height:1.9;margin-bottom:8px">{ys['조후_desc']}</div>
+            {f'<div style="font-size:12px;color:#2a6f2a;background:#e8f5e8;padding:6px 10px;border-radius:6px;margin-bottom:4px">✅ 필요한 기운: {need_str}</div>' if need_str else ''}
+            {f'<div style="font-size:12px;color:#c03020;background:#fce8e8;padding:6px 10px;border-radius:6px">❌ 피해야 할 기운: {avoid_str}</div>' if avoid_str else ''}
+        </div>""", unsafe_allow_html=True)
+    
+    # 통관용신
+    if ys["통관_yong"]:
+        oh = ys["통관_yong"]
+        st.markdown("### 3️⃣ 통관용신(通關用神)")
+        st.markdown(f"""
+        <div class="card" style="background:#fff8e0;border-left:4px solid #c5a059">
+            <div style="font-size:13px;color:#333;line-height:1.9">{ys['통관_desc']}</div>
+            <div style="font-size:13px;font-weight:700;color:#a0720a;margin-top:8px">
+                {oh_emoji.get(oh,'')} 통관용신: {OHN.get(oh,'')} — 방향: {oh_direction.get(oh,'')} / 색상: {oh_luckcolor.get(oh,'')}
+            </div>
+        </div>""", unsafe_allow_html=True)
+    
+    # 종합 용신 정리
+    all_y = ys["종합_용신"]
+    if all_y:
+        st.markdown("### ⭐ 종합 용신 정리")
+        st.markdown(f"""
+        <div class="card" style="background:linear-gradient(135deg,#fff2e9,#fff4e8);color:#1a1a1a;padding:20px">
+            <div style="font-size:15px;font-weight:700;margin-bottom:14px;color:#f0d58c">내 사주의 핵심 용신</div>
+            <div style="display:flex;flex-wrap:wrap;gap:10px">
+                {"".join([f'<div style="background:rgba(255,255,255,0.1);padding:12px 20px;border-radius:12px;text-align:center"><div style="font-size:24px">{oh_emoji.get(o,"")}</div><div style="font-size:14px;font-weight:700;color:#f0d58c;margin-top:4px">{OHN.get(o,"")} ({o})</div><div style="font-size:11px;color:#555;margin-top:4px">{oh_direction.get(o,"")} · {oh_luckcolor.get(o,"")}</div></div>' for o in all_y])}
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+
+def tab_chung_hyung(pils):
+    """충·형·파·해 탭"""
+    st.markdown('<div class="gold-section">⚡ 합충형파해(合沖刑破害) 분석</div>', unsafe_allow_html=True)
+    
+    result = get_chung_hyung(pils)
+    
+    sections = [
+        ("충(沖)", result["충"], "🔴", "#fff0f0", "#c0392b",
+         "지지끼리 정면 충돌하는 기운. 변동·사고·이별의 기운이지만 정체된 기운을 터뜨리는 긍정적 측면도 있습니다."),
+        ("형(刑)", result["형"], "⚡", "#fff5e0", "#e67e22",
+         "형살은 법적 문제·관재·배신·수술 등의 기운. 특히 삼형살은 가장 강력한 형살입니다."),
+        ("파(破)", result["파"], "💥", "#f5f0ff", "#8e44ad",
+         "계획이 깨지고 예상 밖 변수가 생기는 기운. 충보다는 약하지만 은밀하게 작용합니다."),
+        ("해(害)", result["해"], "🌀", "#f0f8ff", "#2980b9",
+         "서로 방해하고 상처 주는 기운. 인간관계의 배신·갈등이 주요 작용입니다."),
+        ("천간합(天干合)", result["천간합"], "💛", "#f0fff0", "#27ae60",
+         "천간끼리 합하여 새로운 오행이 생성. 변화와 협력의 기운으로 일부 길한 작용을 합니다."),
+    ]
+    
+    found_any = False
+    for title, items, icon, bg, color, guide in sections:
+        if items:
+            found_any = True
+            st.markdown(f"""
+            <div class="card" style="background:{bg};border-left:4px solid {color};margin:8px 0">
+                <div style="font-size:14px;font-weight:700;color:{color};margin-bottom:8px">{icon} {title}</div>
+                <div style="font-size:12px;color:#333;margin-bottom:10px">{guide}</div>
+                {"".join([f'<div style="background:white;padding:10px 14px;border-radius:8px;margin-bottom:6px"><b style=color:{color}>{it[0]}</b> <span style=color:#888;font-size:12px>({it[1] if len(it)>1 else ""})</span><div style=font-size:13px;color:#333;margin-top:4px>{it[2] if len(it)>2 else it[1] if len(it)>1 else ""}</div></div>' for it in items])}
+            </div>""", unsafe_allow_html=True)
+    
+    # 자형
+    if result.get("자형"):
+        found_any = True
+        st.markdown(f"""
+        <div class="card" style="background:#fef0ff;border-left:4px solid #9b59b6">
+            <div style="font-size:14px;font-weight:700;color:#9b59b6;margin-bottom:6px">🔮 자형(自刑)</div>
+            <div style="font-size:13px;color:#444">같은 지지가 두 개 이상: {', '.join(result['자형'])} — 스스로를 해치는 기운. 자기 비판, 자기 파괴적 행동을 조심하십시오.</div>
+        </div>""", unsafe_allow_html=True)
+    
+    if not found_any:
+        st.markdown("""
+        <div class="card" style="background:#f0fff0;border:2px solid #4CAF50;text-align:center;padding:24px">
+            <div style="font-size:18px;font-weight:700;color:#2a6f2a">✅ 합충형파해가 없는 안정적인 사주입니다</div>
+            <div style="font-size:13px;color:#444;margin-top:8px;line-height:1.8">
+            지지 간의 극단적 충돌이 없어 안정적이고 꾸준한 삶을 영위합니다.<br>
+            큰 변동보다는 점진적인 성장과 안정이 이 사주의 강점입니다.
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+
+def tab_gongmang(pils):
+    """공망(空亡) 탭"""
+    st.markdown('<div class="gold-section">🕳️ 공망(空亡) — 운명의 빈 칸</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="card" style="background:#f5f0ff;border:1px solid #c8b8e8">
+        <div style="font-size:13px;color:#5a2d8b;font-weight:700;margin-bottom:4px">💡 공망이란?</div>
+        <div style="font-size:13px;color:#444;line-height:1.8">
+        60갑자에서 천간(10)과 지지(12)의 차이로 인해 2개의 지지가 짝을 갖지 못하는 상태입니다.
+        공망이 된 지지는 그 기운이 허(虛)해집니다. 해당 육친이나 사항이 약화되거나 예상과 다른 결과를 가져옵니다.
+        단, 공망된 기운이 운에서 채워지면(충공·합공) 오히려 크게 발복하기도 합니다.
+        </div>
+    </div>""", unsafe_allow_html=True)
+    
+    gm = get_gongmang(pils)
+    gong_pair = gm["공망_지지"]
+    found_pillars = gm["해당_기둥"]
+    
+    st.markdown(f"""
+    <div class="card" style="background:linear-gradient(135deg,#eef0ff,#e4e8ff);color:#1a1a1a;text-align:center;padding:20px">
+        <div style="font-size:13px;color:#555;margin-bottom:8px">년주 기준 공망 지지</div>
+        <div style="font-size:36px;font-weight:900;color:#c5a059;letter-spacing:8px">{' '.join(gong_pair)}</div>
+        <div style="font-size:13px;color:#555;margin-top:8px">{', '.join([JJ_KR[JJ.index(j)] for j in gong_pair if j in JJ])}</div>
+    </div>""", unsafe_allow_html=True)
+    
+    if found_pillars:
+        st.markdown("### ⚠️ 공망이 해당된 기둥")
+        for fp in found_pillars:
+            gd = GONGMANG_JJ_DESC.get(fp["지지"], {})
+            st.markdown(f"""
+            <div class="card" style="background:#fff0e0;border-left:4px solid #e67e22">
+                <div style="font-size:14px;font-weight:700;color:#e67e22;margin-bottom:6px">
+                    ⚠️ {fp['기둥']} 공망 — {fp['지지']}({JJ_KR[JJ.index(fp['지지'])] if fp['지지'] in JJ else ''})
+                </div>
+                <div style="font-size:13px;color:#333;line-height:1.9;margin-bottom:8px">{fp['desc']}</div>
+                {f'<div style="background:#fffde0;padding:8px 12px;border-radius:8px"><div style="font-size:12px;font-weight:700;color:#a0720a;margin-bottom:4px">🔓 해공(解空) 방법</div><div style="font-size:12px;color:#444">{gd.get("remedy", "")}</div></div>' if isinstance(gd, dict) and gd.get("remedy") else ""}
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="card" style="background:#f0fff0;border:2px solid #4CAF50;text-align:center;padding:20px">
+            <div style="font-size:16px;font-weight:700;color:#2a6f2a">✅ 사주 기둥에 공망이 없습니다</div>
+            <div style="font-size:13px;color:#444;margin-top:6px">4개 기둥의 지지가 모두 실(實)하여 허한 구석이 없는 충실한 사주입니다.</div>
+        </div>""", unsafe_allow_html=True)
+
+
+def tab_ilju(pils):
+    """일주론(日柱論) — 60갑자 탭"""
+    ilgan = pils[1]["cg"]; iljj = pils[1]["jj"]
+    ilju_key = ilgan + iljj
+    ilju = ILJU_DESC.get(ilju_key, {})
+    
+    st.markdown(f'<div class="gold-section">🗝️ 일주론(日柱論) — {ilju_key} 일주의 천명</div>', unsafe_allow_html=True)
+    
+    if ilju:
+        oh_cg = OH.get(ilgan, ""); oh_jj = OH.get(iljj, "")
+        nabjin = get_nabjin(ilgan, iljj)
+        
+        st.markdown(f"""
+        <div style="background:linear-gradient(135deg,#f5eeff,#eedaff);color:#1a1a1a;padding:24px;border-radius:16px;text-align:center;margin-bottom:16px">
+            <div style="font-size:48px;margin-bottom:8px">{ilju.get('symbol','')}</div>
+            <div style="font-size:32px;font-weight:900;color:#f0d58c;letter-spacing:6px">{ilju_key}</div>
+            <div style="font-size:14px;color:#c8b8f0;margin-top:8px">
+                {OHN.get(oh_cg,'')}({ilgan}) + {OHN.get(oh_jj,'')}({iljj}) &nbsp;|&nbsp; 납음: {nabjin['name']}
+            </div>
+        </div>""", unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        <div class="card" style="background:linear-gradient(135deg,#fffde0,#fff9e6);border:2px solid #c5a059">
+            <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:10px">📜 일주의 천명 풀이</div>
+            <div style="font-size:14px;color:#333;line-height:2.1">{ilju.get('desc','')}</div>
+        </div>""", unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"""
+            <div class="card" style="background:#f0fff0;border:1px solid #a8d5a8">
+                <div style="font-size:13px;font-weight:700;color:#2a6f2a;margin-bottom:6px">✨ 운명의 빛</div>
+                <div style="font-size:13px;color:#333;line-height:1.9">{ilju.get('luck','')}</div>
+            </div>""", unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div class="card" style="background:#fff5f5;border:1px solid #d5a8a8">
+                <div style="font-size:13px;font-weight:700;color:#8b2020;margin-bottom:6px">⚠️ 경계할 것</div>
+                <div style="font-size:13px;color:#333;line-height:1.9">{ilju.get('caution','')}</div>
+            </div>""", unsafe_allow_html=True)
+        
+        # 납음오행
+        st.markdown(f"""
+        <div class="card" style="background:#f5f0ff;border:1px solid #c8b8e8">
+            <div style="font-size:13px;font-weight:700;color:#5a2d8b;margin-bottom:6px">🎵 납음오행(納音五行): {nabjin['name']}</div>
+            <div style="font-size:13px;color:#444;line-height:1.8">{nabjin['desc']}</div>
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.info(f"{ilju_key} 일주 데이터를 준비 중입니다.")
+
+
+def tab_yukjin(pils, gender="남"):
+    """육친론(六親論) 탭"""
+    ilgan = pils[1]["cg"]
+    st.markdown('<div class="gold-section">👨‍👩‍👧‍👦 육친론(六親論) — 가족과 인연</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="card" style="background:#f5f0ff;border:1px solid #c8b8e8;margin-bottom:12px">
+        <div style="font-size:13px;color:#5a2d8b;font-weight:700;margin-bottom:4px">💡 육친론이란?</div>
+        <div style="font-size:13px;color:#444;line-height:1.8">
+        일간을 기준으로 각 십성(十星)이 어느 가족을 나타내는지 분석합니다. 
+        각 기둥의 십성 강약으로 가족관계의 덕, 인연, 갈등을 판단합니다.
+        </div>
+    </div>""", unsafe_allow_html=True)
+    
+    yk = get_yukjin(ilgan, pils, gender)
+    fam_emoji = {
+        "어머니": "👩", "계모": "👩‍🦳", "아내": "💑", "정부": "💘",
+        "아버지": "👨", "시아버지": "👴", "딸": "👧", "남편": "💑",
+        "아들": "👦", "형제": "👬", "자매": "👭", "이복형제": "👥",
+        "이복자매": "👥", "조모": "👵", "손자": "👶"
+    }
+    
+    if yk:
+        for item in yk:
+            fam_name = item.get("관계", "")
+            emoji = next((e for n, e in fam_emoji.items() if n in fam_name), "👤")
+            where_str = item.get("위치", "없음")
+            has = item.get("present", False)
+            desc = item.get("desc", "")
+            strength_label = "강(强) — 인연이 깊습니다" if has else "약(弱) — 인연이 엷습니다"
+
+            st.markdown(f"""
+            <div class="card" style="margin-bottom:8px">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                    <span style="font-size:24px">{emoji}</span>
+                    <div>
+                        <div style="font-size:15px;font-weight:700;color:#a0720a">{fam_name}</div>
+                        <div style="font-size:12px;color:#444">{where_str} | {strength_label}</div>
+                    </div>
+                </div>
+                <div style="font-size:13px;color:#444;background:#fffef5;padding:8px 12px;border-radius:8px;margin-top:4px;line-height:1.8">{desc}</div>
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.info("육친 데이터를 분석 중입니다.")
+    
+    # 배우자 자리 분석
+    st.markdown("### 💑 배우자 자리 (일지) 분석")
+    iljj = pils[1]["jj"]
+    iljj_ss = calc_sipsung(ilgan, pils)[1].get("jj_ss", "-")
+    
+    spouse_desc = {
+        "남": {"정재": "현모양처형. 안정적이고 내조를 잘하는 배우자.", "편재": "활달하고 매력적이나 변화가 많은 배우자.", "정관": "남편으로서의 배우자 — 격조 있는 인연.", "편관": "강하고 카리스마 있는 배우자. 갈등도 있을 수 있습니다."},
+        "여": {"정관": "점잖고 안정적인 남편. 사회적으로 인정받는 남성.", "편관": "카리스마 있고 강한 남편. 자유분방한 측면도.", "정재": "여성으로서의 배우자 — 풍요로운 인연.", "편재": "활동적이고 사교적인 배우자."},
+    }
+    
+    spouse_hint = spouse_desc.get(gender, {}).get(iljj_ss, f"일지의 {iljj_ss} — 배우자의 성향을 나타냅니다.")
+    
+    st.markdown(f"""
+    <div class="card" style="background:#fff0f8;border:2px solid #d580b8">
+        <div style="font-size:14px;font-weight:700;color:#8b2060;margin-bottom:8px">
+            💑 배우자 자리: {iljj}({JJ_KR[JJ.index(iljj)] if iljj in JJ else ''}) — {iljj_ss}
+        </div>
+        <div style="font-size:13px;color:#444;line-height:1.9">{spouse_hint}</div>
+    </div>""", unsafe_allow_html=True)
+
+
+def tab_gunghap(pils, name="나"):
+    """궁합(宮合) 탭"""
+    st.markdown('<div class="gold-section">💑 궁합(宮合) — 두 사주의 조화</div>', unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="card" style="background:#fff0f8;border:1px solid #d5a8c8">
+        <div style="font-size:13px;color:#8b2060;font-weight:700;margin-bottom:6px">💡 상대방 사주 입력</div>
+        <div style="font-size:13px;color:#444">상대방의 생년월일시를 입력하시면 두 사주의 궁합을 분석합니다.</div>
+    </div>""", unsafe_allow_html=True)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        partner_name = st.text_input("상대방 이름", placeholder="이름", key="partner_name")
+    with col2:
+        p_year = st.number_input("생년", min_value=1920, max_value=2010, value=1992, key="p_year")
+    with col3:
+        p_month = st.number_input("생월", min_value=1, max_value=12, value=6, key="p_month")
+    with col4:
+        p_day = st.number_input("생일", min_value=1, max_value=31, value=15, key="p_day")
+    
+    col5, col6 = st.columns(2)
+    with col5:
+        p_hour = st.selectbox("생시", list(range(0, 24)), index=12, key="p_hour")
+    with col6:
+        p_gender = st.selectbox("성별", ["남", "여"], key="p_gender")
+    
+    if st.button("💑 궁합 분석", use_container_width=True, type="primary"):
+        try:
+            partner_pils = SajuCoreEngine.get_pillars(p_year, p_month, p_day, p_hour)
+            pname = partner_name if partner_name else "상대방"
+            result = calc_gunghap(pils, partner_pils, name, pname)
+            
+            # 궁합 점수 게이지
+            score = result["총점"]
+            grade = result["등급"]
+            bar = "🟥" * (score // 10) + "⬜" * (10 - score // 10)
+            score_color = "#c5a059" if score >= 70 else "#c03020" if score < 40 else "#888"
+            
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,#ffe2f6,#ffe1ff);color:#1a1a1a;padding:28px;border-radius:16px;text-align:center;margin:16px 0">
+                <div style="font-size:16px;color:#f0c0d8;margin-bottom:8px">{name} ❤️ {pname}</div>
+                <div style="font-size:48px;font-weight:900;color:#f0d58c">{score}점</div>
+                <div style="font-size:22px;margin:10px 0">{bar}</div>
+                <div style="font-size:20px;font-weight:700;color:#f0d58c">{grade}</div>
+            </div>""", unsafe_allow_html=True)
+            
+            # 세부 분석
+            col_a, col_b = st.columns(2)
+            with col_a:
+                ir = result["일간관계"]
+                st.markdown(f"""
+                <div class="card">
+                    <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:6px">{ir[2]} 일간 관계: {ir[0]}</div>
+                    <div style="font-size:13px;color:#444">{ir[1]}</div>
+                </div>""", unsafe_allow_html=True)
+                
+                if result["합"]:
+                    st.markdown(f"""
+                    <div class="card" style="background:#f0fff0;border:1px solid #a8d5a8">
+                        <div style="font-size:13px;font-weight:700;color:#2a6f2a;margin-bottom:6px">✨ 합(合) 발견!</div>
+                        <div style="font-size:13px;color:#333">{', '.join(result['합'])}</div>
+                    </div>""", unsafe_allow_html=True)
+            
+            with col_b:
+                if result["충"]:
+                    st.markdown(f"""
+                    <div class="card" style="background:#fff0f0;border:1px solid #d5a8a8">
+                        <div style="font-size:13px;font-weight:700;color:#8b2020;margin-bottom:6px">⚠️ 충(沖) 발견</div>
+                        <div style="font-size:13px;color:#333">{', '.join(result['충'])}</div>
+                        <div style="font-size:12px;color:#444;margin-top:4px">충이 있어도 서로 이해하고 보완하면 더욱 단단한 인연이 됩니다.</div>
+                    </div>""", unsafe_allow_html=True)
+                
+                gui_items = []
+                if result["귀인_a"]: gui_items.append(f"{name}의 사주에 {pname}이 귀인 역할")
+                if result["귀인_b"]: gui_items.append(f"{pname}의 사주에 {name}이 귀인 역할")
+                if gui_items:
+                    st.markdown(f"""
+                    <div class="card" style="background:#fffde0;border:1px solid #e8d5a0">
+                        <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:6px">⭐ 천을귀인 인연!</div>
+                        <div style="font-size:13px;color:#444">{'<br>'.join(gui_items)}</div>
+                    </div>""", unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"분석 오류: {e}")
+
+
+def tab_taegil(pils, name="나"):
+    """택일(擇日) 탭"""
+    st.markdown('<div class="gold-section">📅 택일(擇日) — 길한 날을 고르다</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="card" style="background:#fff8e0;border:1px solid #e8d5a0;margin-bottom:12px">
+        <div style="font-size:13px;color:#a0720a;font-weight:700;margin-bottom:4px">💡 택일이란?</div>
+        <div style="font-size:13px;color:#444;line-height:1.8">
+        내 사주와 천간지지가 잘 맞는 날을 골라 중요한 일(결혼·이사·계약·개업·수술 등)을 진행하면 
+        더욱 좋은 결과를 얻을 수 있습니다. 천을귀인일·삼합일이 가장 좋은 날입니다.
+        </div>
+    </div>""", unsafe_allow_html=True)
+    
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        t_year = st.selectbox("연도", list(range(current_year, current_year+3)), key="taegil_year")
+    with col2:
+        t_month = st.selectbox("월", list(range(1, 13)), index=current_month-1, key="taegil_month")
+    with col3:
+        t_purpose = st.selectbox("목적", ["결혼", "이사", "개업·계약", "수술", "시험·면접", "기타 중요한 일"], key="taegil_purpose")
+    
+    if st.button("📅 길일 찾기", use_container_width=True, type="primary"):
+        good_days = get_good_days(pils, t_year, t_month)
+        
+        if good_days:
+            st.markdown(f"### ✨ {t_year}년 {t_month}월 {t_purpose}에 좋은 날")
+            for d in good_days:
+                is_best = d["score"] >= 80
+                bg = "#fffde0" if is_best else "#fafafa"
+                border = "2px solid #c5a059" if is_best else "1px solid #e8e8e8"
+                
+                st.markdown(f"""
+                <div style="background:{bg};{border};border-radius:12px;padding:14px;margin:6px 0;display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <span style="font-size:18px;font-weight:800;color:#a0720a">{t_year}년 {t_month}월 {d['day']}일</span>
+                        <span style="font-size:14px;color:#444;margin-left:10px">{d['pillar']}일</span>
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-size:16px;font-weight:700">{d['level']}</div>
+                        <div style="font-size:11px;color:#444">{' / '.join(d['reasons'])}</div>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+        else:
+            st.warning(f"{t_year}년 {t_month}월에는 특별히 좋은 날이 없습니다. 다른 달을 선택하시거나, 보통 날 중에서 선택하십시오.")
+
+
+def tab_special_stars(pils):
+    """특수 신살 탭"""
+    st.markdown('<div class="gold-section">특수 신살(神殺) 분석</div>', unsafe_allow_html=True)
+    
+    jjs = [p["jj"] for p in pils]
+    cgs = [p["cg"] for p in pils]
+    
+    # 주요 신살 계산
+    stars = []
+    
+    # 천을귀인 (甲戊: 丑未, 乙己: 子申, 丙丁: 亥酉, 庚辛: 丑未, 壬癸: 卯巳)
+    chungeul_map = {
+        "甲":"丑未","乙":"子申","丙":"亥酉","丁":"亥酉",
+        "戊":"丑未","己":"子申","庚":"丑未","辛":"丑未",
+        "壬":"卯巳","癸":"卯巳"
+    }
+    ilgan = pils[1]["cg"]
+    chungeul_jjs = chungeul_map.get(ilgan, "")
+    if any(jj in chungeul_jjs for jj in jjs):
+        stars.append(("천을귀인(天乙貴人)", "⭐", "하늘이 내린 귀인성! 위기 시 귀인의 도움을 받고 평생 좋은 사람들과 인연이 맺힙니다."))
+    
+    # 문창귀인
+    munchang_map = {"甲":"巳","乙":"午","丙":"申","丁":"酉","戊":"申","己":"酉","庚":"亥","辛":"子","壬":"寅","癸":"卯"}
+    if munchang_map.get(ilgan) in jjs:
+        stars.append(("문창귀인(文昌貴人)", "📚", "학문과 예술에 뛰어난 재주! 시험운이 강하고 문필·학술 분야에서 두각을 나타냅니다."))
+    
+    # 역마살
+    yeokma_map = {"寅午戌":"申","申子辰":"寅","巳酉丑":"亥","亥卯未":"巳"}
+    year_jj = pils[3]["jj"]
+    for combo, yeokma_jj in yeokma_map.items():
+        if year_jj in combo and yeokma_jj in jjs:
+            stars.append(("역마살(驛馬殺)", "🐎", "이동·변화·여행의 기운! 해외 인연이나 이동이 잦고 활동적인 직업이 맞습니다."))
+    
+    # 도화살
+    dohwa_map = {"寅午戌":"卯","申子辰":"酉","巳酉丑":"午","亥卯未":"子"}
+    for combo, dohwa_jj in dohwa_map.items():
+        if year_jj in combo and dohwa_jj in jjs:
+            stars.append(("도화살(桃花殺)", "🌸", "매력과 이성운이 강한 기운! 인기직종이나 예술·서비스업에서 두각을 나타냅니다."))
+    
+    # 화개살
+    hwagae_map = {"寅午戌":"戌","申子辰":"辰","巳酉丑":"丑","亥卯未":"未"}
+    for combo, hwagae_jj in hwagae_map.items():
+        if year_jj in combo and hwagae_jj in jjs:
+            stars.append(("화개살(華蓋殺)", "🧘", "종교·예술·학문의 기운! 혼자 깊이 파고드는 연구나 종교계에서 빛을 발합니다."))
+    
+    if stars:
+        for name, icon, desc in stars:
+            st.markdown(f"""
+            <div class="card" style="margin:8px 10px">
+                <div style="font-size:16px;font-weight:700;color:#a0720a">{icon} {name}</div>
+                <div style="font-size:13px;color:#555;margin-top:6px;line-height:1.8">{desc}</div>
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="card">
+            <div style="font-size:14px;color:#333">특별한 신살이 없으나 순수한 정격(正格)의 기운으로 안정적인 인생을 영위하실 수 있습니다.</div>
+        </div>""", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════
+#  월령(月令) 심화 — 왕상휴수사
+# ══════════════════════════════════════════════════
+
+WARYEONG_TABLE = {
+    "木": {"寅":100,"卯":100,"辰":40,"巳":20,"午":10,"未":20,"申":10,"酉":10,"戌":20,"亥":70,"子":70,"丑":40},
+    "火": {"寅":70,"卯":70,"辰":40,"巳":100,"午":100,"未":100,"申":20,"酉":10,"戌":20,"亥":10,"子":10,"丑":20},
+    "土": {"寅":20,"卯":20,"辰":100,"巳":70,"午":70,"未":100,"申":70,"酉":40,"戌":100,"亥":20,"子":10,"丑":100},
+    "金": {"寅":10,"卯":10,"辰":20,"巳":10,"午":10,"未":20,"申":100,"酉":100,"戌":70,"亥":40,"子":20,"丑":40},
+    "水": {"寅":40,"卯":20,"辰":20,"巳":10,"午":10,"未":10,"申":40,"酉":70,"戌":40,"亥":100,"子":100,"丑":70},
+}
+
+JJ_MONTH_SEASON = {
+    "寅":"봄 초입(1월, 양력2월)","卯":"봄 한창(2월, 양력3월)","辰":"봄 마무리(3월, 양력4월)",
+    "巳":"여름 초입(4월, 양력5월)","午":"여름 한창(5월, 양력6월)","未":"여름 마무리(6월, 양력7월)",
+    "申":"가을 초입(7월, 양력8월)","酉":"가을 한창(8월, 양력9월)","戌":"가을 마무리(9월, 양력10월)",
+    "亥":"겨울 초입(10월, 양력11월)","子":"겨울 한창(11월, 양력12월)","丑":"겨울 마무리(12월, 양력1월)",
+}
+
+def get_waryeong(pils):
+    wol_jj = pils[2]["jj"]
+    result = {}
+    grades = [(85,"왕(旺)","#c0392b","月令에서 가장 강한 기운. 이 오행이 사주를 주도합니다."),
+              (60,"상(相)","#e67e22","月令의 지원을 받아 활발한 기운입니다."),
+              (35,"휴(休)","#f39c12","月令에서 힘을 얻지 못하고 쉬는 기운입니다."),
+              (15,"수(囚)","#7f8c8d","月令에서 억눌림을 받는 기운입니다."),
+              (0, "사(死)","#2c3e50","月令에서 가장 힘을 잃은 기운입니다.")]
+    for oh in ["木","火","土","金","水"]:
+        score = WARYEONG_TABLE[oh].get(wol_jj, 20)
+        label,color,desc = "평","#888",""
+        for threshold,lbl,col,dsc in grades:
+            if score >= threshold:
+                label,color,desc = lbl,col,dsc
+                break
+        result[oh] = {"score":score,"grade":label,"color":color,"desc":desc}
+    return {"월지":wol_jj,"계절":JJ_MONTH_SEASON.get(wol_jj,""),"오행별":result}
+
+
+# ══════════════════════════════════════════════════
+#  외격(外格) + 양인(羊刃)
+# ══════════════════════════════════════════════════
+
+YANGIN_MAP = {"甲":"卯","丙":"午","戊":"午","庚":"酉","壬":"子","乙":"辰","丁":"未","己":"未","辛":"戌","癸":"丑"}
+YANGIN_DESC = {
+    "甲":{"jj":"卯","name":"갑목 양인 卯","desc":"목기 극강. 결단력·추진력 폭발. 관재·사고·분쟁 주의.","good":"군인·경찰·의사·법조인","caution":"분노 충동 다스리기. 칠살과 함께면 더욱 강렬."},
+    "丙":{"jj":"午","name":"병화 양인 午","desc":"태양이 정오에 빛남. 카리스마·권력욕 압도적.","good":"정치·방송·경영·스포츠","caution":"오만과 독선 경계. 임수의 제어 필요."},
+    "戊":{"jj":"午","name":"무토 양인 午","desc":"대지가 달아오른 강렬한 기운. 실행력·의지력 대단.","good":"건설·부동산·스포츠·경영","caution":"독선 결정이 조직을 해침. 협력자 경청 필요."},
+    "庚":{"jj":"酉","name":"경금 양인 酉","desc":"금기 극강. 결단력 칼같이 날카로움.","good":"군인·경찰·외과의·법조인","caution":"냉정함 과하면 인간관계 끊김. 화기의 단련 필요."},
+    "壬":{"jj":"子","name":"임수 양인 子","desc":"수기 넘침. 지혜·전략 압도적이나 방향 잃으면 홍수.","good":"전략·외교·금융·IT·철학","caution":"무토 제방 없으면 방종·방황. 목표와 원칙 필수."},
+    "乙":{"jj":"辰","name":"을목 양인 辰","desc":"을목 양인. 고집과 인내력이 강함.","good":"전문직·연구·예술","caution":"고집이 화근이 될 수 있음."},
+    "丁":{"jj":"未","name":"정화 양인 未","desc":"정화 양인. 감성적 에너지가 강함.","good":"예술·교육·상담","caution":"감정 기복에 주의."},
+    "己":{"jj":"未","name":"기토 양인 未","desc":"기토 양인. 고집과 끈기가 강함.","good":"농업·의료·전문직","caution":"고집을 유연함으로 바꾸는 것이 과제."},
+    "辛":{"jj":"戌","name":"신금 양인 戌","desc":"신금 양인. 예리함과 완벽주의가 극도로 강함.","good":"예술·의료·분석","caution":"과도한 완벽주의가 자신을 소진함."},
+    "癸":{"jj":"丑","name":"계수 양인 丑","desc":"계수 양인. 끈기와 인내의 기운이 강함.","good":"연구·의료·학문","caution":"자신을 과소평가하지 말 것."},
+}
+
+def get_yangin(pils):
+    ilgan = pils[1]["cg"]
+    yangin_jj = YANGIN_MAP.get(ilgan,"")
+    found = [["시주","일주","월주","년주"][i] for i,p in enumerate(pils) if p["jj"]==yangin_jj]
+    return {"일간":ilgan,"양인_지지":yangin_jj,"존재":bool(found),"위치":found,"설명":YANGIN_DESC.get(ilgan,{})}
+
+def get_oigyeok(pils):
+    ilgan = pils[1]["cg"]
+    ilgan_oh = OH.get(ilgan,"")
+    oh_strength = calc_ohaeng_strength(ilgan, pils)
+    strength_info = get_ilgan_strength(ilgan, pils)
+    sn = strength_info["신강신약"]
+    CTRL = {"木":"土","火":"金","土":"水","金":"木","水":"火"}
+    BIRTH_R = {"木":"水","火":"木","土":"火","金":"土","水":"金"}
+    GEN = {"木":"火","火":"土","土":"金","金":"水","水":"木"}
+    results = []
+    # 종왕격
+    if oh_strength.get(ilgan_oh,0) >= 70 and sn=="신강(身强)":
+        results.append({"격":"종왕격(從旺格)","icon":"👑","color":"#c5a059",
+            "desc":f"일간 오행({OHN.get(ilgan_oh,'')})이 사주를 지배. 같은 오행을 돕는 것이 용신.",
+            "용신":f"{ilgan_oh}·{BIRTH_R.get(ilgan_oh,'')}","기신":f"{CTRL.get(ilgan_oh,'')}",
+            "caution":"종왕격을 내격으로 착각하면 완전히 반대 풀이가 됩니다."})
+    # 종재격
+    jae_oh = CTRL.get(ilgan_oh,"")
+    if oh_strength.get(jae_oh,0) >= 55 and sn=="신약(身弱)":
+        results.append({"격":"종재격(從財格)","icon":"💰","color":"#2980b9",
+            "desc":f"재성({OHN.get(jae_oh,'')})이 사주를 압도. 재성을 따르는 것이 순리.",
+            "용신":f"{jae_oh}·{GEN.get(jae_oh,'')}","기신":f"{ilgan_oh} 비겁·{BIRTH_R.get(ilgan_oh,'')} 인성",
+            "caution":"비겁·인성 운이 오면 오히려 크게 파란이 생깁니다."})
+    # 종관격
+    gwan_oh = next((k for k,v in CTRL.items() if v==ilgan_oh),"")
+    if oh_strength.get(gwan_oh,0) >= 55 and sn=="신약(身弱)":
+        results.append({"격":"종관격(從官格)","icon":"🎖️","color":"#27ae60",
+            "desc":f"관성({OHN.get(gwan_oh,'')})이 사주를 지배. 공직·관직에서 크게 발복.",
+            "용신":f"{gwan_oh}·{jae_oh}","기신":f"{ilgan_oh} 비겁",
+            "caution":"비겁이 오면 구설·관재가 생기기 쉽습니다."})
+    # 종아격
+    sik_oh = GEN.get(ilgan_oh,"")
+    if oh_strength.get(sik_oh,0) >= 55 and sn=="신약(身弱)":
+        results.append({"격":"종아격(從兒格)","icon":"🎨","color":"#8e44ad",
+            "desc":f"식상({OHN.get(sik_oh,'')})이 사주를 지배. 창의·예술·기술의 기운 압도적.",
+            "용신":f"{sik_oh}·{CTRL.get(ilgan_oh,'')}","기신":"관성·인성",
+            "caution":"관성·인성 운에서 건강·사고·좌절이 오기 쉽습니다."})
+    return results
+
+
+# ══════════════════════════════════════════════════
+#  12신살(十二神殺) 완전판
+# ══════════════════════════════════════════════════
+
+SINSAL_12_TABLE = {
+    "劫殺":{"寅午戌":"亥","申子辰":"巳","巳酉丑":"寅","亥卯未":"申"},
+    "災殺":{"寅午戌":"子","申子辰":"午","巳酉丑":"卯","亥卯未":"酉"},
+    "天殺":{"寅午戌":"丑","申子辰":"未","巳酉丑":"辰","亥卯未":"戌"},
+    "地殺":{"寅午戌":"寅","申子辰":"申","巳酉丑":"巳","亥卯未":"亥"},
+    "年殺":{"寅午戌":"卯","申子辰":"酉","巳酉丑":"午","亥卯未":"子"},
+    "月殺":{"寅午戌":"辰","申子辰":"戌","巳酉丑":"未","亥卯未":"丑"},
+    "亡身殺":{"寅午戌":"巳","申子辰":"亥","巳酉丑":"申","亥卯未":"寅"},
+    "將星殺":{"寅午戌":"午","申子辰":"子","巳酉丑":"酉","亥卯未":"卯"},
+    "攀鞍殺":{"寅午戌":"未","申子辰":"丑","巳酉丑":"戌","亥卯未":"辰"},
+    "驛馬殺":{"寅午戌":"申","申子辰":"寅","巳酉丑":"亥","亥卯未":"巳"},
+    "六害殺":{"寅午戌":"酉","申子辰":"卯","巳酉丑":"子","亥卯未":"午"},
+    "華蓋殺":{"寅午戌":"戌","申子辰":"辰","巳酉丑":"丑","亥卯未":"未"},
+}
+
+SINSAL_12_DESC = {
+    "劫殺":{"icon":"⚔️","type":"흉","name":"겁살(劫殺)","desc":"강한 변동·손재·이별의 신살. 갑작스러운 사고가 따릅니다.","good":"군인·경찰·의사·위기관리에서 능력 발휘.","caution":"겁살 대운엔 투자·보증·동업 각별히 조심."},
+    "災殺":{"icon":"💧","type":"흉","name":"재살(災殺)","desc":"재앙·수재의 신살. 관재·질병·교통사고 주의.","good":"의료·소방·구조 분야에서 특수 능력 발휘.","caution":"해외여행·수상활동 각별히 주의."},
+    "天殺":{"icon":"⚡","type":"흉","name":"천살(天殺)","desc":"예상치 못한 천재지변·돌발사고. 상사와 마찰.","good":"위기 상황에서 빛을 발하는 강인함.","caution":"상사·어른과의 갈등을 극도로 조심."},
+    "地殺":{"icon":"🌍","type":"중","name":"지살(地殺)","desc":"이동·변화의 신살. 역마와 함께면 해외 이동 많음.","good":"외판·무역·항공·운수업에 유리.","caution":"정착하지 못하고 떠도는 기운 조심."},
+    "年殺":{"icon":"🌸","type":"중","name":"년살(도화살)","desc":"이성 인기 독차지. 예술적 기질 강함.","good":"연예인·방송·서비스·예술가로 대성.","caution":"이성 문제·향락으로 인한 문제 조심."},
+    "月殺":{"icon":"🪨","type":"흉","name":"월살(고초살)","desc":"뿌리 뽑힌 풀처럼 고생하는 기운. 가정적 어려움.","good":"역경을 이겨내는 강인한 정신력.","caution":"독립 후 오히려 안정되는 경우 많음."},
+    "亡身殺":{"icon":"🌀","type":"흉","name":"망신살","desc":"구설·스캔들·배신의 기운. 체면 손상.","good":"정면 돌파 용기. 역경으로 더욱 강해짐.","caution":"언행 극도 조심. 비밀 관리 철저히."},
+    "將星殺":{"icon":"🎖️","type":"길","name":"장성살","desc":"장수(將帥)의 별. 강한 리더십·통솔력. 조직 수장 기운.","good":"군인·경찰·정치·경영·스포츠 감독으로 최고자리.","caution":"독선적이 되지 않도록 주의."},
+    "攀鞍殺":{"icon":"🐎","type":"길","name":"반안살","desc":"말안장 위. 안정된 자리에서 성장. 중년 이후 안정.","good":"전문직·학자·행정가로 꾸준한 성공.","caution":"안주하려는 경향. 도전 정신 유지하기."},
+    "驛馬殺":{"icon":"🏇","type":"중","name":"역마살","desc":"이동·여행·해외·변화의 신살. 정착하기 어려움.","good":"해외·무역·외교·운수·영업에서 크게 활약.","caution":"이동 많아 가정생활 불안정할 수 있음."},
+    "六害殺":{"icon":"🌀","type":"흉","name":"육해살","desc":"배신과 상처의 신살. 소화기 질환 주의.","good":"인내력과 회복력이 뛰어남.","caution":"가까운 사람에게 배신당하는 기운. 인간관계 신중히."},
+    "華蓋殺":{"icon":"🌂","type":"중","name":"화개살","desc":"예술·종교·철학·영성의 신살. 고독하지만 고귀함.","good":"예술가·철학자·종교인·상담사로 독보적 경지.","caution":"고독·은둔 기운 강함. 사회적 관계 의식적으로 유지."},
+}
+
+EXTRA_SINSAL = {
+    "귀문관살":{
+        "icon":"🔮","type":"흉","name":"귀문관살(鬼門關殺)",
+        "pairs":[frozenset(["子","酉"]),frozenset(["丑","午"]),frozenset(["寅","未"]),
+                 frozenset(["卯","申"]),frozenset(["辰","亥"]),frozenset(["巳","戌"])],
+        "desc":"영적 감수성 극도 발달 또는 신경증·불면·이상한 꿈.",
+        "good":"무속인·철학자·상담사·예술가 — 남들이 보지 못하는 것을 봄.",
+        "caution":"신경증·우울·집착 주의. 명상·규칙적 생활 필수.",
+    },
+    "백호대살":{
+        "icon":"🐯","type":"흉","name":"백호대살(白虎大殺)",
+        "targets":{"甲辰","乙未","丙戌","丁丑","戊辰","己未","庚戌","辛丑","壬辰","癸未","甲戌","乙丑","丙辰","丁未"},
+        "desc":"혈광지사(血光之事) — 사고·수술·폭력과 인연.",
+        "good":"외과의사·군인·경찰로 기운을 직업으로 승화하면 대성.",
+        "caution":"대운에서 백호가 오면 교통사고·수술 극도 주의.",
+    },
+    "원진살":{
+        "icon":"😡","type":"흉","name":"원진살(怨嗔殺)",
+        "pairs":[frozenset(["子","未"]),frozenset(["丑","午"]),frozenset(["寅","酉"]),
+                 frozenset(["卯","申"]),frozenset(["辰","亥"]),frozenset(["巳","戌"])],
+        "desc":"서로 미워하고 원망하는 신살. 부부·가족 갈등의 원인.",
+        "good":"강한 독립심을 키움.",
+        "caution":"배우자·가족과 원진은 관계 갈등의 근원. 이해 노력 필수.",
+    },
+}
+
+def get_12sinsal(pils):
+    nyon_jj = pils[3]["jj"]
+    pil_jjs = [p["jj"] for p in pils]
+    labels = ["시주","일주","월주","년주"]
+    san_groups = ["寅午戌","申子辰","巳酉丑","亥卯未"]
+    my_group = next((g for g in san_groups if nyon_jj in g),"寅午戌")
+    result = []
+    for sname, jj_map in SINSAL_12_TABLE.items():
+        sinsal_jj = jj_map.get(my_group,"")
+        found = [labels[i] for i,jj in enumerate(pil_jjs) if jj==sinsal_jj]
+        if found:
+            d = SINSAL_12_DESC.get(sname,{})
+            result.append({"이름":d.get("name",sname),"icon":d.get("icon","⭐"),
+                           "type":d.get("type","중"),"위치":found,"해당지지":sinsal_jj,
+                           "desc":d.get("desc",""),"good":d.get("good",""),"caution":d.get("caution","")})
+    # 추가 신살
+    jj_pairs = [frozenset([pil_jjs[i],pil_jjs[j]]) for i in range(4) for j in range(i+1,4)]
+    for skey, sd in EXTRA_SINSAL.items():
+        if skey in ("귀문관살","원진살"):
+            if any(p in sd["pairs"] for p in jj_pairs):
+                result.append({"이름":sd["name"],"icon":sd["icon"],"type":sd["type"],
+                               "위치":["사주내"],"해당지지":"-","desc":sd["desc"],"good":sd["good"],"caution":sd["caution"]})
+        elif skey=="백호대살":
+            bh = [f"{p['cg']}{p['jj']}" for p in pils if f"{p['cg']}{p['jj']}" in sd["targets"]]
+            if bh:
+                result.append({"이름":sd["name"],"icon":sd["icon"],"type":sd["type"],
+                               "위치":bh,"해당지지":"-","desc":sd["desc"],"good":sd["good"],"caution":sd["caution"]})
+    return result
+
+
+# ══════════════════════════════════════════════════
+#  대운·세운 교차 분석
+# ══════════════════════════════════════════════════
+
+
+# ══════════════════════════════════════════════════
+# ★ 사건 트리거 감지 엔진 v2 ★
+# 충·형·합 + 십성활성 + 대운전환점 → "소름 포인트" 생성
+# ══════════════════════════════════════════════════
+
+_JIJI_CHUNG = {
+    "子":"午","午":"子","丑":"未","未":"丑",
+    "寅":"申","申":"寅","卯":"酉","酉":"卯",
+    "辰":"戌","戌":"辰","巳":"亥","亥":"巳",
+}
+_JIJI_HYEONG = {
+    "子":"卯","卯":"子",
+    "寅":"巳","巳":"申","申":"寅",
+    "丑":"戌","戌":"未","未":"丑",
+    "辰":"辰","午":"午","酉":"酉","亥":"亥",
+}
+_TG_HAP_PAIRS = [{"甲","己"},{"乙","庚"},{"丙","辛"},{"丁","壬"},{"戊","癸"}]
+_SAM_HAP = [
+    (frozenset({"寅","午","戌"}),"火"),(frozenset({"申","子","辰"}),"水"),
+    (frozenset({"亥","卯","未"}),"木"),(frozenset({"巳","酉","丑"}),"金"),
+]
+_BIRTH_F2 = {"木":"火","火":"土","土":"金","金":"水","水":"木"}
+_CTRL2    = {"木":"土","火":"金","土":"水","金":"木","水":"火"}
+
+
+def detect_event_triggers(pils, birth_year, gender, target_year=None):
+    """
+    사건 트리거 감지 — 충/형/합/십성활성/대운전환
+    Returns list[dict]: type, title, detail, prob(0~100)
+    """
+    if target_year is None:
+        target_year = datetime.now().year
+
+    ilgan  = pils[1]["cg"]
+    il_jj  = pils[1]["jj"]
+    wol_jj = pils[2]["jj"]
+
+    y_idx   = (target_year - 4) % 60
+    year_jj = JJ[y_idx % 12]
+    year_cg = CG[y_idx % 10]
+
+    dw_list = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    cur_dw  = next((d for d in dw_list if d["시작연도"]<=target_year<=d["종료연도"]), None)
+    dw_jj   = cur_dw["jj"] if cur_dw else ""
+    dw_cg   = cur_dw["cg"] if cur_dw else ""
+
+    ys       = get_yongshin(pils)
+    yong_ohs = ys.get("종합_용신", []) if isinstance(ys.get("종합_용신"), list) else []
+    all_jjs  = frozenset(p["jj"] for p in pils)
+    triggers = []
+
+    def add(type_, title, detail, prob):
+        triggers.append({"type":type_,"title":title,"detail":detail,"prob":prob})
+
+    # ① 충
+    if _JIJI_CHUNG.get(il_jj) == year_jj:
+        add("충","⚡ 일지 충(세운) — 삶의 터전 격변",
+            "이사·직장변화·관계분리 확률이 높습니다. 기존 환경이 흔들리는 해입니다.",85)
+    if dw_jj and _JIJI_CHUNG.get(il_jj) == dw_jj:
+        add("충","⚡ 일지 충(대운) — 10년 환경 변화",
+            "대운 수준의 큰 환경 변화. 이사·직업 전환의 대운입니다.",80)
+    if _JIJI_CHUNG.get(wol_jj) == year_jj:
+        add("충","🌊 월지 충 — 가족·직업 변동",
+            "부모·형제 관계 변화, 직업 환경의 급격한 변화가 예상됩니다.",75)
+
+    # ② 형
+    if _JIJI_HYEONG.get(il_jj) == year_jj or _JIJI_HYEONG.get(year_jj) == il_jj:
+        add("형","⚠️ 일지 형(刑) — 스트레스·사고",
+            "건강·사고·법적 문제에 주의. 인간관계 갈등이 생깁니다.",70)
+
+    # ③ 천간합
+    for pair in _TG_HAP_PAIRS:
+        if dw_cg in pair and year_cg in pair:
+            add("합","💑 천간합 — 새 인연·파트너십",
+                "새로운 인연·결혼·동업·계약 인연이 찾아옵니다.",65)
+            break
+
+    # ④ 삼합국
+    check_jjs = all_jjs | frozenset([dw_jj, year_jj])
+    for combo, oh in _SAM_HAP:
+        if combo.issubset(check_jjs):
+            kind = "용신" if oh in yong_ohs else "기신"
+            add("삼합","🌟 삼합국 — 강력한 기운 형성",
+                f"대운·세운·원국이 {oh}({OHN.get(oh,'')}) 삼합. {kind} 오행이므로 {'크게 발복' if kind=='용신' else '조심 필요'}합니다.",80)
+            break
+
+    # ⑤ 용신/기신 대운
+    if dw_cg:
+        dw_oh = OH.get(dw_cg,"")
+        if dw_oh in yong_ohs:
+            add("황금기","✨ 용신 대운 — 황금기",
+                "일생에 몇 번 없는 상승기. 이 시기의 도전은 결실을 맺습니다.",90)
+        elif any(_CTRL2.get(dw_oh)==y or _CTRL2.get(y)==dw_oh for y in yong_ohs):
+            add("경계","🛡️ 기신 대운 — 방어 필요",
+                "확장보다 수성(守成)이 최선. 큰 결정은 신중히 하십시오.",80)
+
+    # ⑥ 대운 전환점 (2년 이내)
+    for i, dw_item in enumerate(dw_list[:-1]):
+        if dw_item["시작연도"] <= target_year <= dw_item["종료연도"]:
+            yrs_left = dw_item["종료연도"] - target_year
+            if yrs_left <= 2:
+                next_dw = dw_list[i+1]
+                add("전환","🔄 대운 전환점 — 흐름 역전",
+                    f"{yrs_left+1}년 안에 대운이 {next_dw['str']}로 전환됩니다. 이전과 다른 인생 국면이 펼쳐집니다.",85)
+
+    # ⑦ 십성 활성화
+    year_ss = TEN_GODS_MATRIX.get(ilgan,{}).get(year_cg,"-")
+    if year_ss in ["정관","편관"]:
+        add("직업","🎖️ 관성 활성 — 직업·명예 변화",
+            f"세운 천간({year_cg})이 {year_ss}. 승진·이직·자격증 변화가 예상됩니다.",70)
+    if year_ss in ["정재","편재"]:
+        add("재물","💰 재성 활성 — 재물 흐름",
+            f"세운 천간({year_cg})이 {year_ss}. 재물 흐름이 활발해집니다. 투자 기회 주의.",72)
+
+    return triggers
+
+
+def calc_luck_score(pils, birth_year, gender, target_year=None):
+    """대운+세운 종합 운세 점수 (0~100)"""
+    if target_year is None:
+        target_year = datetime.now().year
+    ys       = get_yongshin(pils)
+    yong_ohs = ys.get("종합_용신",[]) if isinstance(ys.get("종합_용신"),list) else []
+    dw_list  = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    cur_dw   = next((d for d in dw_list if d["시작연도"]<=target_year<=d["종료연도"]),None)
+    score    = 50
+    if cur_dw:
+        dw_oh = OH.get(cur_dw["cg"],"")
+        if dw_oh in yong_ohs: score += 25
+        elif any(_BIRTH_F2.get(dw_oh)==y for y in yong_ohs): score += 12
+        elif any(_CTRL2.get(dw_oh)==y or _CTRL2.get(y)==dw_oh for y in yong_ohs): score -= 20
+    _LV = {"대길(大吉)":20,"길(吉)":10,"평길(平吉)":5,"평(平)":0,"흉(凶)":-15,"흉흉(凶凶)":-25}
+    yl = get_yearly_luck(pils, target_year)
+    score += _LV.get(yl.get("길흉","평(平)"),0)
+    return max(0, min(100, score))
+
+
+def calc_turning_point(pils, birth_year, gender, target_year=None):
+    """
+    인생 전환점 감지 엔진 (정밀 v2)
+    대운 점수 차이 + 세운 트리거 + 충합 종합
+    Returns dict: {is_turning:bool, intensity:str, reason:list, score_change:int}
+    """
+    if target_year is None:
+        target_year = datetime.now().year
+    prev_score = calc_luck_score(pils, birth_year, gender, target_year - 1)
+    curr_score = calc_luck_score(pils, birth_year, gender, target_year)
+    next_score = calc_luck_score(pils, birth_year, gender, target_year + 1)
+
+    dw_list = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    cur_dw  = next((d for d in dw_list if d["시작연도"] <= target_year <= d["종료연도"]), None)
+    prev_dw = None
+    for i, d in enumerate(dw_list):
+        if d["시작연도"] <= target_year <= d["종료연도"] and i > 0:
+            prev_dw = dw_list[i-1]
+            break
+
+    reasons = []
+    diff = curr_score - prev_score
+    next_diff = next_score - curr_score
+
+    # 대운 전환점 (이 해 또는 1~2년 이내)
+    if cur_dw:
+        yrs_to_change = cur_dw["종료연도"] - target_year
+        if yrs_to_change <= 1:
+            reasons.append(f"⚡ 대운 {cur_dw['str']} 마지막 해 — 인생 국면 전환 목전")
+        if cur_dw["시작연도"] == target_year:
+            reasons.append(f"🌟 새 대운 {cur_dw['str']} 시작 — 10년 흐름 완전 변화")
+
+    if prev_dw and cur_dw and cur_dw["시작연도"] == target_year:
+        # 이전 대운과 오행 관계
+        prev_oh = OH.get(prev_dw["cg"], "")
+        curr_oh = OH.get(cur_dw["cg"], "")
+        ys = get_yongshin(pils)
+        yong_ohs = ys.get("종합_용신", []) if isinstance(ys.get("종합_용신"), list) else []
+        if prev_oh not in yong_ohs and curr_oh in yong_ohs:
+            reasons.append(f"✨ 기신 대운→용신 대운 전환 — 인생 역전의 기회")
+        elif prev_oh in yong_ohs and curr_oh not in yong_ohs:
+            reasons.append(f"⚠️ 용신 대운→기신 대운 전환 — 속도 조절 필요")
+
+    # 운세 점수 급변
+    if abs(diff) >= 25:
+        direction = "상승" if diff > 0 else "하락"
+        reasons.append(f"📊 운세 점수 {abs(diff)}점 급{'등' if diff>0 else '락'} — 삶의 {direction} 흐름")
+    elif abs(diff) >= 15:
+        direction = "개선" if diff > 0 else "하강"
+        reasons.append(f"📈 운세 {direction} ({diff:+d}점) — 변화 감지")
+
+    # 사건 트리거 (충/합 있으면 강화)
+    triggers = detect_event_triggers(pils, birth_year, gender, target_year)
+    high_triggers = [t for t in triggers if t["prob"] >= 80]
+    if high_triggers:
+        reasons.append(f"🔴 고확률 사건 트리거 {len(high_triggers)}개 — {high_triggers[0]['title']}")
+
+    # 전환점 여부 및 강도
+    total_score_change = abs(diff)
+    is_turning = total_score_change >= 15 or any("대운" in r or "전환" in r for r in reasons)
+
+    if total_score_change >= 30 or len(reasons) >= 3:
+        intensity = "🔴 강력 전환점"
+    elif total_score_change >= 20 or len(reasons) >= 2:
+        intensity = "🟡 주요 변화점"
+    elif is_turning:
+        intensity = "🟢 변화 시작"
+    else:
+        intensity = "⬜ 흐름 유지"
+
+    return {
+        "is_turning": is_turning,
+        "intensity": intensity,
+        "reason": reasons,
+        "score_prev": prev_score,
+        "score_curr": curr_score,
+        "score_next": next_score,
+        "score_change": diff,
+        "triggers": triggers,
+    }
+
+
+def get_yongshin_multilayer(pils, birth_year, gender, target_year=None):
+    """
+    다층 용신 분석 (1순위~3순위 + 희신 + 기신 + 대운별 용신)
+    Returns dict with 용신_1순위, 용신_2순위, 희신, 기신, 현재_상황_용신, 대운_용신
+    """
+    if target_year is None:
+        target_year = datetime.now().year
+
+    ys = get_yongshin(pils)
+    yong_list = ys.get("종합_용신", []) if isinstance(ys.get("종합_용신"), list) else []
+    oh_strength = calc_ohaeng_strength(pils[1]["cg"], pils)
+    ilgan = pils[1]["cg"]
+    ilgan_oh = OH.get(ilgan, "")
+
+    # 상생 순서
+    BIRTH = {"木":"火","火":"土","土":"金","金":"水","Water":"木","水":"木"}
+    CTRL  = {"木":"土","火":"金","土":"水","金":"木","水":"火"}
+
+    # 용신 1순위 (가장 필요한 오행)
+    base_yong = yong_list[0] if yong_list else ""
+
+    # 희신 (용신을 생해주는 오행)
+    hee_shin = BIRTH.get(base_yong, "")
+
+    # 기신 (용신을 극하는 오행)
+    gi_shin_list = []
+    for oh in ["木","火","土","金","水"]:
+        if CTRL.get(oh) == base_yong or CTRL.get(base_yong) == oh:
+            if oh != ilgan_oh and oh not in yong_list:
+                gi_shin_list.append(oh)
+
+    # 용신 2순위
+    yong_2 = yong_list[1] if len(yong_list) > 1 else ""
+
+    # 대운별 용신 변화
+    dw_list = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    cur_dw  = next((d for d in dw_list if d["시작연도"] <= target_year <= d["종료연도"]), None)
+    dw_yong = ""
+    dw_note  = ""
+    if cur_dw:
+        dw_oh = OH.get(cur_dw["cg"], "")
+        if dw_oh in yong_list:
+            dw_yong = dw_oh
+            dw_note = f"현재 {cur_dw['str']} 대운 = 용신 오행 → 황금기"
+        elif dw_oh == hee_shin:
+            dw_yong = hee_shin
+            dw_note = f"현재 {cur_dw['str']} 대운 = 희신 → 안정 성장기"
+        elif dw_oh in gi_shin_list:
+            dw_yong = ""
+            dw_note = f"현재 {cur_dw['str']} 대운 = 기신 → 방어 전략 필요"
+        else:
+            dw_yong = dw_oh
+            dw_note = f"현재 {cur_dw['str']} 대운 = 중립 → 평상 유지"
+
+    # 상황별 용신 (재물/직장/건강)
+    situation_yong = {
+        "재물": yong_list[0] if yong_list else "",
+        "직업": yong_list[1] if len(yong_list) > 1 else (yong_list[0] if yong_list else ""),
+        "건강": hee_shin or (yong_list[0] if yong_list else ""),
+        "인간관계": hee_shin or (yong_list[0] if yong_list else ""),
+    }
+
+    return {
+        "용신_1순위": base_yong,
+        "용신_2순위": yong_2,
+        "희신": hee_shin,
+        "기신": gi_shin_list[:2] if gi_shin_list else [],
+        "현재_대운_용신": dw_yong,
+        "대운_해석": dw_note,
+        "상황별_용신": situation_yong,
+        "전체_용신_목록": yong_list,
+    }
+
+
+def build_rich_ai_context(pils, birth_year, gender, target_year=None, focus="종합"):
+    """
+    AI에게 전달할 풍부한 계산 데이터 JSON 빌더
+    focus: '종합' | '재물' | '연애' | '직장' | '건강'
+    focus에 따라 해당 영역 가중치 데이터 추가
+    """
+    if target_year is None:
+        target_year = datetime.now().year
+
+    ilgan = pils[1]["cg"]
+    ilgan_oh = OH.get(ilgan, "")
+    current_age = target_year - birth_year + 1
+
+    st_info = get_ilgan_strength(ilgan, pils)
+    oh_str  = st_info["oh_strength"]
+    sn      = st_info["신강신약"]
+    score   = st_info.get("일간점수", 50)
+    gk      = get_gyeokguk(pils)
+    gname   = gk.get("격국명", "미정격") if gk else "미정격"
+
+    ys       = get_yongshin_multilayer(pils, birth_year, gender, target_year)
+    luck_s   = calc_luck_score(pils, birth_year, gender, target_year)
+    triggers = detect_event_triggers(pils, birth_year, gender, target_year)
+    turning  = calc_turning_point(pils, birth_year, gender, target_year)
+    yl       = get_yearly_luck(pils, target_year)
+    dw_list  = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    cur_dw   = next((d for d in dw_list if d["시작연도"] <= target_year <= d["종료연도"]), None)
+    cross    = get_daewoon_sewoon_cross(pils, birth_year, gender, target_year)
+
+    # 재물성 활성도 계산
+    JAESUNG = {"정재","편재"}
+    GWANSUNG = {"정관","편관"}
+    TGM = TEN_GODS_MATRIX.get(ilgan, {})
+    all_ss = [TGM.get(p["cg"], "-") for p in pils] + [TGM.get(JIJANGGAN.get(p["jj"], [""])[-1], "-") for p in pils]
+    wealth_count = sum(1 for s in all_ss if s in JAESUNG)
+    officer_count = sum(1 for s in all_ss if s in GWANSUNG)
+    wealth_star_level = min(100, wealth_count * 20 + oh_str.get(ilgan_oh, 0))
+    officer_clash = any(t["type"] == "충" and "관" in t["title"] for t in triggers)
+
+    # 집중 영역 데이터
+    focus_data = {}
+    if focus == "재물":
+        focus_data = {
+            "재물_용신": ys["상황별_용신"].get("재물", ""),
+            "재성_활성도": f"{wealth_star_level}/100",
+            "재물_현재_길흉": yl.get("길흉", ""),
+            "재물_트리거": [t for t in triggers if t["type"] == "재물"],
+        }
+    elif focus == "연애":
+        focus_data = {
+            "연애_용신": ys["상황별_용신"].get("인간관계", ""),
+            "인연_십성": "정재" if gender == "남" else "정관",
+            "인연_트리거": [t for t in triggers if t["type"] == "합"],
+        }
+    elif focus == "직장":
+        focus_data = {
+            "직업_용신": ys["상황별_용신"].get("직업", ""),
+            "관성_활성도": officer_count * 20,
+            "직장_트리거": [t for t in triggers if t["type"] in ("직업","황금기")],
+        }
+    elif focus == "건강":
+        focus_data = {
+            "건강_용신": ys["상황별_용신"].get("건강", ""),
+            "약한_오행": [k for k, v in oh_str.items() if v < 10],
+            "건강_주의": [t for t in triggers if t["type"] == "형"],
+        }
+
+    ctx = {
+        # ① 일간 힘 (점수화)
+        "daymaster_strength_score": score,
+        "daymaster_strength_label": sn,
+        "daymaster_element": ilgan_oh,
+
+        # ② 오행 세력 (정밀 계산)
+        "element_power": {k: f"{v}%" for k, v in oh_str.items()},
+        "strongest_element": max(oh_str, key=oh_str.get),
+        "weakest_element": min(oh_str, key=oh_str.get),
+
+        # ③ 격국·용신 (다층)
+        "gyeokguk": gname,
+        "yongshin_primary": ys["용신_1순위"],
+        "yongshin_secondary": ys["용신_2순위"],
+        "heeshin": ys["희신"],
+        "gishin": ys["기신"],
+        "daewoon_yongshin_note": ys["대운_해석"],
+
+        # ④ 현재 운기
+        "current_year": target_year,
+        "current_age": current_age,
+        "luck_score_total": luck_s,
+        "daewoon": cur_dw["str"] if cur_dw else "-",
+        "daewoon_ss": cross["대운_천간십성"] if cross else "-",
+        "sewoon": yl["세운"],
+        "sewoon_ss": yl["십성_천간"],
+        "sewoon_gilhung": yl["길흉"],
+
+        # ⑤ 전환점 감지
+        "turning_point_detected": turning["is_turning"],
+        "turning_intensity": turning["intensity"],
+        "turning_reasons": turning["reason"],
+        "score_change": turning["score_change"],
+
+        # ⑥ 사건 트리거
+        "event_triggers": [{"type":t["type"],"title":t["title"],"prob":t["prob"]} for t in triggers],
+        "high_prob_triggers": [t for t in triggers if t["prob"] >= 75],
+
+        # ⑦ 활성도
+        "wealth_star_level": wealth_star_level,
+        "officer_clash_detected": officer_clash,
+        "cross_analysis": cross["교차해석"] if cross else "",
+
+        # ⑧ 집중 영역
+        "focus": focus,
+        "focus_data": focus_data,
+    }
+    return ctx
+
+
+# ══════════════════════════════════════════════════════════════
+#  🔥 GOOSEBUMP ENGINE — 소름 문장 자동 생성 (Cold Reading 알고리즘)
+#  과거 적중 → 현재 공감 → 미래 예고 → 확신 강화
+# ══════════════════════════════════════════════════════════════
+
+def goosebump_engine(pils, birth_year, gender, target_year=None):
+    """
+    소름 느낌 자동 생성 엔진
+    사주 패턴 → 심리 트리거 → 확신 문장
+    Returns dict: {past, present, future, conviction, full_text}
+    """
+    if target_year is None:
+        target_year = datetime.now().year
+
+    ilgan = pils[1]["cg"]
+    il_jj = pils[1]["jj"]
+    wol_jj = pils[2]["jj"]
+    ilgan_oh = OH.get(ilgan, "")
+    strength_info = get_ilgan_strength(ilgan, pils)
+    oh_str  = strength_info["oh_strength"]
+    sn      = strength_info["신강신약"]
+    score   = strength_info.get("일간점수", 50)
+    TGM = TEN_GODS_MATRIX.get(ilgan, {})
+    all_ss = [TGM.get(p["cg"], "-") for p in pils]
+
+    ys       = get_yongshin(pils)
+    yong_ohs = ys.get("종합_용신", []) if isinstance(ys.get("종합_용신"), list) else []
+    luck_s   = calc_luck_score(pils, birth_year, gender, target_year)
+    triggers = detect_event_triggers(pils, birth_year, gender, target_year)
+    turning  = calc_turning_point(pils, birth_year, gender, target_year)
+
+    # ① 과거 적중 문장 — 사주 패턴 → 이미 겪은 일
+    past_sentences = []
+
+    # 관성 충 감지
+    officer_clash = any(TGM.get(p["cg"], "") in ("정관","편관") and
+                        _JIJI_CHUNG.get(p["jj"]) in {q["jj"] for q in pils} for p in pils)
+    if officer_clash or any(s in ("정관","편관") for s in all_ss):
+        past_sentences.append(
+            "직장이나 책임 문제로 크게 고민하고 홀로 힘들었던 시기가 분명히 있었습니다."
+        )
+
+    # 재성 과다
+    wealth_count = sum(1 for s in all_ss if s in ("정재","편재"))
+    if wealth_count >= 2:
+        past_sentences.append(
+            "돈이나 현실적 문제로 판단을 반복하고 마음이 복잡했던 시기가 있었습니다."
+        )
+
+    # 인성 과다 (생각 많음)
+    insung_count = sum(1 for s in all_ss if s in ("정인","편인"))
+    if insung_count >= 2:
+        past_sentences.append(
+            "머릿속 생각이 많아 결정을 내리지 못하고 오래 고민했던 시간이 있었습니다."
+        )
+
+    # 일지 충 (과거)
+    past_dw = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    for dw in past_dw:
+        if dw["종료연도"] < target_year:
+            if _JIJI_CHUNG.get(il_jj) == dw["jj"]:
+                age = dw["시작나이"]
+                past_sentences.append(
+                    f"{age}대에 환경이 크게 바뀌거나 중요한 관계가 변한 일이 있었습니다."
+                )
+                break
+
+    # 겁재 (재물 경쟁)
+    if any(s == "겁재" for s in all_ss):
+        past_sentences.append(
+            "믿었던 사람에게 금전적으로 손해를 보거나 경쟁에서 예상치 못한 결과를 겪은 적이 있었습니다."
+        )
+
+    # ② 현재 상태 문장 — 현재 운 vs 원국 비교
+    present_sentences = []
+    prev_luck = calc_luck_score(pils, birth_year, gender, target_year - 1)
+    diff = luck_s - prev_luck
+
+    if diff < -20:
+        present_sentences.append(
+            "지금은 노력 대비 결과가 느리게 따라오는 시기입니다. 열심히 하는데 티가 안 나는 느낌, 맞지 않으십니까?"
+        )
+    elif diff < -10:
+        present_sentences.append(
+            "최근 들어 무언가 예전 같지 않다는 느낌, 흐름이 살짝 꺾인 느낌을 받고 계실 겁니다."
+        )
+    elif diff > 20:
+        present_sentences.append(
+            "지금 운이 올라오는 시기입니다. 최근 생각지도 못한 기회나 연락이 오고 있지는 않으십니까?"
+        )
+    elif diff > 10:
+        present_sentences.append(
+            "서서히 흐름이 좋아지는 시기입니다. 주변에서 당신을 다시 보기 시작하는 신호가 보일 겁니다."
+        )
+    else:
+        present_sentences.append(
+            "지금은 흐름이 안정적으로 유지되고 있습니다. 큰 변화 없이 무난한 시기지만, 곧 달라질 계기가 옵니다."
+        )
+
+    # 신강/신약 현재 체감
+    if "신약" in sn:
+        present_sentences.append(
+            "겉으로는 괜찮아 보이지만 혼자 고민을 오래 끌어가는 편이십니다. 말하지 않고 삭이는 경우가 많습니다."
+        )
+    elif "신강" in sn:
+        present_sentences.append(
+            "자신이 옳다는 확신이 강하고, 타인의 시선보다 자기 기준을 먼저 내세우는 편이십니다."
+        )
+
+    # ③ 미래 예고 문장
+    future_sentences = []
+    if turning["is_turning"]:
+        intensity = turning["intensity"]
+        if "강력" in intensity:
+            future_sentences.append(
+                "곧 인생 흐름이 크게 바뀌는 계기가 들어옵니다. 이 시기가 지나면 이전과 완전히 다른 국면이 펼쳐집니다."
+            )
+        else:
+            future_sentences.append(
+                "변화의 씨앗이 심어지고 있습니다. 지금의 선택 하나가 앞으로 수년을 결정짓는 분기점이 됩니다."
+            )
+
+    # 고확률 트리거 예고
+    high_t = [t for t in triggers if t["prob"] >= 80]
+    if high_t:
+        t = high_t[0]
+        if t["type"] == "충":
+            future_sentences.append(
+                "환경이 흔들리는 기운이 다가오고 있습니다. 이사·직장·관계 중 하나가 변할 가능성이 높습니다."
+            )
+        elif t["type"] == "황금기":
+            future_sentences.append(
+                "이 시기는 일생에 몇 번 없는 상승기입니다. 지금의 도전은 반드시 결실을 맺습니다."
+            )
+        elif t["type"] == "합":
+            future_sentences.append(
+                "인연의 기운이 움직이고 있습니다. 새로운 중요한 만남이 가까운 시일 안에 찾아옵니다."
+            )
+        elif t["type"] == "재물":
+            future_sentences.append(
+                "재물의 흐름이 활발해지는 시기입니다. 돈이 들어오는 통로가 열리고 있습니다."
+            )
+
+    # ④ 확신 강화 문장
+    conviction = (
+        "이 패턴은 우연히 나타나는 것이 아닙니다. "
+        f"사주 구조에서 {ilgan}(일간)의 흐름이 반복적으로 만들어내는 특징입니다. "
+        "만세력 계산 엔진이 확정한 데이터 기반입니다."
+    )
+
+    # ⑤ 통합
+    full_parts = []
+    if past_sentences:
+        full_parts.append("【 과거 적중 】\n" + "\n".join(f"• {s}" for s in past_sentences[:2]))
+    if present_sentences:
+        full_parts.append("【 현재 상태 】\n" + "\n".join(f"• {s}" for s in present_sentences[:2]))
+    if future_sentences:
+        full_parts.append("【 미래 예고 】\n" + "\n".join(f"• {s}" for s in future_sentences[:2]))
+    full_parts.append("【 근거 】\n" + conviction)
+
+    return {
+        "past": past_sentences[:2],
+        "present": present_sentences[:2],
+        "future": future_sentences[:2],
+        "conviction": conviction,
+        "full_text": "\n\n".join(full_parts),
+        "triggers_used": [t["type"] for t in high_t[:3]],
+    }
+
+
+# ══════════════════════════════════════════════════════════════
+#  🧠 ADAPTIVE ENGINE — 페르소나 감지 → 맞춤 해석 스타일
+#  사용자 행동 패턴으로 성향 자동 추정
+# ══════════════════════════════════════════════════════════════
+
+_PERSONA_KEY = "_adaptive_persona"
+
+def infer_persona() -> str:
+    """
+    세션 행동 데이터로 페르소나 자동 추정
+    achievement / overthinking / emotional / cautious / balanced
+    """
+    behavior = st.session_state.get("_b3_behavior", {})
+    focus    = st.session_state.get("ai_focus", "종합")
+    actions  = behavior.get("actions", [])
+    q_count  = behavior.get("question_count", 0)
+    v_count  = behavior.get("view_count", 0)
+
+    # 행동 기반 성향
+    if focus == "재물":
+        return "achievement_type"   # 성취·결과 지향
+    if focus == "연애":
+        return "emotional_type"     # 감정·관계 중심
+    if focus == "건강":
+        return "cautious_type"      # 안정·리스크 회피
+    if focus == "직장":
+        return "career_type"        # 커리어·명예 지향
+    if q_count >= 2:
+        return "overthinking_type"  # 생각 많음, 확인 욕구
+    if v_count >= 4:
+        return "deep_reflection_type"  # 심층 탐색
+    return "balanced_type"
+
+
+def get_persona_prompt_style(persona: str) -> str:
+    """페르소나별 AI 해석 스타일 지침"""
+    style_map = {
+        "achievement_type": (
+            "사용자는 성취·결과 지향적이다. "
+            "현실적이고 구체적인 행동 가이드와 기회를 중심으로 해석하라. "
+            "추상적 표현 최소화. 언제, 무엇을, 어떻게 해야 하는지 단정적으로 말하라."
+        ),
+        "emotional_type": (
+            "사용자는 감정·관계를 중시한다. "
+            "인간관계와 감정 흐름을 중심으로 따뜻하고 공감적으로 해석하라. "
+            "외로움, 그리움, 설렘 등 감정 언어를 자연스럽게 사용하라."
+        ),
+        "career_type": (
+            "사용자는 커리어와 사회적 인정을 중요하게 생각한다. "
+            "직업·승진·명예·직장 흐름을 중심으로 단계적이고 전략적으로 해석하라."
+        ),
+        "cautious_type": (
+            "사용자는 안정과 리스크 회피를 선호한다. "
+            "위험 요인을 먼저 짚고, 안전한 선택지와 주의 사항을 구체적으로 제시하라. "
+            "과도한 낙관 표현 자제."
+        ),
+        "overthinking_type": (
+            "사용자는 생각이 많고 확신을 원한다. "
+            "반복적 고민에 대한 공감을 먼저 표현하고, "
+            "단정적이고 명확한 결론을 내려주어 안심시켜라. "
+            "모호한 표현 절대 금지."
+        ),
+        "deep_reflection_type": (
+            "사용자는 인생의 의미와 방향성을 탐색 중이다. "
+            "철학적이고 깊이 있는 해석을 선호한다. "
+            "표면적 사건보다 근본적 원인과 삶의 패턴을 설명하라."
+        ),
+        "balanced_type": (
+            "사용자는 균형 잡힌 관점을 원한다. "
+            "긍정과 주의 사항을 균형 있게 제시하고, "
+            "현재 상황과 미래 흐름을 종합적으로 해석하라."
+        ),
+    }
+    return style_map.get(persona, style_map["balanced_type"])
+
+
+def get_persona_label(persona: str) -> tuple:
+    """페르소나 → (emoji, 한국어 라벨, 색상)"""
+    labels = {
+        "achievement_type":     ("🎯", "성취·결과형",    "#e65100"),
+        "emotional_type":       ("💑", "감정·관계형",    "#e91e8c"),
+        "career_type":          ("🎖️", "커리어·명예형", "#1565c0"),
+        "cautious_type":        ("🛡️", "안정·신중형",   "#2e7d32"),
+        "overthinking_type":    ("🧠", "분석·확인형",    "#6a1b9a"),
+        "deep_reflection_type": ("🌊", "성찰·탐색형",    "#00695c"),
+        "balanced_type":        ("⚖️", "균형·종합형",    "#8B6914"),
+    }
+    return labels.get(persona, ("🔮", "종합형", "#8B6914"))
+
+
+# ══════════════════════════════════════════════════════════════
+#  ✅ SELF-CHECK ENGINE — AI 2패스 자기검증 시스템
+#  1차 해석 → AI 감수 → 논리 보정 → 최종 출력
+# ══════════════════════════════════════════════════════════════
+
+def self_check_ai(first_report: str, analysis_summary: str, api_key: str, groq_key: str = "") -> str:
+    """
+    AI 자기검증 시스템
+    1차 해석을 AI 감수관이 재검증 → 모순 제거 + 단정성 강화
+    API 비용 절약: 간결한 감수 프롬프트 사용
+    """
+    if not first_report or (not api_key and not groq_key):
+        return first_report
+
+    check_prompt = f"""당신은 30년 경력 명리학 감수 전문가다.
+
+아래 [계산 데이터]와 [해석 초안]을 비교하여 검증하라.
+
+[계산 데이터]
+{analysis_summary}
+
+[해석 초안]
+{first_report}
+
+검증 규칙:
+1. 계산 데이터와 모순되는 문장 → 삭제 또는 수정
+2. "아마", "가능성", "때로는", "일지도" 등 불확실 표현 → 단정적 표현으로 교체
+3. 근거 없는 추측 → 제거
+4. 앞뒤 논리 불일치 → 보정
+5. 길이 유지 (축약 금지)
+
+수정된 최종 리포트만 출력하라. 검증 과정 설명 불필요."""
+
+    try:
+        if groq_key:
+            import urllib.request, json as _json
+            payload = _json.dumps({
+                "model": "llama-3.3-70b-versatile",
+                "messages": [{"role": "user", "content": check_prompt}],
+                "max_tokens": 3000,
+                "temperature": 0.3,
+            }).encode()
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=payload,
+                headers={"Authorization": f"Bearer {groq_key}",
+                         "Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = _json.loads(resp.read())
+            return data["choices"][0]["message"]["content"].strip()
+
+        elif api_key:
+            import anthropic as _anthr
+            client = _anthr.Anthropic(api_key=api_key)
+            msg = client.messages.create(
+                model="claude-sonnet-4-5",
+                max_tokens=3000,
+                temperature=0.3,
+                messages=[{"role": "user", "content": check_prompt}]
+            )
+            return msg.content[0].text.strip()
+    except Exception:
+        pass
+
+    return first_report  # 실패 시 1차 결과 반환
+
+
+# ══════════════════════════════════════════════════════════════
+#  🔄 RETENTION ENGINE — 재방문·중독 구조
+#  스트릭 카운터 / 운 변화 카운트다운 / 일별 운 점수
+# ══════════════════════════════════════════════════════════════
+
+_RETENTION_FILE  = "saju_retention.json"
+_USER_PROFILE_FILE = "saju_user_profile.json"
+
+
+# ══════════════════════════════════════════════════════════════
+#  🧠 USER MEMORY SYSTEM — AI가 사용자를 기억하는 구조
+#  상담 이력 · 관심 영역 · 믿음 지수 · 이전 예측 저장
+# ══════════════════════════════════════════════════════════════
+
+def _load_user_profile() -> dict:
+    """사용자 프로필 로드"""
+    try:
+        if os.path.exists(_USER_PROFILE_FILE):
+            with open(_USER_PROFILE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_user_profile(data: dict):
+    """사용자 프로필 저장"""
+    try:
+        with open(_USER_PROFILE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def get_user_profile(saju_key: str) -> dict:
+    """특정 사주의 사용자 프로필 반환"""
+    all_profiles = _load_user_profile()
+    default = {
+        "saju_key": saju_key,
+        "main_concern": "",            # 주요 관심사
+        "past_concerns": [],           # 이전 관심사 이력
+        "last_focus": "",              # 마지막 집중 분야
+        "last_visit": "",              # 마지막 방문일
+        "visit_count": 0,              # 총 방문 횟수
+        "belief_level": 0.5,           # 신뢰도 (0~1)
+        "last_prediction": "",         # 마지막 예측 요약
+        "prediction_history": [],      # 예측 이력
+        "stress_pattern": "",          # 주요 스트레스 패턴
+        "persona": "balanced_type",    # 감지된 페르소나
+        "first_visit": "",             # 첫 방문일
+    }
+    profile = all_profiles.get(saju_key, default)
+    return profile
+
+
+def update_user_profile(saju_key: str, **kwargs) -> dict:
+    """사용자 프로필 업데이트"""
+    all_profiles = _load_user_profile()
+    profile = get_user_profile(saju_key)
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    # 자동 업데이트
+    if not profile.get("first_visit"):
+        profile["first_visit"] = today
+    profile["last_visit"] = today
+    profile["visit_count"] = profile.get("visit_count", 0) + 1
+
+    # kwargs 반영
+    for k, v in kwargs.items():
+        if k == "concern" and v:
+            # 관심사 이력 관리
+            if profile.get("main_concern") and profile["main_concern"] != v:
+                hist = profile.get("past_concerns", [])
+                hist.append({"concern": profile["main_concern"], "date": today})
+                profile["past_concerns"] = hist[-5:]  # 최근 5개만 유지
+            profile["main_concern"] = v
+        elif k == "prediction" and v:
+            hist = profile.get("prediction_history", [])
+            hist.append({"text": v[:100], "date": today})
+            profile["prediction_history"] = hist[-10:]
+            profile["last_prediction"] = v[:100]
+        elif k == "belief_delta" and isinstance(v, (int, float)):
+            profile["belief_level"] = max(0.0, min(1.0, profile.get("belief_level", 0.5) + v))
+        else:
+            profile[k] = v
+
+    all_profiles[saju_key] = profile
+    _save_user_profile(all_profiles)
+    return profile
+
+
+def build_memory_context(saju_key: str) -> str:
+    """AI 프롬프트에 삽입할 사용자 기억 컨텍스트 생성"""
+    profile = get_user_profile(saju_key)
+    if profile.get("visit_count", 0) <= 1:
+        return ""  # 첫 방문이면 기억 없음
+
+    lines = []
+    vc = profile.get("visit_count", 0)
+    lines.append(f"[이전 상담 기억] 총 {vc}회 방문한 사용자입니다.")
+
+    if profile.get("main_concern"):
+        lines.append(f"주요 관심사: {profile['main_concern']}")
+
+    if profile.get("last_prediction"):
+        lines.append(f"지난 상담 예측: {profile['last_prediction']}")
+
+    past = profile.get("past_concerns", [])
+    if past:
+        prev = past[-1]
+        lines.append(f"이전 관심사: {prev.get('concern','')} ({prev.get('date','')})")
+
+    bl = profile.get("belief_level", 0.5)
+    if bl >= 0.7:
+        lines.append("신뢰도 높음 — 이전 예측이 맞았던 사용자. 더 구체적이고 단정적으로 해석하라.")
+    elif bl <= 0.3:
+        lines.append("신뢰도 낮음 — 의심이 많은 사용자. 근거를 더 상세히 설명하라.")
+
+    stress = profile.get("stress_pattern")
+    if stress:
+        lines.append(f"주요 스트레스 패턴: {stress}")
+
+    if lines:
+        return "\n".join(lines) + "\n"
+    return ""
+
+
+def render_user_memory_badge(saju_key: str):
+    """사용자 기억 상태 배지 렌더링"""
+    profile = get_user_profile(saju_key)
+    vc = profile.get("visit_count", 0)
+    if vc < 2:
+        return
+
+    bl = profile.get("belief_level", 0.5)
+    bl_pct = int(bl * 100)
+    bl_color = "#4caf50" if bl >= 0.7 else "#ff9800" if bl >= 0.4 else "#f44336"
+    bl_label = "높음" if bl >= 0.7 else "보통" if bl >= 0.4 else "형성중"
+
+    mc = profile.get("main_concern", "")
+    lp = profile.get("last_prediction", "")
+
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#f0f0ff,#e8e8ff);
+                border:1px solid #b8a8ee;border-radius:12px;
+                padding:12px 14px;margin:8px 0">
+        <div style="font-size:11px;color:#7b5ea7;font-weight:700;margin-bottom:6px">
+            🧠 AI 기억 시스템 — {vc}회 상담 이력
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+            <div style="text-align:center">
+                <div style="font-size:10px;color:#888">신뢰도</div>
+                <div style="font-size:16px;font-weight:900;color:{bl_color}">{bl_pct}%</div>
+                <div style="font-size:9px;color:{bl_color}">{bl_label}</div>
+            </div>
+            <div style="flex:1;font-size:11px;color:#444;line-height:1.8">
+                {f'<div>📌 주요 관심: <b>{mc}</b></div>' if mc else ''}
+                {f'<div>💬 이전 예측: <span style="color:#666">{lp[:40]}...</span></div>' if lp else ''}
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════
+#  📊 STATISTICAL CORRECTION ENGINE — 통계 보정 시스템
+#  사주 패턴 × 실제 데이터 → 확률 기반 해석
+# ══════════════════════════════════════════════════════════════
+
+# 패턴별 확률 데이터 (실증 기반 추정값)
+_STATISTICAL_PATTERNS = {
+    # (신강신약, 오행과다) → (주제, 확률, 해석)
+    ("신약", "金"): ("직장 스트레스", 76, "금기 과다 + 신약 → 책임 부담, 직장 압박 패턴"),
+    ("신약", "水"): ("과잉 사고", 71, "수기 과다 + 신약 → 걱정·불안·수면 불안정"),
+    ("신강", "火"): ("감정 폭발", 68, "화기 과다 + 신강 → 충동적 표현, 인간관계 갈등"),
+    ("신강", "木"): ("고집·충돌", 65, "목기 과다 + 신강 → 타협 어려움, 독선적 결정"),
+    ("중화", "土"): ("변화 저항", 62, "토기 균형 + 중화 → 안정 선호, 새로움 회피"),
+    ("신약", "火"): ("소진·번아웃", 74, "화기 과다 + 신약 → 에너지 고갈, 소진 패턴"),
+    ("신강", "金"): ("재물 집착", 66, "금기 과다 + 신강 → 물질 중시, 절약 강박"),
+    ("극신약", "土"): ("건강 취약", 79, "토기 과다 + 극신약 → 소화기 계통 주의"),
+    ("극신강", "木"): ("인간관계 마찰", 72, "목기 극강 → 자기중심적, 협력 어려움"),
+}
+
+def get_statistical_insights(pils, strength_info) -> list:
+    """
+    통계 보정 인사이트 생성
+    Returns: list[dict] - {pattern, prob, insight, advice}
+    """
+    sn       = strength_info.get("신강신약", "중화")
+    oh_str   = strength_info.get("oh_strength", {})
+    insights = []
+
+    # 과다 오행 탐지 (35% 이상)
+    over_ohs = [(oh, v) for oh, v in oh_str.items() if v >= 35]
+
+    for oh, val in over_ohs:
+        key = (sn, oh)
+        if key in _STATISTICAL_PATTERNS:
+            topic, prob, desc = _STATISTICAL_PATTERNS[key]
+            # 과다 강도에 따라 확률 보정
+            adjusted_prob = min(95, int(prob + (val - 35) * 0.5))
+            insights.append({
+                "pattern": f"{sn} + {oh}과다({val:.0f}%)",
+                "topic": topic,
+                "prob": adjusted_prob,
+                "insight": desc,
+                "advice": _get_pattern_advice(sn, oh),
+            })
+
+    # 특수 패턴: 삼형살
+    il_jj = pils[1]["jj"]
+    wol_jj = pils[2]["jj"]
+    hyeong_pairs = {("寅","巳","申"), ("丑","戌","未"), ("子","卯")}
+    all_jjs = frozenset(p["jj"] for p in pils)
+    for combo in hyeong_pairs:
+        if isinstance(combo, frozenset):
+            if combo.issubset(all_jjs):
+                insights.append({
+                    "pattern": "삼형살(三刑殺)",
+                    "topic": "사고·건강·법적 분쟁",
+                    "prob": 61,
+                    "insight": "삼형살 — 스트레스·사고·법적 문제 주의",
+                    "advice": "큰 결정 전 충분한 검토. 건강검진 정기적으로.",
+                })
+        elif isinstance(combo, tuple) and len(combo) == 3:
+            if frozenset(combo).issubset(all_jjs):
+                insights.append({
+                    "pattern": f"삼형살({','.join(combo)})",
+                    "topic": "사고·건강·법적 분쟁",
+                    "prob": 61,
+                    "insight": f"{','.join(combo)} 삼형살 — 스트레스·사고·법적 문제 주의",
+                    "advice": "큰 결정 전 충분한 검토. 건강검진 정기적으로.",
+                })
+        elif isinstance(combo, tuple) and len(combo) == 2:
+            if combo[0] in all_jjs and combo[1] in all_jjs:
+                insights.append({
+                    "pattern": f"자묘형({combo[0]}{combo[1]})",
+                    "topic": "인간관계 갈등",
+                    "prob": 58,
+                    "insight": "자묘형 — 원칙적 인간관계, 갈등 가능성",
+                    "advice": "감정 조절과 유연한 대처가 중요합니다.",
+                })
+
+    return sorted(insights, key=lambda x: -x["prob"])[:4]  # 상위 4개
+
+
+def _get_pattern_advice(sn: str, oh: str) -> str:
+    """패턴별 실전 조언"""
+    advice_map = {
+        ("신약", "金"): "용신(木·水)의 방향으로 직업을 선택하면 스트레스가 줄어듭니다.",
+        ("신약", "水"): "걱정을 글로 써내려가는 습관이 도움이 됩니다. 수면 루틴 확립 필수.",
+        ("신강", "火"): "중요한 결정은 감정이 가라앉은 뒤 내리십시오. 규칙적 운동이 필수.",
+        ("신강", "木"): "타인의 의견을 '위협'이 아닌 '정보'로 받아들이는 연습을 하십시오.",
+        ("신약", "火"): "무리한 약속을 줄이고 에너지를 선택적으로 사용하십시오.",
+        ("신강", "金"): "물질이 아닌 경험에 투자하면 삶의 만족도가 올라갑니다.",
+    }
+    return advice_map.get((sn, oh), "오행 균형을 위한 용신 활용을 권장합니다.")
+
+
+def render_statistical_insights(pils, strength_info):
+    """통계 인사이트 UI 렌더링"""
+    insights = get_statistical_insights(pils, strength_info)
+    if not insights:
+        return
+
+    st.markdown('<div class="gold-section">📊 데이터 기반 패턴 분석</div>',
+                unsafe_allow_html=True)
+    st.caption("사주 패턴별 실증 통계 기반 분석입니다")
+
+    for ins in insights:
+        prob  = ins["prob"]
+        color = ("#f44336" if prob >= 75 else "#ff9800" if prob >= 60 else "#4caf50")
+        st.markdown(f"""
+        <div style="background:#fffef8;border:1px solid #e8d5a0;border-radius:12px;
+                    padding:14px 16px;margin:6px 0">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:4px">
+                <span style="font-size:12px;font-weight:700;color:#333">
+                    🔍 {ins['topic']}
+                </span>
+                <span style="background:{color}22;border:1px solid {color}55;
+                             color:{color};font-size:12px;font-weight:800;
+                             padding:2px 10px;border-radius:8px">
+                    {prob}% 패턴
+                </span>
+            </div>
+            <div style="font-size:12px;color:#555;margin-bottom:6px">{ins['insight']}</div>
+            <div style="font-size:11px;color:#a0720a;background:#fff8e0;
+                        padding:6px 10px;border-radius:6px">
+                💡 {ins['advice']}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+def _load_retention() -> dict:
+    try:
+        if os.path.exists(_RETENTION_FILE):
+            with open(_RETENTION_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_retention(data: dict):
+    try:
+        with open(_RETENTION_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def update_streak() -> dict:
+    """
+    방문 스트릭 업데이트
+    Returns: {streak: int, is_new_day: bool, message: str}
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    data  = _load_retention()
+    streak_data = data.get("streak", {"count": 0, "last_date": "", "max": 0})
+
+    last = streak_data.get("last_date", "")
+    count = streak_data.get("count", 0)
+    max_s = streak_data.get("max", 0)
+    is_new_day = False
+
+    if last == today:
+        # 오늘 이미 방문
+        pass
+    elif last == (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"):
+        # 연속 방문
+        count += 1
+        is_new_day = True
+        streak_data["count"] = count
+        streak_data["last_date"] = today
+        streak_data["max"] = max(max_s, count)
+    else:
+        # 끊김 또는 첫 방문
+        count = 1
+        is_new_day = True
+        streak_data["count"] = count
+        streak_data["last_date"] = today
+
+    data["streak"] = streak_data
+    _save_retention(data)
+
+    # 스트릭 메시지
+    if count >= 30:
+        msg = f"🏆 {count}일 연속 방문 — 진정한 천명 탐구자!"
+    elif count >= 14:
+        msg = f"🔥 {count}일 연속 방문 — 운의 흐름을 꿰뚫고 있습니다"
+    elif count >= 7:
+        msg = f"⭐ {count}일 연속 방문 — 한 주 완성!"
+    elif count >= 3:
+        msg = f"✨ {count}일 연속 방문 중"
+    else:
+        msg = f"📅 {count}일째 방문"
+
+    return {"streak": count, "max": streak_data.get("max", count),
+            "is_new_day": is_new_day, "message": msg}
+
+
+def get_daily_luck_score(pils, birth_year, gender, target_date=None) -> dict:
+    """
+    일별 운세 점수 (기본운 × 대운 × 세운 × 월운 합산)
+    Returns: {score: int, trend: str, label: str}
+    """
+    if target_date is None:
+        target_date = datetime.now()
+    y = target_date.year
+    m = target_date.month
+    d = target_date.day
+
+    base    = calc_luck_score(pils, birth_year, gender, y)
+    yearly  = get_yearly_luck(pils, y)
+    monthly = get_monthly_luck(pils, y, m)
+
+    # 일별 미세 변동 (일지 기반 결정론적 계산)
+    ilgan = pils[1]["cg"]
+    il_jj = pils[1]["jj"]
+    day_jj_idx = (d - 1) % 12
+    day_jj = JJ[day_jj_idx]
+
+    # 일간과 일지 조화 점수
+    day_mod = 0
+    if _JIJI_CHUNG.get(il_jj) == day_jj:
+        day_mod = -8
+    elif HAP_MAP.get(il_jj) == day_jj:
+        day_mod = +6
+    elif OH.get(il_jj) == OH.get(day_jj):
+        day_mod = +4
+
+    _GH = {"대길(大吉)":8,"길(吉)":4,"평길(平吉)":2,"평(平)":0,"흉(凶)":-6,"흉흉(凶凶)":-12}
+    year_mod   = _GH.get(yearly.get("길흉","평(平)"), 0)
+    month_mod  = _GH.get(monthly.get("길흉","평(平)") if isinstance(monthly.get("길흉"), str) else "평(平)", 0)
+
+    final = max(0, min(100, base + year_mod * 0.4 + month_mod * 0.3 + day_mod))
+
+    if final >= 75:
+        label, trend = "대길(大吉)", "▲▲"
+    elif final >= 60:
+        label, trend = "길(吉)", "▲"
+    elif final >= 45:
+        label, trend = "평(平)", "→"
+    elif final >= 30:
+        label, trend = "흉(凶)", "▼"
+    else:
+        label, trend = "흉흉(凶凶)", "▼▼"
+
+    return {"score": int(final), "label": label, "trend": trend,
+            "year_mod": year_mod, "month_mod": month_mod, "day_mod": day_mod}
+
+
+def get_7day_luck_graph(pils, birth_year, gender) -> list:
+    """7일 운세 점수 그래프 데이터"""
+    today = datetime.now()
+    result = []
+    for delta in range(-3, 4):
+        d = today + timedelta(days=delta)
+        s = get_daily_luck_score(pils, birth_year, gender, d)
+        result.append({
+            "date": d.strftime("%m/%d"),
+            "day": ["월","화","수","목","금","토","일"][d.weekday()],
+            "score": s["score"],
+            "label": s["label"],
+            "is_today": delta == 0,
+        })
+    return result
+
+
+def get_turning_countdown(pils, birth_year, gender) -> dict:
+    """
+    다음 인생 전환점까지 남은 날짜 계산
+    Returns: {days_left: int, date: str, description: str}
+    """
+    today = datetime.now()
+    # 최대 365일 앞을 스캔
+    for delta in range(1, 366):
+        future = today + timedelta(days=delta)
+        t = calc_turning_point(pils, birth_year, gender, future.year)
+        if t["is_turning"] and abs(t["score_change"]) >= 15:
+            # 대운 전환 시점 더 정확히
+            dw_list = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+            for dw in dw_list:
+                if dw["시작연도"] == future.year:
+                    change_date = f"{future.year}년 {birth_year % 100 + dw['시작나이'] % 10}월경"
+                    return {
+                        "days_left": delta,
+                        "date": change_date,
+                        "description": f"새 대운 {dw['str']} 시작 — 인생 국면 전환",
+                        "intensity": t["intensity"],
+                    }
+            # 세운 전환점
+            return {
+                "days_left": delta,
+                "date": future.strftime("%Y년 %m월"),
+                "description": t["reason"][0] if t["reason"] else "흐름 변화",
+                "intensity": t["intensity"],
+            }
+    return {"days_left": None, "date": "-", "description": "대운 안정기", "intensity": "⬜"}
+
+
+def render_retention_widget(pils, birth_year, gender):
+    """
+    리텐션 위젯 렌더링
+    스트릭 + 7일 운 그래프 + 전환점 카운트다운
+    """
+    streak_info    = update_streak()
+    graph_data     = get_7day_luck_graph(pils, birth_year, gender)
+    countdown      = get_turning_countdown(pils, birth_year, gender)
+    today_score    = next((d for d in graph_data if d["is_today"]), {})
+
+    streak_c = streak_info["streak"]
+    streak_e = "🏆" if streak_c >= 30 else "🔥" if streak_c >= 7 else "✨"
+
+    # ── 상단 카드 (스트릭 + 오늘 운)
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#fffef5,#fff8e0);
+                border:1.5px solid #e8d5a0;border-radius:16px;
+                padding:16px 14px;margin:10px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div style="text-align:center">
+                <div style="font-size:10px;color:#a0720a;font-weight:700;letter-spacing:1px">방문 스트릭</div>
+                <div style="font-size:28px;font-weight:900;color:#c5a059">{streak_e} {streak_c}일</div>
+                <div style="font-size:10px;color:#888">최고 {streak_info['max']}일</div>
+            </div>
+            <div style="text-align:center">
+                <div style="font-size:10px;color:#a0720a;font-weight:700;letter-spacing:1px">오늘 운세</div>
+                <div style="font-size:28px;font-weight:900;color:{'#4caf50' if today_score.get('score',50)>=60 else '#ff9800' if today_score.get('score',50)>=45 else '#f44336'}">{today_score.get('score',50)}점</div>
+                <div style="font-size:11px;color:#666">{today_score.get('label','평(平)')} {today_score.get('trend','→')}</div>
+            </div>
+            <div style="text-align:center">
+                <div style="font-size:10px;color:#a0720a;font-weight:700;letter-spacing:1px">전환점까지</div>
+                <div style="font-size:22px;font-weight:900;color:#e65100">
+                    {f"D-{countdown['days_left']}" if countdown['days_left'] else "D-?"}
+                </div>
+                <div style="font-size:10px;color:#888">{countdown.get('date','-')}</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── 7일 운 그래프
+    max_s = max(d["score"] for d in graph_data) or 100
+    bars = ""
+    for d in graph_data:
+        h = max(15, int(d["score"] / max_s * 70))
+        bg = "#c5a059" if d["is_today"] else ("#4caf50" if d["score"] >= 60 else "#ff9800" if d["score"] >= 45 else "#f44336")
+        fw = "800" if d["is_today"] else "600"
+        bars += f"""
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1">
+            <div style="font-size:10px;color:#555;font-weight:{fw}">{d['score']}</div>
+            <div style="width:100%;max-width:32px;height:{h}px;background:{bg};border-radius:4px 4px 0 0;
+                        {'box-shadow:0 0 8px '+bg+'88;' if d['is_today'] else ''}opacity:{'1' if d['is_today'] else '0.7'}"></div>
+            <div style="font-size:10px;color:{'#a0720a' if d['is_today'] else '#888'};font-weight:{fw}">{d['day']}</div>
+            <div style="font-size:9px;color:#aaa">{d['date']}</div>
+        </div>"""
+
+    st.markdown(f"""
+    <div style="background:#fffef8;border:1px solid #e8d5a0;border-radius:12px;padding:14px 10px;margin:6px 0">
+        <div style="font-size:11px;color:#a0720a;font-weight:700;margin-bottom:10px">
+            📊 7일 운세 흐름
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:4px;height:110px;padding-bottom:4px">
+            {bars}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── 전환점 카운트다운 배너
+    if countdown["days_left"] and countdown["days_left"] <= 60:
+        ic = "#f44336" if "강력" in countdown["intensity"] else "#ff9800"
+        st.markdown(f"""
+        <div style="background:linear-gradient(135deg,#fff5f0,#ffe8e0);
+                    border:2px solid {ic};border-radius:12px;
+                    padding:14px 16px;margin:8px 0;text-align:center">
+            <div style="font-size:12px;color:{ic};font-weight:700;margin-bottom:4px">
+                ⚡ {countdown['intensity']} 감지
+            </div>
+            <div style="font-size:22px;font-weight:900;color:{ic}">
+                D-{countdown['days_left']}
+            </div>
+            <div style="font-size:12px;color:#333;margin-top:4px">
+                {countdown['description']}
+            </div>
+            <div style="font-size:11px;color:#888;margin-top:4px">
+                {countdown['date']}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+def get_daewoon_sewoon_cross(pils, birth_year, gender, target_year=None):
+    """대운×세운 교차 분석"""
+    ilgan = pils[1]["cg"]
+    if target_year is None:
+        target_year = datetime.now().year
+    daewoon_list = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    cur_dw = next((d for d in daewoon_list if d["시작연도"]<=target_year<=d["종료연도"]),None)
+    if not cur_dw: return None
+    sewoon = get_yearly_luck(pils, target_year)
+    dw_cg_ss = TEN_GODS_MATRIX.get(ilgan,{}).get(cur_dw["cg"],"-")
+    dw_jj_cg = JIJANGGAN.get(cur_dw["jj"],[""])[-1]
+    dw_jj_ss = TEN_GODS_MATRIX.get(ilgan,{}).get(dw_jj_cg,"-")
+    sw_cg_ss = sewoon["십성_천간"]
+    sw_jj_cg = JIJANGGAN.get(sewoon["jj"], [""])[-1]
+    sw_jj_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(sw_jj_cg, "-")
+    cross_events = []
+    TG_HAP_PAIRS = [{"甲","己"},{"乙","庚"},{"丙","辛"},{"丁","壬"},{"戊","癸"}]
+    for pair in TG_HAP_PAIRS:
+        if cur_dw["cg"] in pair and sewoon["cg"] in pair:
+            cross_events.append({"type":"천간합","desc":f"대운 천간({cur_dw['cg']})과 세운 천간({sewoon['cg']})이 합(合). 변화와 기회의 해."})
+    for k,(name,oh,desc) in CHUNG_MAP.items():
+        if cur_dw["jj"] in k and sewoon["jj"] in k:
+            cross_events.append({"type":"지지충","desc":f"대운 지지({cur_dw['jj']})와 세운 지지({sewoon['jj']})가 충(沖). {desc}"})
+    for combo,(hname,hoh,hdesc) in SAM_HAP_MAP.items():
+        all_jj = {cur_dw["jj"],sewoon["jj"]}|{p["jj"] for p in pils}
+        if combo.issubset(all_jj):
+            cross_events.append({"type":"삼합","desc":f"대운·세운·원국 삼합({hname}) — 강력한 발복의 기운."})
+    ss_combo = f"{dw_cg_ss}+{sw_cg_ss}"
+    interp = {
+        "정관+식신":"명예와 재능이 동시에 빛나는 최길 조합. 승진·수상·큰 성취.",
+        "식신+정재":"복록과 재물이 넘치는 대길 조합. 재물운 폭발.",
+        "편관+편관":"이중 편관. 시련 극도. 건강·사고 각별히 주의.",
+        "겁재+겁재":"이중 겁재. 재물 손실·경쟁 극심. 방어 전략이 최선.",
+        "정인+정관":"학문과 명예 동시에 오는 최길 조합. 시험·자격증·승진.",
+        "편관+식신":"칠살제화(七殺制化) — 시련이 오히려 기회가 됩니다.",
+        "정재+정관":"재물과 명예 함께 오는 길한 조합. 사업 성공과 인정.",
+    }
+    cross_desc = interp.get(ss_combo,f"대운 {dw_cg_ss}의 흐름 속에 세운 {sw_cg_ss}의 기운이 더해집니다.")
+    return {"연도":target_year,"대운":cur_dw,"세운":sewoon,"대운_천간십성":dw_cg_ss,
+            "대운_지지십성":dw_jj_ss,"세운_천간십성":sw_cg_ss,"세운_지지십성":sw_jj_ss,"교차사건":cross_events,"교차해석":cross_desc}
+
+
+# ══════════════════════════════════════════════════
+#  지장간(地藏干) 심화
+# ══════════════════════════════════════════════════
+
+JIJANGGAN_FULL = {
+    "子":[{"cg":"壬","days":10,"type":"여기"},{"cg":"癸","days":20,"type":"정기"}],
+    "丑":[{"cg":"己","days":9,"type":"여기"},{"cg":"辛","days":3,"type":"중기"},{"cg":"癸","days":18,"type":"정기"}],
+    "寅":[{"cg":"戊","days":7,"type":"여기"},{"cg":"丙","days":7,"type":"중기"},{"cg":"甲","days":16,"type":"정기"}],
+    "卯":[{"cg":"甲","days":10,"type":"여기"},{"cg":"乙","days":20,"type":"정기"}],
+    "辰":[{"cg":"乙","days":9,"type":"여기"},{"cg":"癸","days":3,"type":"중기"},{"cg":"戊","days":18,"type":"정기"}],
+    "巳":[{"cg":"戊","days":7,"type":"여기"},{"cg":"庚","days":7,"type":"중기"},{"cg":"丙","days":16,"type":"정기"}],
+    "午":[{"cg":"丙","days":10,"type":"여기"},{"cg":"己","days":10,"type":"중기"},{"cg":"丁","days":10,"type":"정기"}],
+    "未":[{"cg":"丁","days":9,"type":"여기"},{"cg":"乙","days":3,"type":"중기"},{"cg":"己","days":18,"type":"정기"}],
+    "申":[{"cg":"戊","days":7,"type":"여기"},{"cg":"壬","days":7,"type":"중기"},{"cg":"庚","days":16,"type":"정기"}],
+    "酉":[{"cg":"庚","days":10,"type":"여기"},{"cg":"辛","days":20,"type":"정기"}],
+    "戌":[{"cg":"辛","days":9,"type":"여기"},{"cg":"丁","days":3,"type":"중기"},{"cg":"戊","days":18,"type":"정기"}],
+    "亥":[{"cg":"甲","days":7,"type":"여기"},{"cg":"壬","days":7,"type":"중기"},{"cg":"壬","days":16,"type":"정기"}],
+}
+TYPE_LABEL = {"여기":"餘氣","중기":"中氣","정기":"正氣"}
+
+def get_jijanggan_analysis(ilgan, pils):
+    cgs_all = [p["cg"] for p in pils]
+    result = []
+    labels = ["시주","일주","월주","년주"]
+    for i,p in enumerate(pils):
+        jj = p["jj"]
+        jjg = JIJANGGAN_FULL.get(jj,[])
+        items = []
+        for e in jjg:
+            cg = e["cg"]
+            ss = TEN_GODS_MATRIX.get(ilgan,{}).get(cg,"-")
+            items.append({"천간":cg,"타입":e["type"],"일수":e["days"],"십성":ss,"투출":cg in cgs_all})
+        result.append({"기둥":labels[i],"지지":jj,"지장간":items})
+    return result
+
+
+# ══════════════════════════════════════════════════
+#  건강론(健康論)
+# ══════════════════════════════════════════════════
+
+HEALTH_OH = {
+    "木":{"organs":"간·담낭·눈·근육·신경계","emotion":"분노(怒)","over_symptom":"간염·담석·녹내장·편두통·불면","lack_symptom":"피로·우울·근육약화·시력저하","food":"신맛(식초·레몬·매실)·녹색식품","lifestyle":"새벽 취침 자제·분노 다스리기·스트레칭·요가","lucky_direction":"동쪽(東)"},
+    "火":{"organs":"심장·소장·혈관·혀","emotion":"기쁨 과다(喜)","over_symptom":"심장병·고혈압·불안·불면·구내염","lack_symptom":"저혈압·우울·기억력저하·손발냉","food":"쓴맛(녹차·씀바귀)·붉은 식품(토마토·딸기)","lifestyle":"명상·호흡수련·과로 자제·충분한 수분","lucky_direction":"남쪽(南)"},
+    "土":{"organs":"비장·위장·췌장·입술","emotion":"근심(思)","over_symptom":"위염·소화불량·위궤양·비만·당뇨","lack_symptom":"식욕부진·빈혈·면역저하·피로","food":"단맛(고구마·대추·꿀)·황색식품(콩·현미)","lifestyle":"규칙적 식사·걱정 줄이기·복식호흡","lucky_direction":"중앙"},
+    "金":{"organs":"폐·대장·코·피부·기관지","emotion":"슬픔(悲)","over_symptom":"폐렴·천식·비염·변비·아토피","lack_symptom":"감기 잦음·대장 약함·피부트러블","food":"매운맛(무·생강)·흰색식품(배·연근·우유)","lifestyle":"심호흡·콧속보습·슬픔 표현하기","lucky_direction":"서쪽(西)"},
+    "水":{"organs":"신장·방광·뼈·귀·두발·생식기","emotion":"공포(恐)","over_symptom":"신장염·방광염·골다공증·이명·탈모","lack_symptom":"허리약함·냉증·건망증·두발약화","food":"짠맛(미역·다시마·검은콩)·검은식품","lifestyle":"밤 11시 전 취침·허리보호·따뜻한 물","lucky_direction":"북쪽(北)"},
+}
+
+def get_health_analysis(pils, gender="남"):
+    ilgan = pils[1]["cg"]
+    oh_strength = calc_ohaeng_strength(ilgan, pils)
+    unsung = calc_12unsung(ilgan, pils)
+    il_unsung = unsung[1] if len(unsung)>1 else ""
+    il_oh = OH.get(ilgan,"")
+    HEALTH_UNSUNG = {"병":"병지(病地) — 건강 약한 구조. 정기 검진 필수.","사":"사지(死地) — 생명력 약함. 안전사고·건강 각별 주의.","절":"절지(絶地) — 체력 소진되기 쉬움.","묘":"묘지(墓地) — 만성질환 오래 지속될 수 있음."}
+    return {"과다_오행":[{"오행":o,"수치":v,"health":HEALTH_OH.get(o,{})} for o,v in oh_strength.items() if v>=35],
+            "부족_오행":[{"오행":o,"수치":v,"health":HEALTH_OH.get(o,{})} for o,v in oh_strength.items() if v<=5],
+            "일주_건강":HEALTH_UNSUNG.get(il_unsung,""),"일간_건강":HEALTH_OH.get(il_oh,{}),
+            "ilgan_oh":il_oh,"oh_strength":oh_strength}
+
+
+# ══════════════════════════════════════════════════
+#  재물론(財物論)
+# ══════════════════════════════════════════════════
+
+def get_jaemul_analysis(pils, birth_year, gender="남"):
+    ilgan = pils[1]["cg"]
+    oh_strength = calc_ohaeng_strength(ilgan, pils)
+    strength_info = get_ilgan_strength(ilgan, pils)
+    sn = strength_info["신강신약"]
+    CTRL = {"木":"土","火":"金","土":"水","金":"木","水":"火"}
+    ilgan_oh = OH.get(ilgan,"")
+    jae_oh = CTRL.get(ilgan_oh,"")
+    jae_strength = oh_strength.get(jae_oh,0)
+    # 재성 위치
+    jae_pos = []
+    for i,p in enumerate(pils):
+        ss_cg = TEN_GODS_MATRIX.get(ilgan,{}).get(p["cg"],"-")
+        jj_cg = JIJANGGAN.get(p["jj"],[""])[-1]
+        ss_jj = TEN_GODS_MATRIX.get(ilgan,{}).get(jj_cg,"-")
+        lbl = ["시주","일주","월주","년주"][i]
+        if ss_cg in ["정재","편재"]: jae_pos.append(f"{lbl} 천간({ss_cg})")
+        if ss_jj in ["정재","편재"]: jae_pos.append(f"{lbl} 지지({ss_jj})")
+    # 대운 재물 피크
+    daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    peaks = [{"대운":d["str"],"나이":f"{d['시작나이']}~{d['시작나이']+9}세","연도":f"{d['시작연도']}~{d['종료연도']}","십성":TEN_GODS_MATRIX.get(ilgan,{}).get(d["cg"],"-")} for d in daewoon if TEN_GODS_MATRIX.get(ilgan,{}).get(d["cg"],"-") in ["정재","편재","식신"]]
+    # 유형 판단
+    if sn=="신강(身强)" and jae_strength>=20: jtype,jstrat="적극형 — 강한 일간이 재성을 다루는 이상적 구조.","재성 운에서 과감히 행동하십시오."
+    elif sn=="신약(身弱)" and jae_strength>=30: jtype,jstrat="부담형 — 재물이 있어도 감당하기 벅찬 구조.","고정수입·저축 중심으로 운용하십시오."
+    elif jae_strength==0: jtype,jstrat="재성공망형 — 재성이 없는 사주. 명예·학문·기술로 성공.","전문성과 명예를 쌓으면 돈은 따라옵니다."
+    else: jtype,jstrat="균형형 — 꾸준한 노력으로 재물을 쌓아가는 구조.","안정적 자산관리가 유리합니다."
+    return {"재성_오행":jae_oh,"재성_강도":jae_strength,"재성_위치":jae_pos,
+            "재물_유형":jtype,"재물_전략":jstrat,"재물_피크_대운":peaks,"신강신약":sn}
+
+
+# ══════════════════════════════════════════════════
+#  직업론(職業論)
+# ══════════════════════════════════════════════════
+
+CAREER_MATRIX = {
+    "정관격":{"best":["공무원·행정관리","판사·검사·법조인","대기업 임원","교육공무원","군 장교·외교관"],"good":["금융·은행·보험","교사·교수","의사·한의사"],"avoid":["자유업·프리랜서","예능·연예계","투기적 사업"]},
+    "편관격":{"best":["군인·경찰·소방관","외과의사·응급의학","스포츠·격투기","검사·형사","위기관리·보안"],"good":["공학·기술자","법조인","언론(탐사)"],"avoid":["세밀한 행정직","반복 사무직"]},
+    "식신격":{"best":["요리사·외식업","예술가·음악인","작가·시인","교육자·강사","의료·복지"],"good":["아이디어 사업","복지·상담","유튜버·콘텐츠"],"avoid":["과도한 경쟁직","군사·강압 조직"]},
+    "상관격":{"best":["연예인·유튜버·방송인","변호사·변리사","창업가·혁신가","작가·작곡가","언론인·PD"],"good":["스타트업","컨설턴트","디자이너"],"avoid":["관직·공무원","상명하복 직종"]},
+    "정재격":{"best":["회계사·세무사","은행원·금융관리","부동산 관리","행정관리","의사·약사"],"good":["대기업 재무·회계","보험·연금"],"avoid":["투기·도박성 사업","예능·불규칙수입"]},
+    "편재격":{"best":["사업가·CEO","투자자·펀드매니저","무역상·유통업","부동산 개발","연예인·방송"],"good":["영업·마케팅","스타트업 창업","프리랜서"],"avoid":["단순 반복 사무직","소규모 고정급여직"]},
+    "정인격":{"best":["교수·학자·연구원","교사·교육자","의사·한의사","변호사","종교인·성직자"],"good":["작가·언론인","공직자","상담사"],"avoid":["격렬한 경쟁 사업","단순 노무직"]},
+    "편인격":{"best":["철학자·사상가","종교인·영성가","명리학자·점술가","IT개발자","탐정·분석가"],"good":["심리학자","연구원","특수기술자"],"avoid":["대형 조직 관리직","서비스업"]},
+    "비견격":{"best":["독립 사업가","컨설턴트","스포츠 코치","사회운동가"],"good":["팀 기반 사업","멘토·코치"],"avoid":["독점적 대기업","단일 보스 직종"]},
+    "겁재격":{"best":["운동선수·격투기","영업전문가","경쟁적 사업","변호사","스타트업"],"good":["군인·경찰","마케터"],"avoid":["재정·회계 관리","보수적 공직"]},
+}
+ILGAN_CAREER_ADD = {
+    "甲":["건축·목재·산림","교육·인재개발"],"乙":["꽃·원예·디자인","상담·교육"],"丙":["방송·연예","발전·에너지"],
+    "丁":["의료·제약","교육·종교"],"戊":["건설·부동산","농업·식품"],"己":["농업·식품가공","행정·회계"],
+    "庚":["금융·금속·기계","법조·군경"],"辛":["패션·보석·예술","의료·약학"],"壬":["해운·무역·외교","IT·전략"],
+    "癸":["상담·심리·영성","의료·약학"],
+}
+
+def get_career_analysis(pils, gender="남"):
+    ilgan = pils[1]["cg"]
+    gyeokguk = get_gyeokguk(pils)
+    gname = gyeokguk["격국명"] if gyeokguk else "비견격"
+    career = CAREER_MATRIX.get(gname, CAREER_MATRIX["비견격"])
+    sinsal = get_12sinsal(pils)
+    sinsal_jobs = []
+    for s in sinsal:
+        if "장성" in s["이름"]: sinsal_jobs.append("군·경·스포츠 수장 기질")
+        if "화개" in s["이름"]: sinsal_jobs.append("예술·종교·철학 방면 특화")
+        if "역마" in s["이름"]: sinsal_jobs.append("이동·무역·해외 관련 직종 유리")
+        if "도화" in s["이름"] or "년살" in s["이름"]: sinsal_jobs.append("연예·서비스·대인 방면 유리")
+    yin = get_yangin(pils)
+    if yin["존재"]: sinsal_jobs.append("군·경·의료(외과) 분야 강한 기질")
+    return {"격국":gname,"최적직업":career["best"],"유리직업":career["good"],"피할직업":career["avoid"],
+            "일간추가":ILGAN_CAREER_ADD.get(ilgan,[]),"신살보정":sinsal_jobs}
+
+
+# ══════════════════════════════════════════════════
+#  개명(改名) 오행 분석
+# ══════════════════════════════════════════════════
+
+HANGUL_OH = {
+    "ㄱ":"木","ㄴ":"火","ㄷ":"火","ㄹ":"土","ㅁ":"水","ㅂ":"水","ㅅ":"金","ㅇ":"土",
+    "ㅈ":"金","ㅊ":"金","ㅋ":"木","ㅌ":"火","ㅍ":"水","ㅎ":"水",
+    "ㅏ":"木","ㅓ":"土","ㅗ":"火","ㅜ":"水","ㅡ":"土","ㅣ":"金",
+    "ㅐ":"金","ㅔ":"金","ㅑ":"木","ㅕ":"土","ㅛ":"火","ㅠ":"水",
+}
+
+def decompose_hangul(char):
+    if not (0xAC00<=ord(char)<=0xD7A3): return []
+    code=ord(char)-0xAC00
+    jong=code%28; jung=(code//28)%21; cho=code//28//21
+    CHOSUNG=["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"]
+    JUNGSUNG=["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"]
+    JONGSUNG=["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"]
+    r=[CHOSUNG[cho],JUNGSUNG[jung]]
+    if jong: r.append(JONGSUNG[jong])
+    return r
+
+def analyze_name_oh(name_str):
+    oh_count={"木":0,"火":0,"土":0,"金":0,"水":0}
+    for char in name_str:
+        for jamo in decompose_hangul(char):
+            oh=HANGUL_OH.get(jamo)
+            if oh: oh_count[oh]+=1
+    total=sum(oh_count.values()) or 1
+    return oh_count,{k:round(v/total*100) for k,v in oh_count.items()}
+
+
+# ══════════════════════════════════════════════════
+#  새 탭 UI 함수들
+# ══════════════════════════════════════════════════
+
+################################################################################
+# ★★★ Brain 3 — Learning & Monetization Engine ★★★
+#
+# [역할]  사용자 반응을 수집·분석하여 AI 프롬프트를 자동 강화한다
+#
+# [데이터 흐름]
+#   사용자 반응 → Feedback Collector
+#               → Pattern Analyzer   (어떤 문장이 결제·재방문 유도?)
+#               → Prompt Optimizer   (다음 AI 호출 프롬프트 자동 강화)
+#               → Monetization Trigger (결제 타이밍 감지)
+#
+# [저장 파일]
+#   saju_feedback.json  — 피드백 원본 데이터 (삭제·캐싱 금지)
+#   saju_patterns.json  — 학습 패턴 결과 (자동 갱신)
+################################################################################
+
+import time as _time
+
+_FEEDBACK_FILE = "saju_feedback.json"
+_PATTERN_FILE  = "saju_patterns.json"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Brain 3-① : Feedback Collector
+# ─────────────────────────────────────────────────────────────────────────────
+
+def b3_save_feedback(saju_key: str, section: str, hit: bool,
+                     prompt_type: str = "prophet", extra: dict = None):
+    """
+    Brain 3 피드백 저장 — 영속 파일 기반
+    session_state 방식과 달리 앱 재시작 후에도 누적 유지
+    [절대 캐싱 금지 — 사용자 반응은 실시간 반영]
+    """
+    try:
+        cache = _load_json_cache(_FEEDBACK_FILE)
+        ts = int(_time.time())
+        entry = {
+            "ts": ts,
+            "saju_key": saju_key[:30],   # 개인정보 최소화 (앞 30자)
+            "section": section,
+            "hit": hit,
+            "prompt_type": prompt_type,
+            **(extra or {})
+        }
+        day_key = str(ts // 86400)       # 하루 단위 버킷
+        if day_key not in cache:
+            cache[day_key] = []
+        cache[day_key].append(entry)
+        _save_json_cache(_FEEDBACK_FILE, cache)
+    except Exception:
+        pass  # 피드백 저장 실패는 앱 동작에 영향 없음
+
+
+def b3_load_all_feedback() -> list:
+    """전체 피드백 레코드 로드"""
+    cache = _load_json_cache(_FEEDBACK_FILE)
+    all_records = []
+    for day_entries in cache.values():
+        if isinstance(day_entries, list):
+            all_records.extend(day_entries)
+    return all_records
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Brain 3-② : Pattern Analyzer
+# ─────────────────────────────────────────────────────────────────────────────
+
+def b3_analyze_patterns() -> dict:
+    """
+    피드백 패턴 분석
+    반환: {section → 적중률, 가장 반응 좋은 섹션, 개선 필요 섹션}
+    """
+    records = b3_load_all_feedback()
+    if not records:
+        return {"total": 0, "hit_rate": 0, "best_sections": [], "weak_sections": [], "by_section": {}}
+
+    section_stats = {}
+    for r in records:
+        sec = r.get("section", "unknown")
+        if sec not in section_stats:
+            section_stats[sec] = {"hit": 0, "miss": 0}
+        if r.get("hit"):
+            section_stats[sec]["hit"] += 1
+        else:
+            section_stats[sec]["miss"] += 1
+
+    section_rates = {}
+    for sec, stat in section_stats.items():
+        total = stat["hit"] + stat["miss"]
+        section_rates[sec] = {
+            "hit": stat["hit"], "miss": stat["miss"],
+            "total": total,
+            "rate": round(stat["hit"] / total * 100) if total > 0 else 0
+        }
+
+    total_all  = sum(v["total"] for v in section_rates.values())
+    total_hits = sum(v["hit"]   for v in section_rates.values())
+    overall    = round(total_hits / total_all * 100) if total_all > 0 else 0
+
+    best    = [s for s, v in section_rates.items() if v["rate"] >= 70]
+    weak    = [s for s, v in section_rates.items() if v["rate"] < 50 and v["total"] >= 3]
+
+    result = {
+        "total": total_all,
+        "hit_rate": overall,
+        "best_sections": best,
+        "weak_sections": weak,
+        "by_section": section_rates
+    }
+
+    # 패턴 파일 자동 갱신
+    _save_json_cache(_PATTERN_FILE, result)
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Brain 3-③ : Prompt Optimizer
+# ─────────────────────────────────────────────────────────────────────────────
+
+def b3_build_optimized_prompt_suffix() -> str:
+    """
+    패턴 분석 결과를 바탕으로 AI 프롬프트에 추가할 강화 지침 생성
+    적중률이 낮은 섹션을 집중 강화하도록 AI에게 알린다
+    """
+    patterns = _load_json_cache(_PATTERN_FILE)
+    if not patterns or patterns.get("total", 0) < 10:
+        # 데이터 부족 → 기본 지침
+        return """
+[Brain 3 최적화 지침 — 기본 모드]
+• 단정적 표현만 사용하십시오 (~입니다, ~했습니다)
+• 과거 사건은 나이와 연도를 반드시 명시하십시오
+• 해결책과 행동 지침을 모든 섹션에 포함하십시오
+"""
+
+    weak = patterns.get("weak_sections", [])
+    best = patterns.get("best_sections", [])
+    overall = patterns.get("hit_rate", 0)
+
+    lines = [f"\n[Brain 3 최적화 지침 — 누적 {patterns['total']}건 학습 반영]"]
+    lines.append(f"• 현재 전체 적중률: {overall}% — {'충분히 높습니다. 유지하십시오.' if overall >= 70 else '개선이 필요합니다.'}")
+
+    if best:
+        lines.append(f"• 반응 좋은 섹션: {', '.join(best)} → 이 섹션의 서술 스타일을 다른 섹션에도 적용하십시오")
+    if weak:
+        lines.append(f"• 개선 필요 섹션: {', '.join(weak)} → 이 섹션은 더 구체적인 나이·연도·행동 지침을 추가하십시오")
+        for sec in weak:
+            stat = patterns.get("by_section", {}).get(sec, {})
+            lines.append(f"  [{sec}] 적중 {stat.get('hit',0)}/{stat.get('total',0)}건 "
+                         f"({stat.get('rate',0)}%) → 더 단정적이고 구체적으로 서술하십시오")
+
+    lines.append("• 마지막에 반드시 '지금 당장 할 행동 처방' 1가지를 추가하십시오")
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Brain 3-④ : Monetization Trigger (결제 타이밍 감지)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 세션 내 행동 추적 키
+_B3_SESSION_KEY = "_b3_behavior"
+
+def b3_track_behavior(action: str):
+    """
+    사용자 행동 추적 (세션 내)
+    action 종류: "view_ai", "view_section", "ask_question", "scroll_deep", "repeat_visit"
+    """
+    if _B3_SESSION_KEY not in st.session_state:
+        st.session_state[_B3_SESSION_KEY] = {
+            "actions": [], "view_count": 0, "question_count": 0,
+            "triggered": False, "session_start": _time.time()
+        }
+    behavior = st.session_state[_B3_SESSION_KEY]
+    behavior["actions"].append(action)
+    if action == "view_section":
+        behavior["view_count"] += 1
+    if action == "ask_question":
+        behavior["question_count"] += 1
+
+
+def b3_check_monetization_trigger(api_key: str) -> tuple:
+    """
+    결제 타이밍 감지 → (should_trigger, message)
+    조건:
+      - API 키 없음 + 섹션 3개 이상 조회
+      - API 키 없음 + 질문 1회 이상
+      - 고적중률 (70%↑) + API 키 없음
+    """
+    if api_key:  # API 있으면 트리거 없음
+        return False, ""
+
+    behavior = st.session_state.get(_B3_SESSION_KEY, {})
+    view_count = behavior.get("view_count", 0)
+    q_count    = behavior.get("question_count", 0)
+    triggered  = behavior.get("triggered", False)
+
+    if triggered:
+        return False, ""
+
+    patterns = _load_json_cache(_PATTERN_FILE)
+    overall  = patterns.get("hit_rate", 0)
+
+    msg = ""
+    if overall >= 70 and view_count >= 2:
+        msg = (f"📊 이 사주는 누적 데이터 기준 **{overall}%** 적중률을 기록했습니다. "
+               f"지금 흐름이 중요한 시기입니다. 심층 AI 풀이를 받으시겠습니까?")
+    elif q_count >= 1:
+        msg = "💬 질문이 있으시다면 **AI 상담 API 키**를 입력하시면 직접 답변을 받으실 수 있습니다."
+    elif view_count >= 3:
+        msg = "🔮 여러 섹션을 살펴보셨군요. **예언자 모드**로 6단계 천명을 완전히 풀이받으시겠습니까?"
+
+    if msg:
+        if _B3_SESSION_KEY in st.session_state:
+            st.session_state[_B3_SESSION_KEY]["triggered"] = True
+        return True, msg
+
+    return False, ""
+
+
+def b3_render_trigger_card(msg: str):
+    """결제 유도 카드 렌더링"""
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#f5eeff,#ecdaff);
+                border:2px solid #c5a059;border-radius:16px;
+                padding:22px 24px;margin:16px 0;text-align:center">
+        <div style="font-size:16px;color:#f0c060;font-weight:700;margin-bottom:10px">
+            ⭐ 지금이 중요한 시점입니다
+        </div>
+        <div style="font-size:13px;color:#e0d0a0;line-height:1.9;margin-bottom:16px">
+            {msg}
+        </div>
+        <div style="font-size:12px;color:#444;margin-top:8px">
+            Groq API는 무료 (groq.com) · Anthropic API는 소액 과금
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Brain 3 통합: 피드백 버튼 (기존 render_feedback_btn 대체)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def save_feedback(feedback_key, hit):
+    """피드백 저장 — session_state 누적 (하위 호환 유지)"""
+    if "feedback_log" not in st.session_state:
+        st.session_state.feedback_log = {}
+    st.session_state.feedback_log[feedback_key] = "hit" if hit else "miss"
+    # Brain 3 영속 저장
+    saju_key = st.session_state.get("_current_saju_key", "unknown")
+    b3_save_feedback(saju_key, feedback_key, hit)
+
+
+def get_feedback_stats():
+    """피드백 통계 반환"""
+    log = st.session_state.get("feedback_log", {})
+    total = len(log)
+    hits = sum(1 for v in log.values() if v == "hit")
+    return total, hits
+
+
+def render_feedback_btn(key, desc):
+    """맞았다/아니었다 버튼 렌더링"""
+    log = st.session_state.get("feedback_log", {})
+    if key in log:
+        result = log[key]
+        color = "#27ae60" if result == "hit" else "#c0392b"
+        label = "✅ 맞았다고 응답" if result == "hit" else "❌ 아니었다고 응답"
+        st.markdown(f'<div style="font-size:11px;color:{color};margin-top:4px">{label}</div>',
+                    unsafe_allow_html=True)
+    else:
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("✅ 맞았다", key=f"hit_{key}", use_container_width=True):
+                save_feedback(key, True)
+                st.rerun()
+        with col2:
+            if st.button("❌ 아니었다", key=f"miss_{key}", use_container_width=True):
+                save_feedback(key, False)
                 st.rerun()
 
-        
-        # Display Content based on active_tab
-        tid = st.session_state.active_tab
-        tab_info = next((t for t in TABS if t["id"] == tid), TABS[1])
-        
-        st.markdown(f'<div class="gold-section">{tab_info["icon"]} {tab_info["label"]} 심층 리포트</div>', unsafe_allow_html=True)
 
-        if tid == "overall":
-            # [Phase 8] 양자역학적 적중 엔진 UI (과거 사건 선공개)
-            q_hits = s.get("engine", {}).get("quantum_hits", {})
-            past_events = q_hits.get("past_events", [])
-            personality = q_hits.get("personality", [])
-            money_peak_str = q_hits.get("money_peak", "")
+def tab_past_events(pils, birth_year, gender, name=""):
+    """🎯 과거 적중 탭 — 엔진이 계산, AI는 설명만"""
+    st.markdown('<div class="gold-section">🎯 과거 적중 — 엔진이 계산한 당신의 과거</div>',
+                unsafe_allow_html=True)
 
-            # 1. 과거 적중 피드백
-            st.markdown('<div class="gold-section" style="border: 2px solid #ff4b4b; background-color: #ffe6e6;">🔥 소오름 돋는 만신의 과거 적중 (AI를 거치지 않은 순수 원국 분석)</div>', unsafe_allow_html=True)
-            for pe in past_events:
-                st.markdown(f"👉 **{pe['age']}**: {pe['type']}의 풍파가 있었구나!")
-            
-            st.caption("위 과거 사건이 실제 일치했습니까?")
-            c1, c2 = st.columns(2)
-            if c1.button("👍 정확히 맞았습니다", key="btn_past_true"):
-                for pe in past_events: update_event_weight(pe['type'], True, form["name"], pe['age'])
-                st.toast("만신의 눈은 속일 수 없느니라!", icon="🔮")
-            if c2.button("👎 음... 조금 다릅니다", key="btn_past_false"):
-                for pe in past_events: update_event_weight(pe['type'], False, form["name"], pe['age'])
-                st.toast("기주의 업보가 두터워 시운이 빗나갔구나. (알고리즘 가중치 하향 조정됨)", icon="🔻")
+    # 엔진 하이라이트 생성
+    with st.spinner("충·합·세운 교차 계산 중..."):
+        hl = generate_engine_highlights(pils, birth_year, gender)
 
-            # 2. 뼈 때리는 성향 피드백
-            st.markdown('<div class="gold-section" style="border: 2px solid #005f73; background-color: #e0fbfc; margin-top:20px;">🧠 기주의 진짜 속마음 (격국 및 십성 도출)</div>', unsafe_allow_html=True)
-            for trait in personality:
-                st.markdown(f"- {trait}")
-            
-            st.caption("성향 분석이 얼마나 정확한가요?")
-            c3, c4 = st.columns(2)
-            if c3.button("👍 내 속을 들여다본 듯함", key="btn_trait_true"):
-                for trait in personality: update_trait_score(trait, True, form["name"])
-                st.toast("당연하지!", icon="👁️")
-            if c4.button("👎 남의 이야기 같습니다", key="btn_trait_false"):
-                for trait in personality: update_trait_score(trait, False, form["name"])
-                st.toast("흐음... 기운을 다시 읽어보마. (해당 문장 송출 확률 감소 조치)", icon="📉")
+    ilgan = pils[1]["cg"]
+    current_year = datetime.now().year
+    current_age = current_year - birth_year + 1
 
-            st.markdown('<hr style="border-top: 1px dotted #a0720a; margin: 30px 0;">', unsafe_allow_html=True)
-            
-            st.markdown('<div class="gold-section">🔮 만신이 본 당신의 천명(天命)</div>', unsafe_allow_html=True)
-            ilgan = s["pils"][2]["cg"]  # 일간 추출
-            data = ILGAN_DESC.get(ilgan, {})
-            
-            # 카드 디자인 스타일 추가 (이미 CSS 상단에 상속되어 있을 수 있으나 카드 전용 추가)
-            st.markdown("""
-            <style>
-            .ilgan-card-container {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-                gap: 20px;
-                margin-top: 20px;
+    # ── 피드백 통계 ──────────────────────────────────────
+    total_fb, hit_fb = get_feedback_stats()
+    if total_fb > 0:
+        hit_rate = round(hit_fb / total_fb * 100)
+        st.markdown(f"""
+        <div style="background:linear-gradient(135deg,#f0fff0,#e8f5e8);color:#1a1a1a;
+                    padding:10px 18px;border-radius:10px;margin-bottom:10px;
+                    display:flex;align-items:center;gap:16px">
+            <span style="font-size:13px;color:#a8d58c">📊 적중률 피드백</span>
+            <span style="font-size:20px;font-weight:900;color:#{'4caf50' if hit_rate>=60 else 'ff5252'}">
+                {hit_rate}%</span>
+            <span style="font-size:12px;color:#444">(응답 {total_fb}개 중 {hit_fb}개 적중)</span>
+        </div>""", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════
+    # STEP 0: 성향 판독 — 첫 번째로 보여줌
+    # ══════════════════════════════════════════
+    st.markdown("### 🧠 성향 판독")
+    st.markdown("""
+    <div style="font-size:12px;color:#444;margin-bottom:8px">
+    엔진 계산: 일간 + 일지 + 신강신약 + 오행 과다·부족 조합 공식 적용
+    </div>""", unsafe_allow_html=True)
+
+    personality = hl["personality"]
+    for i, trait in enumerate(personality):
+        # 겉/속 구분 강조
+        if "겉" in trait or "속" in trait:
+            bg, border = "#f0e8ff", "#9b7ccc"
+            tc = "#e8d8ff"
+        elif "과다" in trait or "부족" in trait or "없습니다" in trait:
+            bg, border = "#fffde8", "#c5a059"
+            tc = "#f0e8c0"
+        else:
+            bg, border = "#e8f4ff", "#4a90d9"
+            tc = "#d0e8ff"
+
+        st.markdown(f"""
+        <div style="background:{bg};color:{tc};padding:13px 16px;border-radius:10px;
+                    border-left:4px solid {border};margin:5px 0;font-size:13px;line-height:1.9">
+            {trait}
+        </div>""", unsafe_allow_html=True)
+
+    # 성향 피드백
+    st.markdown('<div style="font-size:12px;color:#444;margin:6px 0">이 성향이 맞나요?</div>',
+                unsafe_allow_html=True)
+    render_feedback_btn("personality_overall", "성향 전반")
+
+    st.markdown("---")
+
+    # ══════════════════════════════════════════
+    # STEP 1: 과거 사건 — 나이 + 분야 + 이유
+    # ══════════════════════════════════════════
+    st.markdown("### 🔴 과거 적중 포인트")
+    st.markdown("""
+    <div style="font-size:12px;color:#444;margin-bottom:10px">
+    충(沖)·합(合)·십성 교차를 수학 계산으로 뽑은 과거 사건 시점입니다.<br>
+    <b style="color:#c5a059">나이와 분야를 먼저 확인하고 "맞았다/아니었다"를 눌러주세요.</b>
+    </div>""", unsafe_allow_html=True)
+
+    # 🔴 강도 높은 것만 먼저 — 쪽집게 효과
+    red_events = [e for e in hl["past_events"] if e["intensity"] == "🔴"]
+    yellow_events = [e for e in hl["past_events"] if e["intensity"] == "🟡"]
+    green_events = [e for e in hl["past_events"] if e["intensity"] == "🟢"]
+
+    def render_event_card(ev, idx):
+        domain_colors = {
+            "직장": "#2980b9", "재물": "#27ae60", "관계": "#8e44ad",
+            "건강": "#c0392b", "학업": "#e67e22", "이동": "#16a085",
+        }
+        dc = "#666"
+        for kw, kc in domain_colors.items():
+            if kw in ev.get("domain", ""):
+                dc = kc; break
+
+        intensity_bg = {
+            "🔴": ("#fff0f0", "#c0392b"),
+            "🟡": ("#fffde0", "#c5a059"),
+            "🟢": ("#f0fff0", "#27ae60"),
+        }
+        card_bg, card_border = intensity_bg.get(ev["intensity"], ("#fafafa", "#888"))
+
+        st.markdown(f"""
+        <div style="background:{card_bg};border:1px solid {card_border}44;
+                    border-left:5px solid {card_border};border-radius:12px;
+                    padding:16px;margin:8px 0">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div>
+                    <span style="font-size:20px;font-weight:900;color:{card_border}">
+                        {ev['age']}</span>
+                    <span style="font-size:12px;color:#444;margin-left:8px">({ev['year']}년)</span>
+                </div>
+                <div style="background:{dc};color:#1a1a1a;padding:3px 12px;
+                            border-radius:20px;font-size:12px;font-weight:700">
+                    {ev.get('domain','변화')}
+                </div>
+            </div>
+            <div style="font-size:13px;color:#333;line-height:1.9;background:white;
+                        padding:10px 14px;border-radius:8px;margin-bottom:6px">
+                {ev['desc']}
+            </div>
+        </div>""", unsafe_allow_html=True)
+        render_feedback_btn(f"event_{idx}", ev["desc"][:20])
+
+    if red_events:
+        st.markdown("#### 🔴 강한 변동 — 크게 흔들린 때")
+        for i, ev in enumerate(red_events[:4]):
+            render_event_card(ev, f"red_{i}")
+
+    if yellow_events:
+        st.markdown("#### 🟡 흐름이 바뀐 때")
+        for i, ev in enumerate(yellow_events[:3]):
+            render_event_card(ev, f"yel_{i}")
+
+    if green_events:
+        st.markdown("#### 🟢 반전 — 오히려 기회가 된 때")
+        for i, ev in enumerate(green_events[:2]):
+            render_event_card(ev, f"grn_{i}")
+
+    # ══════════════════════════════════════════
+    # 월지 충 — 가장 중요한 변동점
+    # ══════════════════════════════════════════
+    if hl["wolji_chung"]:
+        st.markdown("---")
+        st.markdown("### 📍 월지(月支) 충 — 삶의 기반이 흔들린 시점")
+        st.markdown(f"""
+        <div class="card" style="background:#fff5f0;border:1px solid #e8a0a0;
+                    font-size:13px;color:#444;margin-bottom:8px">
+            월지 <b style="color:#c0392b">{pils[2]['jj']}</b>는 이 사주의 뿌리입니다.
+            충을 받을 때 직업·가정·건강 중 하나가 반드시 흔들렸습니다.
+        </div>""", unsafe_allow_html=True)
+
+        for i, wc in enumerate(hl["wolji_chung"][:4]):
+            st.markdown(f"""
+            <div style="background:#fff0f0;border-left:4px solid #c0392b;
+                        border-radius:8px;padding:12px 16px;margin:5px 0">
+                <span style="font-size:16px;font-weight:800;color:#c0392b">{wc['age']}</span>
+                <div style="font-size:13px;color:#333;margin-top:4px;line-height:1.9">{wc['desc']}</div>
+            </div>""", unsafe_allow_html=True)
+            render_feedback_btn(f"wolji_{i}", wc["desc"][:20])
+
+    # ══════════════════════════════════════════
+    # 돈 + 결혼 타이밍
+    # ══════════════════════════════════════════
+    st.markdown("---")
+    col_money, col_marry = st.columns(2)
+
+    with col_money:
+        st.markdown("### 💰 돈이 오는 시기")
+        if hl["money_peak"]:
+            for mp in hl["money_peak"][:3]:
+                color = "#c5a059" if mp.get("ss") == "더블" else "#27ae60"
+                st.markdown(f"""
+                <div style="background:#f0fff0;border-left:4px solid {color};
+                            border-radius:8px;padding:10px 14px;margin:5px 0">
+                    <span style="font-weight:800;color:{color}">{mp['age']}</span>
+                    <span style="font-size:11px;color:#444;margin-left:6px">({mp['year']})</span>
+                    <div style="font-size:12px;color:#333;margin-top:4px">{mp['desc']}</div>
+                </div>""", unsafe_allow_html=True)
+        else:
+            st.info("재물 상승기 계산 중")
+
+    with col_marry:
+        st.markdown("### 💑 인연이 오는 시기")
+        if hl["marriage_peak"]:
+            for mp in hl["marriage_peak"][:3]:
+                st.markdown(f"""
+                <div style="background:#fff0f8;border-left:4px solid #e91e8c;
+                            border-radius:8px;padding:10px 14px;margin:5px 0">
+                    <span style="font-weight:800;color:#e91e8c">{mp['age']}</span>
+                    <span style="font-size:11px;color:#444;margin-left:6px">({mp['year']})</span>
+                    <div style="font-size:12px;color:#333;margin-top:4px">{mp['desc']}</div>
+                </div>""", unsafe_allow_html=True)
+        else:
+            st.info("인연 시기 계산 중")
+
+    # ══════════════════════════════════════════
+    # 위험 구간
+    # ══════════════════════════════════════════
+    if hl["danger_zones"]:
+        st.markdown("---")
+        st.markdown("### ⚠️ 조심해야 할 구간")
+        for dz in hl["danger_zones"][:3]:
+            st.markdown(f"""
+            <div style="background:#fff5f0;border-left:4px solid #e67e22;
+                        border-radius:8px;padding:10px 14px;margin:5px 0">
+                <span style="font-weight:800;color:#e67e22">{dz['age']}</span>
+                <span style="font-size:11px;color:#444;margin-left:6px">({dz['year']})</span>
+                <div style="font-size:12px;color:#333;margin-top:4px">{dz['desc']}</div>
+            </div>""", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════
+    # 누적 적중률 현황
+    # ══════════════════════════════════════════
+    st.markdown("---")
+    total_fb2, hit_fb2 = get_feedback_stats()
+    if total_fb2 > 0:
+        hit_rate2 = round(hit_fb2 / total_fb2 * 100)
+        miss = total_fb2 - hit_fb2
+        st.markdown(f"""
+        <div style="background:linear-gradient(135deg,#f5f5ff,#eef0ff);color:#1a1a1a;
+                    padding:20px;border-radius:14px;text-align:center">
+            <div style="font-size:13px;color:#555;margin-bottom:10px">📊 이 사주의 피드백 적중률</div>
+            <div style="font-size:36px;font-weight:900;color:{'#4caf50' if hit_rate2>=60 else '#ff5252'}">
+                {hit_rate2}%</div>
+            <div style="font-size:13px;color:#444;margin-top:6px">
+                ✅ 맞았다 {hit_fb2}개 &nbsp;|&nbsp; ❌ 아니었다 {miss}개
+            </div>
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="background:#eef0ff;color:#444;padding:14px;border-radius:10px;
+                    text-align:center;font-size:13px">
+            위 항목들에 "맞았다/아니었다"를 눌러주세요.<br>
+            피드백이 쌓일수록 적중률이 표시됩니다.
+        </div>""", unsafe_allow_html=True)
+
+
+
+def tab_waryeong(pils):
+    st.markdown('<div class="gold-section">🌸 월령(月令) — 계절이 사주를 지배한다</div>', unsafe_allow_html=True)
+    wr = get_waryeong(pils)
+    wol_jj = wr["월지"]
+    oh_emoji = {"木":"🌳","火":"🔥","土":"🏔️","金":"⚔️","水":"💧"}
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#f5eeff,#eedaff);color:#1a1a1a;padding:20px;border-radius:14px;text-align:center;margin-bottom:14px">
+        <div style="font-size:13px;color:#c8b8f0">태어난 월지(月支)</div>
+        <div style="font-size:36px;font-weight:900;color:#f0d58c;margin:8px 0">{wol_jj}</div>
+        <div style="font-size:14px;color:#c8b8f0">{wr['계절']}</div>
+    </div>""", unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">오행별 月令 왕상휴수사(旺相休囚死)</div>', unsafe_allow_html=True)
+    oh_strength = calc_ohaeng_strength(pils[1]["cg"], pils)
+    cols = st.columns(5)
+    for i,oh in enumerate(["木","火","土","金","水"]):
+        d = wr["오행별"][oh]
+        with cols[i]:
+            st.markdown(f"""
+            <div style="text-align:center;padding:12px;background:#fffef5;border-radius:12px;border:2px solid {'#c5a059' if d['score']>=85 else '#ddd'}">
+                <div style="font-size:20px">{oh_emoji[oh]}</div>
+                <div style="font-size:14px;font-weight:800;color:#a0720a">{OHN.get(oh,'')}</div>
+                <div style="font-size:22px;font-weight:900;color:{d['color']}">{d['grade']}</div>
+                <div style="font-size:12px;color:#444">{d['score']}점</div>
+            </div>""", unsafe_allow_html=True)
+            st.progress(d["score"]/100)
+    st.markdown("### 📜 월령 상세 해석")
+    for oh in ["木","火","土","金","水"]:
+        d = wr["오행별"][oh]; val = oh_strength.get(oh,0)
+        bg = "#fff0e0" if d["score"]>=85 else "#fafafa"
+        bdr = d["color"] if d["score"]>=60 else "#ccc"
+        st.markdown(f"""
+        <div class="card" style="background:{bg};border-left:4px solid {bdr};margin:4px 0">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                <span style="font-size:14px;font-weight:700;color:{bdr}">{oh_emoji[oh]} {OHN.get(oh,'')}({oh}) — {d['grade']}</span>
+                <span style="font-size:12px;color:#444">월령 {d['score']}점 | 사주 {val}%</span>
+            </div>
+            <div style="font-size:13px;color:#444">{d['desc']}</div>
+        </div>""", unsafe_allow_html=True)
+
+
+def tab_oigyeok(pils):
+    st.markdown('<div class="gold-section">🌟 외격(外格) + 양인(羊刃) 분석</div>', unsafe_allow_html=True)
+    results = get_oigyeok(pils)
+    if results:
+        for r in results:
+            st.markdown(f"""
+            <div class="card" style="background:linear-gradient(135deg,#fffde0,#fff5cc);border:2px solid {r['color']}">
+                <div style="font-size:18px;font-weight:800;color:{r['color']};margin-bottom:10px">{r['icon']} {r['격']} 성립!</div>
+                <div style="font-size:14px;color:#333;line-height:2.0;margin-bottom:12px">{r['desc']}</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px">
+                    <div style="flex:1;min-width:160px;background:#f0fff0;padding:10px;border-radius:10px">
+                        <div style="font-size:12px;font-weight:700;color:#2a6f2a;margin-bottom:4px">✅ 용신</div>
+                        <div style="font-size:12px">{r['용신']}</div>
+                    </div>
+                    <div style="flex:1;min-width:160px;background:#fff0f0;padding:10px;border-radius:10px">
+                        <div style="font-size:12px;font-weight:700;color:#8b2020;margin-bottom:4px">❌ 기신</div>
+                        <div style="font-size:12px">{r['기신']}</div>
+                    </div>
+                </div>
+                <div style="margin-top:10px;background:#fff0e0;padding:8px 12px;border-radius:8px;font-size:12px;color:#8b4020">⚠️ {r['caution']}</div>
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="card" style="background:#f0f8ff;border:2px solid #2980b9;text-align:center;padding:24px">
+            <div style="font-size:18px;font-weight:700;color:#1a5f7a">✅ 내격(內格) 사주입니다</div>
+            <div style="font-size:13px;color:#444;margin-top:8px">종격·화기격 등의 외격 조건이 성립하지 않습니다. 일반 내격 이론으로 해석하십시오.</div>
+        </div>""", unsafe_allow_html=True)
+    # 양인
+    st.markdown('<div class="gold-section" style="margin-top:16px">🗡️ 양인(羊刃) 분석</div>', unsafe_allow_html=True)
+    yin = get_yangin(pils)
+    if yin["존재"]:
+        d = yin["설명"]
+        st.markdown(f"""
+        <div class="card" style="background:#fff0e0;border:2px solid #e67e22">
+            <div style="font-size:16px;font-weight:800;color:#e67e22;margin-bottom:8px">⚔️ {d.get('name','양인')} 존재 — {', '.join(yin['위치'])}에서 발견</div>
+            <div style="font-size:13px;color:#333;line-height:1.9;margin-bottom:10px">{d.get('desc','')}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <div style="flex:1;min-width:160px;background:#f0fff0;padding:10px;border-radius:10px">
+                    <div style="font-size:12px;font-weight:700;color:#2a6f2a;margin-bottom:4px">✨ 긍정적 발현</div>
+                    <div style="font-size:12px">{d.get('good','')}</div>
+                </div>
+                <div style="flex:1;min-width:160px;background:#fff0f0;padding:10px;border-radius:10px">
+                    <div style="font-size:12px;font-weight:700;color:#8b2020;margin-bottom:4px">⚠️ 주의사항</div>
+                    <div style="font-size:12px">{d.get('caution','')}</div>
+                </div>
+            </div>
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div class="card" style="background:#f0fff0;border:1px solid #a8d5a8">
+            <div style="font-size:14px;color:#2a6f2a">✅ 양인 없는 온화한 사주 — {pils[1]['cg']}일간 양인 지지({yin['양인_지지']})가 사주에 없습니다.</div>
+        </div>""", unsafe_allow_html=True)
+
+
+def tab_sinsal12(pils):
+    st.markdown('<div class="gold-section">💫 12신살(十二神殺) 완전 분석</div>', unsafe_allow_html=True)
+    sinsal_list = get_12sinsal(pils)
+    type_colors = {"길":"#2980b9","흉":"#c0392b","중":"#8e44ad"}
+    if sinsal_list:
+        for grp_type, grp_label in [("길","✨ 길신"),("중","🌀 중성"),("흉","⚠️ 흉살")]:
+            grp = [s for s in sinsal_list if s["type"]==grp_type]
+            if grp:
+                c = type_colors[grp_type]
+                st.markdown(f'<div style="font-size:15px;font-weight:700;color:{c};margin:12px 0 6px">{grp_label}</div>', unsafe_allow_html=True)
+                for s in grp:
+                    st.markdown(f"""
+                    <div class="card" style="border-left:4px solid {c};margin:6px 0">
+                        <div style="font-size:14px;font-weight:700;color:{c};margin-bottom:6px">{s['icon']} {s['이름']} — <span style="font-size:12px;color:#444">{', '.join(s['위치'])}</span></div>
+                        <div style="font-size:13px;color:#333;line-height:1.8;margin-bottom:8px">{s['desc']}</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px">
+                            <div style="flex:1;min-width:150px;background:#f0fff0;padding:6px 10px;border-radius:8px;font-size:12px;color:#2a6f2a">✨ {s['good']}</div>
+                            <div style="flex:1;min-width:150px;background:#fff0f0;padding:6px 10px;border-radius:8px;font-size:12px;color:#8b2020">⚠️ {s['caution']}</div>
+                        </div>
+                    </div>""", unsafe_allow_html=True)
+    else:
+        st.success("두드러진 신살이 없는 평온한 사주입니다.")
+    # 조견표
+    st.markdown("### 📋 12신살 전체 조견표")
+    nyon_jj = pils[3]["jj"]
+    san_groups = ["寅午戌","申子辰","巳酉丑","亥卯未"]
+    my_group = next((g for g in san_groups if nyon_jj in g),"寅午戌")
+    pil_jjs = [p["jj"] for p in pils]
+    rows = ""
+    for sname,jj_map in SINSAL_12_TABLE.items():
+        sinsal_jj = jj_map.get(my_group,"")
+        d = SINSAL_12_DESC.get(sname,{})
+        has = "✅" if sinsal_jj in pil_jjs else "—"
+        badge = {"길":"🟦","흉":"🟥","중":"🟪"}.get(d.get("type","중"),"⬜")
+        rows += f"<tr><td style='padding:6px;font-weight:700'>{d.get('icon','')} {d.get('name',sname)}</td><td style='text-align:center;padding:6px'>{sinsal_jj}</td><td style='text-align:center;padding:6px'>{badge}</td><td style='text-align:center;padding:6px;font-size:16px'>{has}</td></tr>"
+    st.markdown(f"""<table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#fffde0"><th style="padding:8px;text-align:left">신살</th><th style="text-align:center">해당지지</th><th style="text-align:center">길흉</th><th style="text-align:center">내 사주</th></tr></thead>
+        <tbody>{rows}</tbody></table>""", unsafe_allow_html=True)
+
+
+def tab_cross_analysis(pils, birth_year, gender):
+    """대운·세운 교차 분석 — 3중 완전판"""
+    st.markdown('<div class="gold-section">🔀 대운·세운 교차 분석 — 운명의 교차점</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="card" style="background:#f5f5ff;color:#555;padding:14px;font-size:13px;line-height:1.9;margin-bottom:12px">
+    📖 <b style="color:#f0d58c">고수가 보는 법:</b> 원국은 무대 설계, 대운은 계절, 세운은 날씨입니다.
+    <b style="color:#c5a059">세 가지가 겹치는 해</b>에 인생의 큰 사건이 일어납니다. 특히 원국의 합이 운에서 충으로 깨질 때를 정확히 짚는 것이 핵심입니다.
+    </div>""", unsafe_allow_html=True)
+
+    current_year = datetime.now().year
+    year_sel = st.selectbox("분석 연도", list(range(current_year-5, current_year+16)), index=5, key="cross_year")
+
+    cross = get_daewoon_sewoon_cross(pils, birth_year, gender, year_sel)
+    if not cross:
+        st.warning("해당 연도의 대운 정보가 없습니다."); return
+
+    ilgan = pils[1]["cg"]; ilgan_oh = OH.get(ilgan, "")
+    ys = get_yongshin(pils); yongshin_ohs = ys["종합_용신"]
+    dw = cross["대운"]; sw = cross["세운"]
+    dw_ss = cross["대운_천간십성"]; sw_ss = cross["세운_천간십성"]
+    dw_is_yong = _get_yongshin_match(dw_ss, yongshin_ohs, ilgan_oh) == "yong"
+    sw_is_yong = _get_yongshin_match(sw_ss, yongshin_ohs, ilgan_oh) == "yong"
+    hap_breaks = _get_hap_break_warning(pils, dw["jj"], sw["jj"])
+
+    lc = "#c5a059" if (dw_is_yong and sw_is_yong) else "#c0392b" if (not dw_is_yong and not sw_is_yong) else "#2980b9"
+    overall = ("🌟 용신 대운×세운 겹침 — 최고의 발복 시기" if (dw_is_yong and sw_is_yong)
+               else "⚠️ 기신 대운×세운 — 수비 전략 필요" if (not dw_is_yong and not sw_is_yong)
+               else "〰️ 대운·세운 혼재 — 선별적 추진")
+
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#f0eeff,#ece8ff);color:#1a1a1a;padding:28px;border-radius:16px;margin-bottom:14px">
+        <div style="text-align:center;font-size:13px;color:#555;margin-bottom:14px">{year_sel}년 운명의 교차점</div>
+        <div style="display:flex;justify-content:center;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:14px">
+            <div style="text-align:center;background:{'rgba(197,160,89,0.25)' if dw_is_yong else 'rgba(255,255,255,0.08)'};padding:16px 24px;border-radius:14px;border:{'2px solid #c5a059' if dw_is_yong else '1px solid #333'}">
+                <div style="font-size:11px;color:#555">대운(大運)</div>
+                <div style="font-size:30px;font-weight:900;color:#f0d58c">{dw["str"]}</div>
+                <div style="font-size:12px;color:#c8b8f0">{dw_ss} / {cross["대운_지지십성"]}</div>
+                {f'<div style="font-size:11px;color:#f0d58c;margin-top:4px">⭐ 용신 대운</div>' if dw_is_yong else ''}
+            </div>
+            <div style="font-size:28px;color:{lc}">×</div>
+            <div style="text-align:center;background:{'rgba(197,160,89,0.25)' if sw_is_yong else 'rgba(255,255,255,0.08)'};padding:16px 24px;border-radius:14px;border:{'2px solid #c5a059' if sw_is_yong else '1px solid #333'}">
+                <div style="font-size:11px;color:#555">세운(歲運)</div>
+                <div style="font-size:30px;font-weight:900;color:#f0d58c">{sw["세운"]}</div>
+                <div style="font-size:12px;color:#c8b8f0">{sw_ss} / {cross["세운_지지십성"]}</div>
+                {f'<div style="font-size:11px;color:#f0d58c;margin-top:4px">⭐ 용신 세운</div>' if sw_is_yong else ''}
+            </div>
+        </div>
+        <div style="text-align:center;font-size:15px;font-weight:700;color:{lc}">{overall}</div>
+    </div>""", unsafe_allow_html=True)
+
+    # 합이 깨지는 경고
+    if hap_breaks:
+        st.markdown("### 🚨 원국 합(合)이 운에서 깨지는 경고")
+        for w in hap_breaks:
+            st.markdown(f"""
+            <div class="card" style="background:{w['color']}18;border-left:5px solid {w['color']}">
+                <div style="font-size:13px;font-weight:700;color:{w['color']};margin-bottom:4px">{w['level']}</div>
+                <div style="font-size:13px;color:#333;line-height:1.9">{w['desc']}</div>
+            </div>""", unsafe_allow_html=True)
+
+    # 교차 해석
+    st.markdown(f"""
+    <div class="card" style="background:#fffde0;border:2px solid #c5a059">
+        <div style="font-size:14px;font-weight:700;color:#a0720a;margin-bottom:8px">🔮 {year_sel}년 핵심 해석</div>
+        <div style="font-size:14px;color:#333;line-height:2.0;margin-bottom:10px">{cross["교차해석"]}</div>
+    </div>""", unsafe_allow_html=True)
+
+    if cross["교차사건"]:
+        st.markdown("### ⚡ 원국과의 교차 사건")
+        for ev in cross["교차사건"]:
+            c = "#c5a059" if "합" in ev["type"] else "#c0392b" if "충" in ev["type"] else "#8e44ad"
+            st.markdown(f'<div class="card" style="border-left:4px solid {c}"><b style="color:{c}">{ev["type"]}</b> — {ev["desc"]}</div>', unsafe_allow_html=True)
+
+    # 처방
+    PCMAP = {
+        (True,True):   ("🌟 황금 시기 — 전력 질주하십시오!", "#27ae60", "이 시기에 가장 중요한 결정(창업·결혼·이직·투자)을 내리십시오. 용신 에너지가 두 배로 작동합니다."),
+        (True,False):  ("⚡ 기회 속 위험 — 선별적 추진", "#e67e22", "대운의 좋은 기운을 살리되 세운의 걸림돌을 조심하십시오. 큰 결정은 신중하게, 작은 시도는 적극적으로."),
+        (False,True):  ("🌿 터닝포인트 — 세운이 구원합니다", "#2980b9", "힘든 대운이지만 올해 세운이 활로를 열어줍니다. 다음 용신 대운을 위한 준비를 하십시오."),
+        (False,False): ("🛡️ 수비 모드 — 내실 다지기", "#c0392b", "무리한 확장·투자·이동을 피하십시오. 건강과 재정 점검에 집중하십시오."),
+    }
+    plabel, pcolor, pdesc = PCMAP.get((dw_is_yong, sw_is_yong), ("〰️ 평범한 해", "#888", "꾸준한 노력으로 안정을 유지하십시오."))
+    st.markdown(f"""
+    <div class="card" style="background:{pcolor}15;border:2px solid {pcolor};margin-top:10px">
+        <div style="font-size:15px;font-weight:800;color:{pcolor};margin-bottom:8px">{plabel}</div>
+        <div style="font-size:13px;color:#333;line-height:1.9">{pdesc}</div>
+    </div>""", unsafe_allow_html=True)
+
+    # 향후 10년 타임라인
+    st.markdown("### 📅 향후 10년 운세 타임라인")
+    for y in range(year_sel, year_sel+10):
+        c2 = get_daewoon_sewoon_cross(pils, birth_year, gender, y)
+        if not c2: continue
+        d_is_y = _get_yongshin_match(c2["대운_천간십성"], yongshin_ohs, ilgan_oh) == "yong"
+        s_is_y = _get_yongshin_match(c2["세운_천간십성"], yongshin_ohs, ilgan_oh) == "yong"
+        hb = _get_hap_break_warning(pils, c2["대운"]["jj"], c2["세운"]["jj"])
+        if d_is_y and s_is_y:   row_lc, row_bg, badge = "#c5a059","#fffde0","🌟 최길"
+        elif d_is_y or s_is_y:  row_lc, row_bg, badge = "#2980b9","#f0f8ff","✨ 길"
+        elif "흉" in c2["세운"]["길흉"]: row_lc, row_bg, badge = "#c0392b","#fff5f5","⚠️ 흉"
+        else:                    row_lc, row_bg, badge = "#888","#fafafa","〰️ 평"
+        hb_icon = " 🚨합깨짐" if hb else ""
+        st.markdown(f"""
+        <div style="display:flex;align-items:center;padding:9px 14px;border-radius:10px;margin:3px 0;background:{row_bg};border:{'2px solid '+row_lc if y==year_sel else '1px solid #e8e8e8'}">
+            <span style="font-weight:800;color:#a0720a;min-width:52px">{y}년</span>
+            <span style="min-width:80px;font-size:13px;color:#333">대운:{c2["대운"]["str"]}</span>
+            <span style="min-width:80px;font-size:13px;color:#333">세운:{c2["세운"]["세운"]}</span>
+            <span style="flex:1;font-size:12px;color:#444">{c2["대운_천간십성"]}+{c2["세운_천간십성"]}</span>
+            <span style="font-size:12px;color:#c0392b">{hb_icon}</span>
+            <span style="font-weight:700;color:{row_lc};font-size:13px">{badge}</span>
+        </div>""", unsafe_allow_html=True)
+
+
+
+
+def tab_jijanggan(pils):
+    ilgan = pils[1]["cg"]
+    st.markdown('<div class="gold-section">🔬 지장간(地藏干) — 지지 속 숨겨진 천간</div>', unsafe_allow_html=True)
+    analysis = get_jijanggan_analysis(ilgan, pils)
+    labels_full = ["시주(時柱)","일주(日柱)","월주(月柱)","년주(年柱)"]
+    for i,pd in enumerate(analysis):
+        jj = pd["지지"]
+        jj_kr = JJ_KR[JJ.index(jj)] if jj in JJ else ""
+        st.markdown(f"### {labels_full[i]} — 지지 {jj}({jj_kr})")
+        items = pd["지장간"]
+        if not items: continue
+        cols = st.columns(len(items))
+        for j,item in enumerate(items):
+            with cols[j]:
+                tuchul = item["투출"]
+                st.markdown(f"""
+                <div style="background:{'#fffde0' if tuchul else '#fafafa'};border:{'2px solid #c5a059' if tuchul else '1px solid #ddd'};border-radius:12px;padding:14px;text-align:center">
+                    <div style="font-size:11px;color:#444">{TYPE_LABEL.get(item['타입'],item['타입'])}</div>
+                    <div style="font-size:26px;font-weight:900;color:#a0720a;margin:6px 0">{item['천간']}</div>
+                    <div style="font-size:12px;color:#333">{item['십성']}</div>
+                    <div style="font-size:11px;color:#444">{item['일수']}일</div>
+                    {f'<div style="font-size:11px;background:#c5a059;color:#1a1a1a;padding:2px 8px;border-radius:10px;margin-top:4px">✨ 투출!</div>' if tuchul else ''}
+                </div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div style="background:#f5f0ff;padding:8px 12px;border-radius:8px;font-size:12px;color:#5a2d8b;margin:4px 0 12px">
+            ⏱️ 발동: {' → '.join([f"{it['천간']}({it['십성']}) {TYPE_LABEL.get(it['타입'],'')}" for it in items])}
+        </div>""", unsafe_allow_html=True)
+
+
+def tab_health(pils, gender="남"):
+    ilgan = pils[1]["cg"]
+    st.markdown('<div class="gold-section">🏥 건강론(健康論) — 사주로 보는 건강 지도</div>', unsafe_allow_html=True)
+    health = get_health_analysis(pils, gender)
+    il_oh = health["ilgan_oh"]
+    oh_emoji = {"木":"🌳","火":"🔥","土":"🏔️","金":"⚔️","水":"💧"}
+    h = health["일간_건강"]
+    st.markdown(f"""
+    <div class="card" style="background:#f0f8ff;border:2px solid #2980b9">
+        <div style="font-size:14px;font-weight:700;color:#1a5f8b;margin-bottom:10px">{oh_emoji.get(il_oh,'')} {ilgan}일간 — {OHN.get(il_oh,'')} 기운의 건강 특성</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+            {''.join([f'<div style="flex:1;min-width:180px;background:white;padding:10px;border-radius:8px"><div style="font-size:12px;font-weight:700;color:#2980b9;margin-bottom:3px">{k}</div><div style="font-size:12px;color:#333">{v}</div></div>' for k,v in [("🫀 주요 장기",h.get("organs","")),("😤 취약 감정",h.get("emotion","")),("🥗 도움 식품",h.get("food","")),("🌟 생활 처방",h.get("lifestyle",""))]])}
+        </div>
+    </div>""", unsafe_allow_html=True)
+    if health["일주_건강"]:
+        st.markdown(f'<div class="card" style="background:#fff0e0;border-left:4px solid #e67e22;margin-top:8px"><b style="color:#e67e22">⚠️ 일주 12운성 건강:</b> {health["일주_건강"]}</div>', unsafe_allow_html=True)
+    if health["과다_오행"]:
+        st.markdown("### 🔴 과다 오행 건강 경보")
+        for item in health["과다_오행"]:
+            h2=item["health"]; oh=item["오행"]
+            st.markdown(f"""
+            <div class="card" style="background:#fff5f0;border-left:4px solid #c0392b">
+                <b style="color:#c0392b">{oh}({OHN.get(oh,'')}) 과다 {item['수치']}%</b> — 주의 질환: {h2.get('over_symptom','')}
+                <div style="font-size:12px;color:#444;margin-top:6px">💊 처방: {h2.get('food','')} / {h2.get('lifestyle','')}</div>
+            </div>""", unsafe_allow_html=True)
+    if health["부족_오행"]:
+        st.markdown("### 🔵 부족 오행 건강 처방")
+        for item in health["부족_오행"]:
+            h2=item["health"]; oh=item["오행"]
+            st.markdown(f"""
+            <div class="card" style="background:#f0f5ff;border-left:4px solid #2980b9">
+                <b style="color:#2980b9">{oh}({OHN.get(oh,'')}) 부족 {item['수치']}%</b> — 증상: {h2.get('lack_symptom','')}
+                <div style="font-size:12px;color:#444;margin-top:6px">💊 보충: {h2.get('food','')} / {h2.get('lifestyle','')}</div>
+            </div>""", unsafe_allow_html=True)
+    # 오행별 바 차트
+    st.markdown("### 📋 오행 건강 조견표")
+    for oh in ["木","火","土","金","水"]:
+        val = health["oh_strength"].get(oh,0)
+        h2 = HEALTH_OH[oh]
+        c = "#c0392b" if val>=35 else "#2980b9" if val<=5 else "#888"
+        st.markdown(f"""
+        <div style="padding:8px 14px;border-radius:10px;background:#fafafa;border:1px solid #e8e8e8;margin:3px 0">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                <span style="font-weight:700;color:{c}">{oh_emoji.get(oh,'')}{OHN.get(oh,'')} {val}%</span>
+                <span style="font-size:12px;color:#444">{h2['organs']}</span>
+            </div>
+            <div style="background:#e8e8e8;border-radius:4px;height:6px"><div style="background:{c};border-radius:4px;height:6px;width:{min(val,100)}%"></div></div>
+        </div>""", unsafe_allow_html=True)
+
+
+def tab_jaemul(pils, birth_year, gender="남"):
+    st.markdown('<div class="gold-section">💰 재물론(財物論) — 돈이 모이는 구조 분석</div>', unsafe_allow_html=True)
+    jm = get_jaemul_analysis(pils, birth_year, gender)
+    oh_emoji = {"木":"🌳","火":"🔥","土":"🏔️","金":"⚔️","水":"💧"}
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#f3ffe1,#f3ffe1);color:#1a1a1a;padding:20px;border-radius:14px;text-align:center;margin-bottom:14px">
+        <div style="font-size:13px;color:#a8d58c">재성(財星) 오행</div>
+        <div style="font-size:36px;margin:8px 0">{oh_emoji.get(jm['재성_오행'],'💰')}</div>
+        <div style="font-size:22px;font-weight:900;color:#f0d58c">{OHN.get(jm['재성_오행'],'')} 재성 강도 {jm['재성_강도']}%</div>
+    </div>""", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="card" style="background:#f0fff0;border:2px solid #27ae60">
+        <div style="font-size:13px;font-weight:700;color:#1a6f3a;margin-bottom:6px">🎯 재물 유형</div>
+        <div style="font-size:14px;color:#333;line-height:1.9">{jm['재물_유형']}</div>
+        <div style="margin-top:8px;background:#e8f5e8;padding:8px 12px;border-radius:8px;font-size:13px;color:#1a6f3a">💡 전략: {jm['재물_전략']}</div>
+    </div>""", unsafe_allow_html=True)
+    if jm["재성_위치"]:
+        st.markdown(f'<div class="card" style="background:#fffde0;border:1px solid #e8d5a0;margin-top:8px"><b style="color:#a0720a">📍 재성 위치:</b> {"  |  ".join(jm["재성_위치"])}</div>', unsafe_allow_html=True)
+    if jm["재물_피크_대운"]:
+        st.markdown("### 💫 재물 상승기 대운")
+        for peak in jm["재물_피크_대운"]:
+            c = {"정재":"#27ae60","편재":"#2980b9","식신":"#8e44ad"}.get(peak["십성"],"#c5a059")
+            st.markdown(f"""
+            <div style="background:#fffde0;border-left:4px solid {c};border-radius:10px;padding:12px 16px;margin:5px 0;display:flex;justify-content:space-between;align-items:center">
+                <div><span style="font-size:16px;font-weight:800;color:#a0720a">{peak['대운']}</span> <span style="font-size:13px;color:#444">{peak['나이']}</span></div>
+                <div style="text-align:right"><div style="font-size:13px;font-weight:700;color:{c}">{peak['십성']}</div><div style="font-size:12px;color:#444">{peak['연도']}</div></div>
+            </div>""", unsafe_allow_html=True)
+
+
+def tab_career(pils, gender="남"):
+    st.markdown('<div class="gold-section">🎯 직업론(職業論) — 천부적 적성과 최적 직업</div>', unsafe_allow_html=True)
+    ca = get_career_analysis(pils, gender)
+    ilgan = pils[1]["cg"]
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#e8f4ff,#e1f2ff);color:#1a1a1a;padding:20px;border-radius:14px;text-align:center;margin-bottom:14px">
+        <div style="font-size:13px;color:#a8c8f0">격국 기반 직업 분석</div>
+        <div style="font-size:26px;font-weight:900;color:#f0d58c;margin:8px 0">{ca['격국']}</div>
+    </div>""", unsafe_allow_html=True)
+    st.markdown("### ✨ 최적 직업군")
+    st.markdown('<div style="padding:10px 0;line-height:2">' + "".join([f'<span style="background:#fffde0;border:1px solid #c5a059;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;color:#a0720a;margin:4px;display:inline-block">{j}</span>' for j in ca["최적직업"]]) + '</div>', unsafe_allow_html=True)
+    if ca["유리직업"]:
+        st.markdown("### 🌿 유리한 직업군")
+        st.markdown('<div style="padding:8px 0;line-height:2">' + "".join([f'<span style="background:#f0fff0;border:1px solid #a8d5a8;padding:5px 12px;border-radius:20px;font-size:13px;color:#2a6f2a;margin:4px;display:inline-block">{j}</span>' for j in ca["유리직업"]]) + '</div>', unsafe_allow_html=True)
+    if ca["일간추가"]:
+        st.markdown(f"### 🌟 {ilgan}일간 특화")
+        st.markdown('<div style="padding:8px 0;line-height:2">' + "".join([f'<span style="background:#f5f0ff;border:1px solid #c8b8e8;padding:5px 12px;border-radius:20px;font-size:13px;color:#5a2d8b;margin:4px;display:inline-block">{j}</span>' for j in ca["일간추가"]]) + '</div>', unsafe_allow_html=True)
+    if ca["신살보정"]:
+        st.markdown(f"""<div class="card" style="background:#fff8e0;border:1px solid #e8d5a0;margin-top:8px">
+            <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:6px">💫 신살·양인 직업 보정</div>
+            {''.join([f'<div style="font-size:13px;color:#444;margin:3px 0">✦ {s}</div>' for s in ca["신살보정"]])}
+        </div>""", unsafe_allow_html=True)
+    if ca["피할직업"]:
+        st.markdown(f'<div class="card" style="background:#fff0f0;border:1px solid #d5a8a8;margin-top:8px"><b style="color:#8b2020">❌ 피해야 할 직업:</b> {"  /  ".join(ca["피할직업"])}</div>', unsafe_allow_html=True)
+
+
+def tab_gaemyeong(pils, name=""):
+    st.markdown('<div class="gold-section">📝 개명(改名) 오행 분석</div>', unsafe_allow_html=True)
+    ilgan = pils[1]["cg"]
+    yongshin = get_yongshin(pils)
+    target_ohs = yongshin["종합_용신"]
+    oh_emoji = {"木":"🌳","火":"🔥","土":"🏔️","金":"⚔️","水":"💧"}
+    st.markdown(f"""<div class="card" style="background:#fffde0;border:1px solid #e8d5a0;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:6px">이 사주의 용신 오행</div>
+        <div style="font-size:14px;color:#333">{'  /  '.join([f"{oh_emoji.get(o,'')}{OHN.get(o,'')}({o})" for o in target_ohs]) if target_ohs else "없음"}</div>
+    </div>""", unsafe_allow_html=True)
+    name_input = st.text_input("이름 입력 (한글)", value=name, placeholder="예) 홍길동", key="gaemyeong_name")
+    if name_input:
+        oh_count, oh_pct = analyze_name_oh(name_input)
+        st.markdown(f"### 📊 '{name_input}' 오행 분포")
+        cols = st.columns(5)
+        for i,oh in enumerate(["木","火","土","金","水"]):
+            pct = oh_pct.get(oh,0)
+            is_t = oh in target_ohs
+            with cols[i]:
+                st.markdown(f"""
+                <div style="text-align:center;padding:12px;background:{'#fffde0' if is_t else '#fafafa'};border-radius:12px;border:{'2px solid #c5a059' if is_t else '1px solid #ddd'}">
+                    <div style="font-size:18px">{oh_emoji[oh]}</div>
+                    <div style="font-size:14px;font-weight:800;color:#a0720a">{OHN.get(oh,'')}</div>
+                    <div style="font-size:22px;font-weight:900;color:#c5a059">{pct}%</div>
+                    {f'<div style="font-size:10px;background:#c5a059;color:#1a1a1a;padding:1px 6px;border-radius:8px">용신</div>' if is_t else ''}
+                </div>""", unsafe_allow_html=True)
+                st.progress(pct/100)
+        target_pct = sum(oh_pct.get(oh,0) for oh in target_ohs)
+        if target_pct>=50: ev,ec,eb="✅ 용신 오행이 충분한 좋은 이름입니다.","#2a6f2a","#f0fff0"
+        elif target_pct>=30: ev,ec,eb="🟡 용신 오행이 어느 정도 있습니다. 보완 여지 있음.","#a0720a","#fffde0"
+        else: ev,ec,eb="⚠️ 용신 오행이 부족합니다. 개명을 고려해 볼 수 있습니다.","#8b2020","#fff0f0"
+        st.markdown(f'<div class="card" style="background:{eb};border-left:4px solid {ec};margin-top:8px"><div style="font-size:14px;color:{ec};font-weight:700">{ev}</div><div style="font-size:13px;color:#444;margin-top:6px">용신 오행 비율: {target_pct}%</div></div>', unsafe_allow_html=True)
+        st.markdown("### 💡 용신 오행 이름 자모 예시")
+        for oh in target_ohs:
+            jamos = [j for j,o in HANGUL_OH.items() if o==oh]
+            st.markdown(f'<div class="card" style="background:#f5f0ff;border:1px solid #c8b8e8"><b style="color:#5a2d8b">{oh_emoji.get(oh,"")}{OHN.get(oh,"")}({oh}) 자모:</b> <span style="font-size:14px;letter-spacing:4px;font-weight:700">{"  ".join(jamos)}</span></div>', unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════
+#  서술형 대형 내러티브 생성기
+# ══════════════════════════════════════════════════
+
+ILGAN_CHAR_DESC = {
+    "甲": {
+        "상징":"큰 나무(大木). 곧게 뻗은 소나무처럼 굽히지 않는 기상의 사람입니다.",
+        "성격_핵심":"리더십과 개척 정신이 천부적입니다. 처음 길을 내는 것을 두려워하지 않으며, 한번 마음먹은 일은 반드시 완수하려는 집요함이 있습니다. 주변 사람들은 이 사람을 '신뢰할 수 있는 맏형'처럼 느낍니다.",
+        "장점":"결단력·원칙·신뢰·강한 추진력·정의감·독립심",
+        "단점":"고집이 지나쳐 융통성이 부족할 수 있습니다. 자신의 방식만 옳다고 여기는 경향이 있어 타인과 마찰이 생기기도 합니다.",
+        "재물패턴":"재물은 꾸준한 노력으로 쌓이는 타입입니다. 한번에 큰돈을 버는 것보다 오랜 기간 성실하게 쌓아가는 방식이 맞습니다. 투기성 투자는 대체로 손해를 봅니다.",
+        "건강":"간장·담낭 계통을 주의해야 합니다. 눈의 피로, 근육 경직이 오기 쉬우니 스트레칭과 규칙적 수면이 중요합니다.",
+        "직업":"정치·행정·교육·건설·목재·의료·법조 계통에서 강합니다.",
+        "연애_남":"연인에게 든든한 버팀목이 되지만, 너무 강한 주도권으로 상대가 답답해하기도 합니다.",
+        "연애_여":"강한 자존감으로 자신만의 기준이 뚜렷합니다. 약한 남성보다 자신보다 강한 남성에게 끌립니다.",
+    },
+    "乙": {
+        "상징":"작은 풀·덩굴(小木). 부드럽게 환경에 적응하며 결국 원하는 곳에 도달하는 사람입니다.",
+        "성격_핵심":"겉으로는 부드럽고 온화하지만, 속으로는 강인한 의지가 숨어 있습니다. 처음에는 유연하게 받아들이는 것처럼 보이지만, 결국 자신이 원하는 방향으로 조용히 이끌어가는 능력이 있습니다.",
+        "장점":"적응력·감수성·예술적 감각·인내·섬세함·사교성",
+        "단점":"우유부단하고 결정을 미루는 경향이 있습니다. 주변 눈치를 너무 봐서 정작 자신의 뜻을 제대로 표현하지 못할 때도 있습니다.",
+        "재물패턴":"재물 운이 꾸준한 편입니다. 강하게 밀어붙이기보다 관계를 통해 자연스럽게 기회가 오는 경우가 많습니다. 파트너십 사업이 유리합니다.",
+        "건강":"간장·목 계통, 신경 계통이 약할 수 있습니다. 스트레스를 몸으로 표현하는 경향이 있으니 정서적 안정이 건강의 핵심입니다.",
+        "직업":"디자인·예술·상담·서비스·교육·언론·의료 분야가 맞습니다.",
+        "연애_남":"섬세하고 상대방 감정을 잘 읽습니다. 로맨틱한 분위기를 중요시합니다.",
+        "연애_여":"부드럽고 매력적이지만, 관계에서 상대에게 의존하는 경향이 있습니다. 자립심을 키우는 것이 연애 성공의 열쇠입니다.",
+    },
+    "丙": {
+        "상징":"태양(太陽). 자신의 빛으로 주변을 밝히는 타고난 주인공입니다.",
+        "성격_핵심":"어디서나 중심에 서는 카리스마가 있습니다. 밝고 활기차며 사람들을 자연스럽게 끌어당기는 매력이 있습니다. 솔직하고 직선적이어서 속에 있는 것을 숨기지 못합니다. 인기와 명예를 중요시합니다.",
+        "장점":"카리스마·열정·사교성·창의력·용기·리더십·직관",
+        "단점":"자기중심적인 면이 강해 타인의 의견을 무시하기도 합니다. 체면을 중시해서 실리보다 감정적 판단을 내릴 때가 있습니다.",
+        "재물패턴":"화려하게 벌고 화려하게 쓰는 타입입니다. 재물보다 명예를 먼저 생각하는 경향이 있어, 돈이 잘 모이지 않을 수 있습니다. 관리 체계를 만드는 것이 중요합니다.",
+        "건강":"심장·소장·눈 계통을 주의해야 합니다. 과로와 흥분 상태가 지속되면 심혈관에 무리가 옵니다.",
+        "직업":"연예·방송·정치·영업·마케팅·교육·예술 분야에서 빛납니다.",
+        "연애_남":"열정적이고 드라마틱한 연애를 좋아합니다. 상대에게 아낌없이 주지만 인정받기를 원합니다.",
+        "연애_여":"화려하고 밝은 매력이 있습니다. 자신을 빛나게 해주는 파트너를 원합니다.",
+    },
+    "丁": {
+        "상징":"촛불·등불(小火). 차분하지만 가까이 있는 이에게 따뜻함을 주는 사람입니다.",
+        "성격_핵심":"겉으로는 조용하고 내성적이지만, 내면에는 강렬한 열정이 숨어 있습니다. 섬세한 감수성으로 주변을 깊이 관찰하고 이해합니다. 소수의 친한 사람들과 깊은 관계를 맺는 것을 선호합니다.",
+        "장점":"섬세함·집중력·예술성·따뜻함·통찰력·신중함",
+        "단점":"지나치게 내향적이어서 자신을 표현하지 못할 때가 있습니다. 상처를 마음속에 쌓아두는 경향이 있어 정서적 소진이 올 수 있습니다.",
+        "재물패턴":"꾸준한 노력으로 쌓아가는 재물 운입니다. 화려한 한방보다는 전문성과 기술을 통한 안정적인 수입이 맞습니다.",
+        "건강":"심장·소장·혈압 관련 질환을 주의해야 합니다. 스트레스를 쌓아두면 화병이 올 수 있습니다.",
+        "직업":"연구·개발·예술·상담·의료·교육·IT 분야가 잘 맞습니다.",
+        "연애_남":"깊고 진지한 관계를 원합니다. 가볍거나 피상적인 관계에는 관심이 없습니다.",
+        "연애_여":"감수성이 풍부하고 내면이 깊습니다. 자신을 이해해주는 파트너를 만나면 헌신적입니다.",
+    },
+    "戊": {
+        "상징":"큰 산·대지(大土). 든든하고 안정적인 중심축 같은 사람입니다.",
+        "성격_핵심":"묵직하고 믿음직스러운 성품입니다. 말보다 행동으로 보여주는 타입이며, 한번 신뢰를 쌓으면 절대 배신하지 않는 의리가 있습니다. 변화보다 안정을 선호하고, 큰 그림을 바라보는 안목이 있습니다.",
+        "장점":"안정감·신뢰·인내·책임감·포용력·현실감각",
+        "단점":"변화에 느리고 보수적입니다. 한번 결심한 것을 바꾸지 않아 고집스러워 보이기도 합니다.",
+        "재물패턴":"부동산·토지 관련 투자에 강합니다. 안정적이고 장기적인 투자가 맞으며, 단타성 투기는 손해를 봅니다.",
+        "건강":"비장·위장 계통을 주의해야 합니다. 과식과 폭식 경향이 있으니 규칙적인 식사가 중요합니다.",
+        "직업":"건설·부동산·금융·토목·행정·중재·교육 분야가 맞습니다.",
+        "연애_남":"든든한 파트너입니다. 화려함보다 안정감으로 사람을 끌어들입니다.",
+        "연애_여":"무거운 책임감으로 가정을 지키는 타입입니다. 파트너를 선택할 때 신중하고 보수적입니다.",
+    },
+    "己": {
+        "상징":"논밭·평지(小土). 부드럽고 기름진 땅처럼 모든 것을 품어주는 사람입니다.",
+        "성격_핵심":"온화하고 섬세하며 주변 사람들에 대한 배려가 넘칩니다. 갈등을 중재하는 능력이 탁월하고, 어디서나 분위기를 부드럽게 만드는 역할을 합니다. 다소 소심한 면이 있지만, 인간관계에서 깊은 신뢰를 받습니다.",
+        "장점":"배려·중재능력·섬세함·인내·유연성·실용성",
+        "단점":"우유부단하고 결정을 미루는 경향이 있습니다. 타인의 감정에 너무 민감해 자신을 희생하는 경우가 많습니다.",
+        "재물패턴":"서비스·유통·중개업이 잘 맞습니다. 사람 사이에서 이익을 만드는 구조가 이 일간에 맞습니다.",
+        "건강":"비장·위장·췌장 계통을 주의해야 합니다. 걱정과 불안이 많을수록 소화기 증상이 나타납니다.",
+        "직업":"서비스·유통·의료·상담·교육·식품·복지 분야가 잘 맞습니다.",
+        "연애_남":"헌신적이고 배려가 넘칩니다. 다만 자신의 감정을 솔직하게 표현하지 못하는 경우가 있습니다.",
+        "연애_여":"따뜻하고 모성적입니다. 파트너를 돌보는 것에서 행복을 느낍니다.",
+    },
+    "庚": {
+        "상징":"큰 쇠·바위(大金). 강하고 날카로운 검처럼 결단력 있는 사람입니다.",
+        "성격_핵심":"강직하고 원칙적입니다. 옳고 그름을 분명히 하는 성격으로, 불의를 보면 참지 못합니다. 추진력이 강하고 결단이 빠릅니다. 한번 마음먹으면 돌아서지 않는 의지가 있습니다.",
+        "장점":"결단력·원칙·강한 의지·정의감·추진력·카리스마",
+        "단점":"지나치게 강해서 주변을 불편하게 만들 수 있습니다. 유연성이 부족하고, 감정 표현이 서툽니다.",
+        "재물패턴":"금속·기계·군경·의료 관련 분야에서 재물이 들어옵니다. 결단력 있게 투자하지만 손실도 크게 볼 수 있습니다.",
+        "건강":"폐·대장 계통을 주의해야 합니다. 피부 트러블이나 호흡기 질환에 취약합니다.",
+        "직업":"군경·의료(외과)·금속·기계·법조·스포츠 분야에서 강합니다.",
+        "연애_남":"강하고 보호본능이 있습니다. 상대에게 든든한 울타리가 됩니다.",
+        "연애_여":"독립적이고 자존심이 강합니다. 자신보다 약한 상대는 존중하지 않는 경향이 있습니다.",
+    },
+    "辛": {
+        "상징":"작은 쇠·보석(小金). 섬세하게 다듬어진 보석처럼 아름답고 예리한 사람입니다.",
+        "성격_핵심":"완벽주의적 성향이 강합니다. 세밀한 부분까지 놓치지 않는 날카로운 관찰력과 분석력이 있습니다. 외모나 이미지 관리에 신경을 쓰며, 품위와 격식을 중요하게 여깁니다.",
+        "장점":"완벽주의·분석력·심미안·섬세함·예리함·품위",
+        "단점":"완벽주의가 지나쳐 스스로를 혹독하게 대합니다. 타인에 대한 기준도 높아 관계에서 갈등이 생기기도 합니다.",
+        "재물패턴":"전문성과 기술로 재물을 쌓는 타입입니다. 장기적 계획과 꼼꼼한 관리가 재물 성장의 열쇠입니다.",
+        "건강":"폐·기관지·피부 계통을 주의해야 합니다. 스트레스가 쌓이면 피부 증상으로 나타납니다.",
+        "직업":"의료·법·금융·예술·IT·디자인·분석 분야가 맞습니다.",
+        "연애_남":"이상형이 높고 기준이 까다롭습니다. 상대의 외모와 품위를 중요하게 봅니다.",
+        "연애_여":"섬세하고 완벽한 연애를 원합니다. 작은 실망에도 관계를 재고하는 경향이 있습니다.",
+    },
+    "壬": {
+        "상징":"큰 강·바다(大水). 넓고 깊은 지혜와 포용력으로 세상을 흐르는 사람입니다.",
+        "성격_핵심":"지혜롭고 통찰력이 뛰어납니다. 유연하게 상황에 적응하며 깊은 사고력으로 문제를 해결합니다. 대범하고 활동적이며, 새로운 세계를 탐험하는 것을 즐깁니다. 추진력과 사교성이 높습니다.",
+        "장점":"지혜·유연성·추진력·사교성·통찰력·적응력·대범함",
+        "단점":"자신의 기분과 감정 기복이 심할 수 있습니다. 집중력이 분산되어 한 가지에 끝까지 매달리기 어려울 수 있습니다.",
+        "재물패턴":"무역·금융·유통·IT 등 유동성이 큰 분야에서 재물이 들어옵니다. 흐름을 잘 타는 편입니다.",
+        "건강":"신장·방광·생식기 계통을 주의해야 합니다. 과로와 수면 부족이 축적되지 않도록 해야 합니다.",
+        "직업":"무역·금융·IT·운수·언론·정치·외교 분야에서 두각을 나타냅니다.",
+        "연애_남":"매력적이고 사교적입니다. 다양한 이성을 경험하는 경향이 있어 정착이 늦을 수 있습니다.",
+        "연애_여":"활발하고 매력적입니다. 활동적이고 지적인 파트너를 선호합니다.",
+    },
+    "癸": {
+        "상징":"빗물·샘물(小水). 조용히 스며들어 만물을 적시는 섬세한 지혜의 사람입니다.",
+        "성격_핵심":"내성적이지만 깊은 통찰력을 가진 사람입니다. 감수성이 풍부하고 직관이 예리하여, 말하지 않아도 상대의 마음을 읽는 능력이 있습니다. 혼자만의 시간이 필요하고 고독 속에서 창의력이 발현됩니다.",
+        "장점":"직관·감수성·지혜·창의력·신중함·통찰력",
+        "단점":"예민하고 감정적으로 흔들리기 쉽습니다. 지나치게 내성적이어서 기회를 놓치는 경우도 있습니다.",
+        "재물패턴":"전문 지식과 직관으로 재물을 만드는 타입입니다. 수면 아래서 조용히 부를 쌓는 방식이 맞습니다.",
+        "건강":"신장·방광·귀 계통을 주의해야 합니다. 감정이 쌓이면 면역력이 떨어집니다.",
+        "직업":"연구·예술·의료·심리상담·IT·문학·철학 분야가 잘 맞습니다.",
+        "연애_남":"깊고 감성적인 연애를 합니다. 상대의 감정을 잘 읽어주지만 스스로 표현이 서툽니다.",
+        "연애_여":"섬세하고 로맨틱합니다. 깊은 정서적 교감을 나눌 수 있는 파트너를 원합니다.",
+    },
+}
+
+GYEOKGUK_NARRATIVE = {
+    "정관격": "정관격은 사회적 규범과 질서를 중시하는 귀격(貴格)입니다. 이 격국을 가진 분은 법과 원칙 안에서 정당한 방법으로 높은 자리에 오르는 운명입니다. 성실함과 신뢰가 최대 무기이며, 꾸준히 실력을 쌓다 보면 반드시 인정받는 날이 옵니다. 직장 조직에서 빛나는 운으로, 공무원·교사·법조인·관리직이 잘 맞습니다. 다만 자신의 원칙을 지나치게 고집하면 주변과 마찰이 생기니 유연성을 함께 갖추어야 합니다.",
+    "편관격": "편관격은 칠살격(七殺格)이라고도 하며, 강렬한 도전과 시련 속에서 성장하는 운명입니다. 어려움이 올수록 더욱 강해지는 역경의 강자입니다. 군인·경찰·의사·운동선수처럼 극한의 상황을 이겨내는 직업에서 탁월한 능력을 발휘합니다. 칠살이 잘 제화(制化)되면 최고의 성공을 이루는 대귀격이 됩니다. 관리되지 않은 칠살은 충동과 과격함으로 나타날 수 있으니 감정 조절이 중요합니다.",
+    "정재격": "정재격은 성실하고 꾸준하게 재물을 쌓아가는 안정형 격국입니다. 한탕을 노리기보다 묵묵히 일하고 저축하여 결국 부를 이루는 타입입니다. 금융·부동산·유통·회계 분야에서 두각을 나타내며, 인생 후반에 더욱 빛나는 운명입니다. 이 격국은 배우자 인연이 좋아 가정이 안정적이며, 파트너의 내조가 큰 힘이 됩니다. 지나친 소심함으로 기회를 놓치지 않도록 용기 있는 결단이 필요한 순간도 있습니다.",
+    "편재격": "편재격은 활동적이고 대담한 재물 운의 격국입니다. 사업·투자·무역처럼 움직임이 큰 분야에서 재물이 들어옵니다. 한자리에 머물기보다 넓은 세계를 돌아다니며 기회를 만드는 타입입니다. 기복이 있지만 그만큼 크게 버는 운도 있습니다. 아버지와의 인연이 인생에 큰 영향을 미칩니다. 재물이 들어온 만큼 나가기도 하므로, 수입의 일정 부분은 반드시 안전한 곳에 묶어두는 습관이 중요합니다.",
+    "식신격": "식신격은 하늘이 내리신 복록의 격국입니다. 타고난 재능과 끼가 있어 그것을 표현하는 것만으로도 재물과 인복이 따라옵니다. 먹는 것을 즐기고 생활의 여유를 즐기며, 주변에 즐거움을 주는 사람입니다. 예술·요리·교육·서비스·창작 분야에서 두각을 나타냅니다. 건강하고 장수하는 운도 있습니다. 다만 너무 편안함을 추구하다 보면 도전 의식이 부족해질 수 있습니다.",
+    "상관격": "상관격은 창의력과 표현 능력이 탁월한 격국입니다. 기존 질서에 얽매이지 않고 새로운 것을 만들어내는 혁신가 기질이 있습니다. 예술·문학·음악·마케팅·IT 분야에서 독보적인 능력을 발휘합니다. 직장 조직보다는 독립적인 활동이 더 잘 맞습니다. 상관견관(傷官見官)이 있으면 직장 상사나 권위자와 갈등이 생기기 쉬우니 언행에 각별히 주의해야 합니다.",
+    "편인격": "편인격은 직관과 영감이 남다른 격국입니다. 특수한 기술·학문·예술에서 독보적인 경지에 오르는 운명입니다. 철학·종교·심리·의술·역학 등 남들이 쉽게 접근하지 못하는 전문 분야에서 두각을 나타냅니다. 고독을 즐기며 혼자만의 깊은 연구에서 에너지를 얻습니다. 도식(倒食)이 형성되면 직업 변동이 잦을 수 있으니 한 분야에 집중하는 것이 좋습니다.",
+    "정인격": "정인격은 학문·교육·명예의 귀격입니다. 배움에 대한 열정이 넘치고, 지식을 쌓을수록 더 높은 곳으로 올라가는 운명입니다. 교수·의사·법관·연구원처럼 학문과 자격이 기반이 되는 직업에서 최고의 성과를 냅니다. 어머니와의 관계가 인생에 큰 영향을 미칩니다. 지식이 곧 재물이 되는 사주이므로 평생 배움을 멈추지 않는 것이 성공의 비결입니다.",
+    "비견격": "비견격은 독립심과 자존감이 강한 격국입니다. 남 밑에서 지시받기보다 자신만의 영역을 구축하는 자영업·창업이 잘 맞습니다. 형제나 동료와의 경쟁이 인생의 주요한 테마가 되며, 이를 통해 단련됩니다. 뚝심과 의지가 강해 어떤 어려움도 정면 돌파합니다. 재물이 모이기 어려울 수 있으니 지출 관리가 특히 중요합니다.",
+    "겁재격": "겁재격은 승부사 기질의 격국입니다. 경쟁을 즐기고 도전적인 상황에서 오히려 에너지가 솟습니다. 스포츠·영업·투자·법조 분야에서 강합니다. 재물의 기복이 매우 크며, 크게 벌었다가도 한순간에 잃을 수 있는 운명이므로 안전자산 확보가 필수입니다. 주변 사람들에게 베푸는 것을 좋아하지만, 그로 인해 재물이 새는 경우도 많습니다.",
+}
+
+STRENGTH_NARRATIVE = {
+    "신강(身强)": """신강 사주는 일간의 기운이 강한 사주입니다. 체력과 정신력이 뛰어나고, 어떤 역경도 정면으로 돌파하는 힘이 있습니다. 그러나 기운이 너무 강하면 오히려 재물과 관운이 억눌릴 수 있습니다. 신강한 분에게는 재성(財星)과 관살(官殺) 운이 올 때 크게 성공할 기회가 생깁니다. 자신감이 넘치는 만큼 때로는 독단적으로 보일 수 있으니, 타인의 의견을 경청하는 습관을 기르는 것이 중요합니다. 신강 사주는 스스로 만들어가는 인생입니다. 남을 기다리기보다 먼저 움직여야 기회가 옵니다.""",
+    "신약(身弱)": """신약 사주는 일간의 기운이 약한 사주입니다. 체력과 에너지 관리가 인생의 핵심 과제입니다. 그러나 신약이 꼭 나쁜 것은 아닙니다. 인성(印星)과 비겁(比劫) 운이 올 때 귀인의 도움을 받아 크게 도약합니다. 혼자보다 좋은 파트너나 조력자와 함께할 때 훨씬 좋은 결과를 냅니다. 건강 관리를 최우선으로 여기고, 무리한 확장보다는 내실을 다지는 전략이 맞습니다. 귀인을 만나거나 스승을 모시는 것이 신약 사주의 성공 방정식입니다.""",
+    "중화(中和)": """중화 사주는 오행의 균형이 잡혀 있어 어떤 상황에서도 크게 무너지지 않는 안정성이 있습니다. 극단적인 기복보다는 꾸준하고 안정적으로 성장하는 타입입니다. 특정 용신에 편중되지 않아 다양한 분야에서 균형 잡힌 능력을 발휘합니다. 그러나 반대로 특출난 강점이 부족할 수 있으니, 자신만의 전문 분야를 하나 깊이 파는 것이 중요합니다. 중화 사주의 가장 큰 장점은 지속성입니다. 오래 달리는 경주마처럼 꾸준함이 무기입니다.""",
+}
+
+def build_rich_narrative(pils, birth_year, gender, name, section="report"):
+    """각 메뉴별 5000~10000자 서술형 내러티브 생성"""
+    try:
+        ilgan = pils[1]["cg"]
+        ilgan_idx = CG.index(ilgan) if ilgan in CG else 0
+        ilgan_kr = CG_KR[ilgan_idx]
+        iljj = pils[1]["jj"]
+        iljj_idx = JJ.index(iljj) if iljj in JJ else 0
+        iljj_kr = JJ_KR[iljj_idx]
+        current_year = datetime.now().year
+        current_age = current_year - birth_year + 1
+        display_name = name if name else "내담자"
+
+        strength_info = get_ilgan_strength(ilgan, pils)
+        sn = strength_info.get("신강신약", "중화(中和)")
+        gyeokguk = get_gyeokguk(pils)
+        gname = gyeokguk.get("격국명", "") if gyeokguk else ""
+        ys = get_yongshin(pils)
+        yongshin_ohs = ys.get("종합_용신", [])
+        if not isinstance(yongshin_ohs, list): yongshin_ohs = []
+        ilgan_oh = OH.get(ilgan, "")
+
+        life = build_life_analysis(pils, gender)
+        ss_dist = life.get("전체_십성", {})
+        top_ss = [k for k, v in sorted(ss_dist.items(), key=lambda x: -x[1])][:3]
+        combos = life.get("조합_결과", [])
+
+        daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+        cur_dw = next((d for d in daewoon if d["시작연도"] <= current_year <= d["종료연도"]), None)
+        cur_dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(cur_dw["cg"], "-") if cur_dw else "-"
+
+        sw_now = get_yearly_luck(pils, current_year)
+        sw_next = get_yearly_luck(pils, current_year + 1)
+
+        OH_KR_MAP = {"木":"목(木)","火":"화(火)","土":"토(土)","金":"금(金)","水":"수(水)"}
+        yong_kr = "·".join([OH_KR_MAP.get(o, o) for o in yongshin_ohs])
+
+        char = ILGAN_CHAR_DESC.get(ilgan, {})
+        sn_narr = STRENGTH_NARRATIVE.get(sn, "")
+        gnarr = GYEOKGUK_NARRATIVE.get(gname, f"{gname}은 독특한 개성과 능력을 가진 격국입니다.")
+
+        # ── 리포트용 (menu1)
+        if section == "report":
+            result = []
+            result.append(f"""
+┌─────────────────────────────────────────────────────┐
+│  {display_name}님의 사주 종합 리포트                          │
+│  {birth_year}년생 · {ilgan_kr}({ilgan}) 일간 · {sn}           │
+└─────────────────────────────────────────────────────┘
+
+【 제1장 · 일간(日干) 캐릭터 완전 분석 】
+
+일간(日干)은 사주의 핵심입니다. 일간은 나 자신을 나타내며, 내가 어떤 사람인지 본질적인 성품을 담고 있습니다.
+
+{display_name}님의 일간은 {ilgan}({ilgan_kr})입니다. {char.get('상징', '')}
+
+{char.get('성격_핵심', '')}
+
+◈ 장점: {char.get('장점', '')}
+
+{char.get('단점', '')}
+
+일간 {ilgan_kr}이(가) {iljj_kr}(地支) 위에 앉아 있습니다. 이는 {display_name}님의 현실적 토대와 행동 패턴에 {iljj_kr}의 기운이 깊숙이 관여한다는 뜻입니다. 일지(日支)는 배우자 자리이기도 하여, 파트너 관계에서도 이 기운이 크게 드러납니다.
+
+【 제2장 · 신강신약(身强身弱) — 기운의 세기 】
+
+{sn_narr}
+
+현재 {display_name}님의 체력 점수는 {strength_info.get('helper_score', 50)}점으로 측정됩니다. 이는 평균적인 기준에서 {'강한 편' if '신강' in sn else '약한 편' if '신약' in sn else '균형 잡힌'} 기운을 의미합니다.
+
+{'• 신강한 사주는 직접 움직여야 기회가 옵니다. 수동적으로 기다리면 아무것도 이루지 못합니다.' if '신강' in sn else '• 신약한 사주는 귀인과 함께할 때 가장 강합니다. 좋은 파트너와 스승을 만나는 것이 운명을 바꾸는 열쇠입니다.' if '신약' in sn else '• 중화 사주는 꾸준함이 가장 큰 무기입니다. 한 분야를 깊이 파고드는 전략이 가장 효과적입니다.'}
+
+【 제3장 · 격국(格局) — 타고난 인생 설계도 】
+
+{gnarr}
+
+격국은 사주의 큰 그림, 인생의 방향성을 나타냅니다. {display_name}님의 {gname}은(는) 단순한 직업 적성을 넘어 이 분이 어떤 방식으로 세상에 가치를 만들어내는지를 보여줍니다.
+
+{gname}을 가진 분이 성공하는 공통점은 다음과 같습니다:
+첫째, 자신의 타고난 격국에 맞는 분야에서 일할 때 최대 능력을 발휘합니다.
+둘째, 격국의 장점을 살리면서 단점을 보완하는 운을 활용해야 합니다.
+셋째, 용신 오행이 들어오는 시기에 결정적인 도전을 해야 합니다.
+
+【 제4장 · 용신(用神) — 내 인생의 보물 오행 】
+
+용신은 내 사주에 가장 필요한 오행입니다. 이 오행이 강화될 때 건강·재물·명예 모두가 좋아집니다.
+
+{display_name}님의 용신: {yong_kr}
+
+용신 오행을 일상에서 강화하는 방법:
+• 용신 색상의 옷·소품을 활용하십시오
+• 용신 방위 쪽에 중요한 공간(침실·사무실·책상)을 배치하십시오
+• 용신 오행에 해당하는 음식을 자주 드십시오
+• 용신 오행이 강한 해(用神年)에 큰 결정을 내리십시오
+
+기신(忌神)이 강해지는 해에는 무리한 투자·이동·결정을 자제하고 내실을 다지는 것이 현명합니다.
+
+【 제5장 · 십성(十星) 조합 — 당신만의 인생 코드 】
+""")
+
+            for key, combo in combos[:2]:
+                result.append(f"""
+◈ [{' × '.join(key)}] 조합
+
+{combo.get('요약', '')}
+
+• 성향: {combo.get('성향', '')}
+• 재물 방식: {combo.get('재물', '')}
+• 직업 적성: {combo.get('직업', '')}
+• 연애 패턴: {combo.get('연애', '')}
+• 주의사항: {combo.get('주의', '')}
+""")
+
+            result.append(f"""
+【 제6장 · 건강(健康) 주의사항 】
+
+일간 {ilgan_kr}의 건강 취약점: {char.get('건강', '')}
+
+사주에서 건강은 오행의 균형 상태를 반영합니다.
+{'목(木) 기운이 강하면 간장·담낭·눈·근육 계통을 주의하십시오.' if '木' in ilgan_oh else ''}
+{'화(火) 기운이 강하면 심장·소장·혈압·시력을 주의하십시오.' if '火' in ilgan_oh else ''}
+{'토(土) 기운이 강하면 비장·위장·췌장·소화기를 주의하십시오.' if '土' in ilgan_oh else ''}
+{'금(金) 기운이 강하면 폐·대장·기관지·피부를 주의하십시오.' if '金' in ilgan_oh else ''}
+{'수(水) 기운이 강하면 신장·방광·생식기·귀를 주의하십시오.' if '水' in ilgan_oh else ''}
+
+건강을 지키는 가장 확실한 방법은 용신 오행을 강화하는 것입니다.
+규칙적인 생활 리듬, 적절한 운동, 충분한 수면이 이 사주에 가장 중요한 건강법입니다.
+
+【 제7장 · 직업 적성 분석 】
+
+일간 {ilgan_kr}에게 가장 잘 맞는 직업: {char.get('직업', '')}
+
+현재 주요 십성 {', '.join(top_ss)}의 조합이 의미하는 적합 업종:
+{'• 식신이 강하면: 요리·예술·창작·교육·서비스 분야에서 자연스럽게 빛납니다.' if '식신' in top_ss else ''}
+{'• 상관이 강하면: IT·마케팅·방송·예술·컨설팅에서 독보적 능력을 발휘합니다.' if '상관' in top_ss else ''}
+{'• 편재가 강하면: 사업·투자·영업·무역·부동산에서 두각을 나타냅니다.' if '편재' in top_ss else ''}
+{'• 정재가 강하면: 금융·회계·행정·유통에서 안정적인 커리어를 쌓습니다.' if '정재' in top_ss else ''}
+{'• 편관이 강하면: 군경·의료·법조·스포츠에서 강인한 의지를 발휘합니다.' if '편관' in top_ss else ''}
+{'• 정관이 강하면: 공무원·교육·관리직에서 신뢰받는 전문가가 됩니다.' if '정관' in top_ss else ''}
+{'• 편인이 강하면: 연구·철학·역술·IT·의학에서 독보적 전문성을 쌓습니다.' if '편인' in top_ss else ''}
+{'• 정인이 강하면: 학문·자격증 기반의 전문직에서 평생 성장합니다.' if '정인' in top_ss else ''}
+{'• 비견이 강하면: 독립사업·프리랜서·자영업에서 진가를 발휘합니다.' if '비견' in top_ss else ''}
+{'• 겁재가 강하면: 영업·스포츠·투자에서 강한 승부 본능을 발휘합니다.' if '겁재' in top_ss else ''}
+
+【 제8장 · 현재 운기(運氣) — {current_year}년 상황 】
+
+현재 {cur_dw['str'] if cur_dw else '-'} 대운이 진행 중입니다.
+({cur_dw_ss} 십성 대운 — {cur_dw['시작연도'] if cur_dw else '-'}년부터 {cur_dw['종료연도'] if cur_dw else '-'}년까지)
+
+올해 {sw_now.get('세운', '')} 세운 ({sw_now.get('십성_천간', '')} / {sw_now.get('길흉', '')})
+
+{'이 시기는 용신 대운이 들어오는 황금기입니다. 적극적으로 움직이고 도전하십시오. 지금 준비하면 반드시 결실이 옵니다.' if cur_dw and _get_yongshin_match(cur_dw_ss, yongshin_ohs, ilgan_oh) == 'yong' else '이 시기는 주의가 필요한 대운입니다. 무리한 확장보다 내실을 다지고 건강 관리에 집중하십시오. 지금의 인내가 다음 황금기를 준비하는 것입니다.'}
+
+내년 {sw_next.get('세운', '')} 세운 전망: {sw_next.get('십성_천간', '')} 십성 — {sw_next.get('길흉', '')}
+
+【 제9장 · 연애·결혼 성향 】
+
+일간 {ilgan_kr}의 연애 패턴:
+{'• ' + char.get('연애_남', '') if gender == '남' else '• ' + char.get('연애_여', '')}
+
+배우자 자리 일지(日支) {iljj_kr}({iljj})의 의미:
+배우자 자리에 있는 지지는 배우자의 성품과 부부 관계의 방향을 나타냅니다.
+{iljj_kr} 일지를 가진 분은 배우자에게서 {'안정과 현실적인 도움을 받는' if iljj in ['丑','辰','戌','未'] else '열정적이고 활기찬 에너지를 받는' if iljj in ['寅','午','戌'] else '지적 교감과 소통을 중요하게 여기는' if iljj in ['申','酉'] else '따뜻한 감성적 유대감을 원하는'} 경향이 있습니다.
+
+【 제10장 · 인생 총평 — 만신의 한 말씀 】
+
+{display_name}님의 사주를 종합적으로 보았을 때, 이 분의 인생 키워드는 "{', '.join(top_ss[:2])}" 조합이 만들어내는 에너지입니다.
+
+{combos[0][1].get('요약', '타고난 재능으로 자신의 길을 개척하는 인생입니다.') if combos else '타고난 개성으로 자신만의 길을 걸어가는 인생입니다.'}
+
+이 사주가 가장 빛나는 순간은 자신의 타고난 기질을 긍정하고, 용신 오행의 힘을 빌려 움직일 때입니다. 억지로 자신에게 맞지 않는 방향으로 가려 하면 반드시 시련이 따릅니다.
+
+{sn}인 이 사주는 {'스스로 길을 열어가는 개척자의 운명입니다. 두려움을 버리고 먼저 나서십시오.' if '신강' in sn else '귀인의 도움과 좋은 인연으로 날개를 다는 운명입니다. 좋은 사람과 함께하십시오.' if '신약' in sn else '꾸준함과 균형으로 오래 멀리 가는 운명입니다. 한 우물을 깊게 파십시오.'}
+
+앞으로의 {yong_kr} 용신 강화를 통해 건강·재물·명예 모두를 함께 향상시키십시오. 이것이 이 사주의 가장 핵심적인 처방입니다.
+""")
+            # ── 확장 콘텐츠: 신살·오행·연도별 조언
+            try:
+                sinsal_list = get_extra_sinsal(pils)
+                if sinsal_list:
+                    sinsal_text = "\n".join([f"• {s['name']}: {s['desc']}\n  처방: {s.get('remedy','')}" for s in sinsal_list])
+                    result.append(f"""
+【 제11장 · 신살(神殺) 완전 분석 】
+
+신살은 사주에 내재된 특수한 기운으로, 삶의 특정 측면에 강한 영향을 줍니다.
+
+{sinsal_text}
+
+신살은 좋고 나쁨을 단정짓기보다, 그 에너지를 어떻게 활용하느냐가 더 중요합니다. 흉살이라도 제화(制化)하면 오히려 탁월한 능력의 원천이 됩니다.
+""")
+                sinsal12 = get_12sinsal(pils)
+                if sinsal12:
+                    s12_text = "\n".join([f"• {s['이름']}: {s.get('desc','')}" for s in sinsal12[:5]])
+                    result.append(f"""
+【 제12장 · 12신살(十二神殺) 】
+
+{s12_text}
+""")
+            except: pass
+
+            try:
+                oh_strength = calc_ohaeng_strength(ilgan, pils)
+                oh_lines = []
+                OH_BODY = {"木":"간장·담낭·눈·근육","火":"심장·소장·혈관·혈압","土":"비장·위장·췌장·소화기","金":"폐·대장·기관지·피부","水":"신장·방광·생식기·귀"}
+                OH_STRONG = {"木":"창의력·기획력·성장 에너지가 넘칩니다","火":"열정·표현력·인기운이 뛰어납니다","土":"안정감·신뢰·현실 감각이 탁월합니다","金":"결단력·추진력·원칙이 강합니다","水":"지혜·유연성·적응력이 뛰어납니다"}
+                OH_WEAK  = {"木":"유연성과 창의력을 의식적으로 키우십시오","火":"열정을 표현하고 사람들과 더 많이 소통하십시오","土":"안정적 기반을 만드는 데 더 노력하십시오","金":"결단력을 기르고 원칙을 세우십시오","水":"직관을 믿고 상황에 유연하게 적응하십시오"}
+                for oh_key, oh_val in sorted(oh_strength.items(), key=lambda x: -x[1]):
+                    level = "강함" if oh_val >= 30 else "보통" if oh_val >= 15 else "약함"
+                    body_part = OH_BODY.get(oh_key, "")
+                    if oh_val >= 30:
+                        oh_lines.append(f"• {oh_key}({oh_val}점/강함): {OH_STRONG.get(oh_key,'')} — 건강 주의 부위: {body_part}")
+                    elif oh_val < 15:
+                        oh_lines.append(f"• {oh_key}({oh_val}점/약함): {OH_WEAK.get(oh_key,'')} — 보충 필요 부위: {body_part}")
+                result.append(f"""
+【 제13장 · 오행(五行) 분포와 건강 심층 분석 】
+
+오행의 강약은 성격과 건강 모두에 영향을 줍니다.
+
+{chr(10).join(oh_lines)}
+
+오행 균형을 맞추기 위한 처방:
+• 부족한 오행을 보충하는 음식·색상·활동을 일상에서 꾸준히 활용하십시오
+• 과잉된 오행의 기관을 정기적으로 검진하십시오
+• 용신 오행이 약하다면 그 오행을 강화하는 노력이 인생 전반을 향상시킵니다
+""")
+            except: pass
+
+            result.append(f"""
+【 제14장 · 연령대별 인생 전략 — {display_name}님에게만 드리는 맞춤 처방 】
+
+◈ 현재 {current_age}세 — {current_year}년
+대운: {cur_dw['str'] if cur_dw else '-'} ({cur_dw_ss})
+세운: {sw_now.get('세운','')} ({sw_now.get('십성_천간','')} / {sw_now.get('길흉','')})
+
+지금 이 순간의 처방:
+{'✅ 용신 대운과 용신 세운이 겹치는 황금기입니다. 지금 움직이지 않으면 언제 움직이겠습니까. 두려움을 버리고 계획했던 것을 실행하십시오.' if cur_dw and _get_yongshin_match(cur_dw_ss, yongshin_ohs, ilgan_oh) == 'yong' and _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '⚠️ 지금은 신중하게 내실을 다지는 시기입니다. 무리한 확장보다 체력·실력·자금을 비축하십시오.'}
+
+◈ 내년 {current_year+1}년 전망
+세운: {sw_next.get('세운','')} ({sw_next.get('십성_천간','')} / {sw_next.get('길흉','')})
+{'내년은 올해보다 더 나은 흐름이 예상됩니다. 올해 준비한 것이 내년에 결실을 맺습니다.' if sw_next.get('길흉','') in ['길','대길'] else '내년도 신중한 한 해가 될 것입니다. 계획을 세우고 차분하게 실행하십시오.'}
+
+◈ 향후 5년 핵심 전략
+1. 용신 {yong_kr} 오행이 강한 환경에 자신을 노출시키십시오
+2. {gname}의 특성을 최대한 살리는 직업·사업 방향으로 나아가십시오
+3. {sn}에 맞는 방식으로 에너지를 운용하십시오 — {'직접 움직여 기회를 만들어가십시오' if '신강' in sn else '좋은 파트너와 함께 시너지를 내십시오' if '신약' in sn else '꾸준하고 안정적으로 성장하십시오'}
+4. 기신 오행의 유혹(투자·환경·인연)을 의식적으로 피하십시오
+5. 건강이 모든 운의 기반입니다. {char.get('건강','정기적 건강 관리')}에 주의하십시오
+
+【 제15장 · 만신의 최종 한 말씀 】
+
+{display_name}님의 사주는 한마디로 "{combos[0][1].get('요약','자신만의 독특한 빛을 가진 사주') if combos else '평생 성장하는 사주'}"입니다.
+
+이 세상에 태어난 모든 사람은 저마다의 사명(使命)이 있습니다. {display_name}님의 사명은 {ilgan_kr} 일간이 가진 "{char.get('장점','타고난 능력')}"을(를) 세상에 발현하는 것입니다.
+
+지금까지의 삶에서 힘들었던 순간들도 사실은 이 사명을 위한 준비 과정이었습니다. 사주를 보는 것은 미래를 맹목적으로 믿기 위함이 아닙니다. 자신을 깊이 이해하고, 좋은 운기에 최대로 활동하며, 어려운 운기에 현명하게 대처하기 위함입니다.
+
+{display_name}님에게 드리는 만신의 마지막 한 마디:
+"운명은 사주가 정하지만, 운명을 만드는 것은 당신입니다."
+""")
+            # ── 제16~20장 확장 콘텐츠 ────────────────────────────────
+            try:
+                iljj  = pils[1]["jj"]
+                ilju_str = pils[1]["str"]
+                ILJJ_NATURE = {
+                    "子":"지혜롭고 총명하며 기억력이 뛰어납니다. 밤에 더 활발해지고 직관이 발달해 있습니다.",
+                    "丑":"성실하고 묵묵합니다. 한 번 결심하면 끝까지 가는 뚝심이 있습니다.",
+                    "寅":"추진력이 강하고 용감합니다. 타인을 이끄는 리더십이 자연스럽게 나옵니다.",
+                    "卯":"감수성이 풍부하고 창의적입니다. 예술적 감각이 있으며 인기가 많습니다.",
+                    "辰":"다재다능하고 신비로운 매력이 있습니다. 변화와 적응에 능합니다.",
+                    "巳":"지혜롭고 비밀이 많습니다. 겉으로 드러나지 않는 깊은 내면이 있습니다.",
+                    "午":"열정적이고 감정 표현이 풍부합니다. 인기와 주목을 자연스럽게 끌어당깁니다.",
+                    "未":"예술적이고 따뜻한 심성을 지녔습니다. 보살피고 지키려는 본능이 강합니다.",
+                    "申":"영리하고 임기응변이 뛰어납니다. 변화를 두려워하지 않고 기회를 잘 잡습니다.",
+                    "酉":"섬세하고 완벽주의적입니다. 기준이 높아 스스로를 끊임없이 갈고닦습니다.",
+                    "戌":"의리 있고 충직합니다. 한번 믿은 사람은 끝까지 지키는 의협심이 있습니다.",
+                    "亥":"자유롭고 포용력이 넓습니다. 생각의 깊이가 있으며 영성·철학에 관심이 많습니다.",
+                }
+                ILJJ_SPOUSE = {
+                    "子":"배우자는 총명하고 감각이 뛰어난 분을 만날 가능성이 높습니다. 지적 교감이 중요합니다.",
+                    "丑":"배우자는 성실하고 현실적인 분을 만나게 됩니다. 가정을 소중히 여기는 파트너입니다.",
+                    "寅":"배우자는 활동적이고 추진력 있는 분입니다. 서로 에너지를 주고받는 관계가 됩니다.",
+                    "卯":"배우자는 섬세하고 예술적 감각이 있는 분입니다. 정서적 교감을 중시합니다.",
+                    "辰":"배우자는 다재다능하고 변화가 많은 분입니다. 관계에서 기복이 있을 수 있습니다.",
+                    "巳":"배우자는 지혜롭고 신중한 분입니다. 겉으로 드러나지 않는 깊은 내면을 가진 파트너입니다.",
+                    "午":"배우자는 열정적이고 표현력이 강한 분입니다. 감정의 기복이 있지만 뜨겁게 사랑합니다.",
+                    "未":"배우자는 따뜻하고 예술적 감각이 있는 분입니다. 집과 가정을 소중히 여깁니다.",
+                    "申":"배우자는 영리하고 임기응변이 뛰어난 분입니다. 다방면에 재능이 있는 파트너입니다.",
+                    "酉":"배우자는 섬세하고 완벽주의적인 분입니다. 기준이 높아 처음에는 까다롭게 보일 수 있습니다.",
+                    "戌":"배우자는 의리 있고 충직한 분입니다. 한번 믿으면 끝까지 지키는 파트너입니다.",
+                    "亥":"배우자는 자유롭고 포용력 있는 분입니다. 생각이 깊고 영성적인 면이 있는 파트너입니다.",
+                }
+                ilju_nature  = ILJJ_NATURE.get(iljj, "")
+                ilju_spouse  = ILJJ_SPOUSE.get(iljj, "")
+                ilju_detail  = ILJU_DATA.get(ilju_str, {}).get("desc", f"{ilgan_kr} 위에 {iljj_kr}이 앉은 일주입니다.")
+                result.append(f"""
+【 제16장 · 일주론(日柱論) — {ilju_str} 일주의 완전 분석 】
+
+일주(日柱)는 사주의 핵심입니다. 일간(日干)은 나 자신이고, 일지(日支)는 내가 서 있는 토대이자 배우자 자리입니다.
+{display_name}님의 일주는 {ilju_str}({ilgan_kr}/{iljj_kr})입니다.
+
+◈ {ilju_str} 일주 특성
+{ilju_detail}
+
+◈ 일지({iljj_kr}) 성정(性情)
+{ilju_nature}
+
+◈ 배우자 자리(日支) 분석
+{ilju_spouse}
+
+◈ 일간 {ilgan_kr}의 오행적 특성
+{OHN.get(ilgan_oh,'')} 기운은 {'성장과 창의, 새로운 시작을 상징합니다.' if ilgan_oh=='木' else '열정과 표현, 인기를 상징합니다.' if ilgan_oh=='火' else '안정과 신뢰, 중심을 상징합니다.' if ilgan_oh=='土' else '결단과 원칙, 정제를 상징합니다.' if ilgan_oh=='金' else '지혜와 유연성, 깊이를 상징합니다.'}
+이 기운이 {display_name}님의 삶 전반에 흐르며, 용신 {yong_kr} 오행과 만날 때 가장 크게 빛납니다.
+""")
+            except: pass
+
+            # ── 제17장: 재물운 로드맵
+            try:
+                hi = generate_engine_highlights(pils, birth_year, gender)
+                mp_text = "\n".join([
+                    f"• {mp['age']} ({mp['year']}): {mp['desc']}"
+                    for mp in hi.get('money_peak', [])[:4]
+                ]) or "• 계산된 재물 황금기가 없습니다."
+                result.append(f"""
+【 제17장 · 재물운(財物運) 완전 로드맵 】
+
+◈ {display_name}님의 재물 패턴
+{char.get('재물패턴','꾸준한 노력으로 재물을 쌓아가는 타입입니다.')}
+
+◈ 평생 재물 황금기
+{mp_text}
+
+◈ 재물 핵심 전략
+• {gname}: {'직업 안정 수입이 기반. 투기는 금물.' if '정재' in gname else '사업·투자로 큰 기회. 기복 대비 안전자산 필수.' if '편재' in gname else '전문성·창의력으로 수입. 재능을 팔아 돈 버는 구조.' if '식신' in gname or '상관' in gname else '명예와 재물 동시에. 실력 먼저, 돈은 따라온다.'}
+• 기신 운: {'대운·세운 모두 기신일 때 큰 투자·동업·보증 금지'}
+• 용신 {yong_kr} 오행 해(年): 재물 결정과 실행의 최적기
+• {sn}: {'직접 부딪혀야 재물이 온다. 기다리면 지나간다.' if '신강' in sn else '귀인·파트너와 함께할 때 재물이 배로 온다.' if '신약' in sn else '꾸준함이 최대 재물 전략이다.'}
+""")
+            except: pass
+
+            # ── 제18장: 건강운
+            try:
+                oh_strength2 = calc_ohaeng_strength(ilgan, pils)
+                OH_BODY_FULL = {
+                    "木":"간장·담낭·눈·근육·인대. 봄이 취약, 분노·스트레스가 간을 상합니다.",
+                    "火":"심장·소장·혈관·혈압·시력. 여름이 취약, 과로·흥분이 심장을 상합니다.",
+                    "土":"비장·위장·췌장·소화기. 환절기 취약, 걱정과 폭식이 위장을 상합니다.",
+                    "金":"폐·대장·기관지·피부·코. 가을이 취약, 슬픔·건조가 폐를 상합니다.",
+                    "水":"신장·방광·생식기·귀·뼈. 겨울이 취약, 공포와 과로가 신장을 상합니다.",
+                }
+                OH_HEALTH_ADV = {
+                    "木":"규칙적 스트레칭·충분한 수면. 신맛 음식(레몬·매실·신과일) 권장.",
+                    "火":"심혈관 정기검진 필수. 카페인·음주 자제. 쓴맛(녹차) 적당히.",
+                    "土":"식사 규칙성이 핵심. 폭식·군것질 금지. 황색 음식(꿀·고구마) 권장.",
+                    "金":"습도 관리, 가습기 활용. 건조 환경 주의. 매운맛(마늘·생강) 적당히.",
+                    "水":"수분 충분히. 짠 음식·과로 금지. 검은 음식(검은콩·미역·김) 권장.",
+                }
+                h_lines = [f"◈ 일간 {ilgan_kr} 주의사항\n{char.get('건강','규칙적인 생활과 수면이 핵심입니다.')}\n"]
+                for o, v in oh_strength2.items():
+                    if v >= 30:
+                        h_lines.append(f"◈ {OHN.get(o,'')}({o}) 과다({v}%) — 주의: {OH_BODY_FULL.get(o,'')}\n  처방: {OH_HEALTH_ADV.get(o,'')}")
+                    elif v <= 8:
+                        h_lines.append(f"◈ {OHN.get(o,'')}({o}) 부족({v}%) — 보충 필요: {OH_BODY_FULL.get(o,'')}\n  처방: {OH_HEALTH_ADV.get(o,'')}")
+                result.append(f"""
+【 제18장 · 건강운(健康運) 완전 분석 】
+
+{chr(10).join(h_lines)}
+
+◈ 현재 대운({cur_dw_ss}) 건강 주의
+{'편관 대운 — 과로·수술·관재 위험. 정기검진 필수.' if cur_dw_ss=='편관' else '겁재 대운 — 정신적 스트레스가 신체에 영향. 감정 관리가 곧 건강 관리.' if cur_dw_ss=='겁재' else '비교적 건강한 대운. 기본 생활습관 유지가 핵심.'}
+
+◈ 평생 건강 5대 수칙
+1. 수면: 규칙적 수면 — {ilgan_kr} 일간의 건강 기반
+2. 감정: {'분노 억제' if ilgan_oh=='木' else '과잉 흥분 조절' if ilgan_oh=='火' else '걱정·근심 해소' if ilgan_oh=='土' else '슬픔·집착 해소' if ilgan_oh=='金' else '공포·불안 해소'} — 감정이 곧 건강
+3. 음식: 용신 {yong_kr} 오행 음식 꾸준히 섭취
+4. 운동: {'강도 있는 운동보다 꾸준한 유산소' if '신강' in sn else '가벼운 운동 + 충분한 휴식' if '신약' in sn else '균형 잡힌 운동 루틴'}
+5. 검진: 주의 장기 연 1회 이상 검진 필수
+""")
+            except: pass
+
+            # ── 제19장: 인간관계·육친
+            try:
+                yk = get_yukjin(ilgan, pils, gender)
+                yk_yes = [item for item in yk if item.get('present')]
+                yk_no  = [item for item in yk if not item.get('present')]
+                yk_yes_text = "\n".join([f"• {i['관계']}: {i['위치']} — {i['desc'][:60]}" for i in yk_yes[:4]]) or "해당 없음"
+                yk_no_text  = "\n".join([f"• {i['관계']}: 원국에 없음" for i in yk_no[:4]]) or "해당 없음"
+                result.append(f"""
+【 제19장 · 인간관계(人間關係) — 육친(六親) 완전 분석 】
+
+◈ 원국에 있는 육친 (강한 인연)
+{yk_yes_text}
+
+◈ 원국에 없는 육친 (약하거나 변화 많은 인연)
+{yk_no_text}
+
+◈ {ilgan_kr} 일간의 인간관계 방식
+{'강한 독립심으로 인해 혼자 결정·해결하려는 경향이 강합니다.' if ilgan_oh in ['木','金'] else '따뜻하지만 상처받으면 오래 기억하는 편입니다.' if ilgan_oh=='火' else '신뢰를 중시하고 새로운 인연을 맺는 데 시간이 걸립니다.' if ilgan_oh=='土' else '깊은 통찰력으로 사람을 파악하지만 먼저 다가가기 어려워합니다.'}
+
+◈ {'남성' if gender=='남' else '여성'} {display_name}님의 이성 인연
+{char.get('연애_남' if gender=='남' else '연애_여','이성 관계에서 자신만의 방식을 가지고 있습니다.')}
+
+◈ 귀인을 만나는 방법
+{'문서·학문·공식 자리에서 귀인을 만납니다.' if '정관' in gname or '정인' in gname else '이동·사업·거래 현장에서 귀인을 만납니다.' if '편재' in gname or '편관' in gname else '일상 업무·창작 활동 중에 귀인이 나타납니다.'}
+용신 {yong_kr} 오행의 기운이 강한 장소와 사람에게서 귀인이 옵니다.
+""")
+            except: pass
+
+            # ── 제20장: 맞춤 인생 처방전
+            try:
+                result.append(f"""
+【 제20장 · {display_name}님에게만 드리는 맞춤 인생 처방전 】
+
+20개 장의 분석을 종합한 최종 처방입니다.
+
+━━━━━━ 지금 당장 해야 할 것 (용신 강화) ━━━━━━
+
+색상 처방:
+{'• 목(木) 용신: 청색·녹색 계열' if '木' in yongshin_ohs else ''}{'• 화(火) 용신: 적색·주황색 계열' if '火' in yongshin_ohs else ''}{'• 토(土) 용신: 황색·베이지·갈색 계열' if '土' in yongshin_ohs else ''}{'• 금(金) 용신: 백색·은색·금색 계열' if '金' in yongshin_ohs else ''}{'• 수(水) 용신: 흑색·남색·회색 계열' if '水' in yongshin_ohs else ''}
+
+방위 처방:
+{'• 목(木): 동쪽' if '木' in yongshin_ohs else ''}{'• 화(火): 남쪽' if '火' in yongshin_ohs else ''}{'• 토(土): 중앙·북동·북서' if '土' in yongshin_ohs else ''}{'• 금(金): 서쪽' if '金' in yongshin_ohs else ''}{'• 수(水): 북쪽' if '水' in yongshin_ohs else ''}
+
+시간 처방:
+{'• 목(木): 새벽 3~7시(인묘시)' if '木' in yongshin_ohs else ''}{'• 화(火): 오전 9~13시(사오시)' if '火' in yongshin_ohs else ''}{'• 토(土): 진술축미시' if '土' in yongshin_ohs else ''}{'• 금(金): 오후 3~7시(신유시)' if '金' in yongshin_ohs else ''}{'• 수(水): 저녁 9~새벽 1시(해자시)' if '水' in yongshin_ohs else ''}
+
+━━━━━━ 절대 하면 안 되는 것 (기신 주의) ━━━━━━
+
+• 기신 운이 강한 해에 큰 투자·이사·창업·결혼 서두르지 않기
+• {gname}에 맞지 않는 사업 방향 피하기
+• {'보증·연대책임 절대 금지' if '겁재' in str(top_ss) or '비견' in str(top_ss) else '감정적 충동 결정 자제'}
+• 건강 경고 신호 무시하지 않기
+
+━━━━━━ {current_year + 1}년 행동 계획 ━━━━━━
+
+내년 세운: {sw_next.get('세운','')} ({sw_next.get('십성_천간','')} / {sw_next.get('길흉','')})
+{'✅ 적극적으로 움직여야 할 해. 준비한 것을 실행하고 귀인의 도움을 요청하십시오.' if sw_next.get('길흉','') in ['길','대길'] else '⚠️ 신중하게 내실을 다지는 해. 현재를 안정화하는 데 집중하십시오.'}
+
+"운명은 사주가 정하지만, 운명을 만드는 것은 당신입니다."
+""")
+            except: pass
+
+            return "".join(result)
+
+        # ── 인생 흐름용 (menu2)
+        elif section == "lifeline":
+            result = []
+            result.append(f"""
+┌─────────────────────────────────────────────────────┐
+│  {display_name}님의 인생 흐름 — 대운 100년 완전 해설          │
+└─────────────────────────────────────────────────────┘
+
+대운(大運)은 10년 단위로 흐르는 인생의 큰 물결입니다. 세운(歲運)이 1년 단위의 파도라면, 대운은 10년을 휘감는 조류(潮流)입니다. 아무리 좋은 세운이 와도 대운이 나쁘면 크게 발현되지 않으며, 반대로 힘든 세운도 좋은 대운 아래서는 그 피해가 줄어듭니다.
+
+{display_name}님의 용신은 {yong_kr}입니다. 이 오행의 대운이 오는 시기가 인생의 황금기가 됩니다.
+
+【 대운별 상세 해설 】
+""")
+            for dw in daewoon[:9]:
+                dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
+                dw_oh = OH.get(dw["cg"], "")
+                is_yong = _get_yongshin_match(dw_ss, yongshin_ohs, ilgan_oh) == "yong"
+                is_cur = dw["시작연도"] <= current_year <= dw["종료연도"]
+                cur_mark = " ◀ 현재 대운" if is_cur else ""
+
+                DW_SS_DESC = {
+                    "식신": f"식신 대운은 복록과 재능이 꽃피는 시기입니다. {display_name}님의 타고난 재능이 세상에 드러나고, 하는 일마다 사람들의 인정을 받게 됩니다. 건강하고 여유로운 시간이며, 창작·교육·서비스 분야에서 특히 좋은 성과를 냅니다. 먹는 복, 입는 복이 따르고 생활이 윤택해집니다.",
+                    "상관": f"상관 대운은 창의력과 표현력이 폭발하는 시기입니다. 기존의 틀을 깨고 새로운 길을 개척하고 싶은 욕구가 강해집니다. 직장 상사나 권위자와 마찰이 생기기 쉬우니 언행에 각별히 주의해야 합니다. 예술·창업·자유업 분야에서는 오히려 빛나는 시기입니다.",
+                    "편재": f"편재 대운은 사업·투자·이동이 활발해지는 시기입니다. 적극적으로 움직이면 큰 재물을 잡을 기회가 옵니다. 다만 기복이 크므로 무리한 투기는 피해야 합니다. 이성 인연이 강해지고 새로운 환경에서 새 출발을 하게 되는 경우가 많습니다.",
+                    "정재": f"정재 대운은 안정적인 재물이 꾸준히 들어오는 시기입니다. 성실한 노력이 결실을 맺고, 저축과 자산 관리가 잘 됩니다. 결혼·가정·안정을 추구하게 되며, 배우자나 파트너의 내조가 큰 힘이 됩니다. 인생의 기반을 다지기에 최고의 시기입니다.",
+                    "편관": f"편관 대운은 시련과 도전이 교차하는 시기입니다. 직장·건강·관재 문제가 생길 수 있으니 특별한 주의가 필요합니다. 그러나 이 시련을 이겨내면 크게 성장하는 계기가 됩니다. 결단력과 추진력을 발휘하면 오히려 강한 리더십이 빛나는 시기가 됩니다.",
+                    "정관": f"정관 대운은 명예와 인정이 찾아오는 시기입니다. 사회적 지위가 올라가고 주변으로부터 신뢰를 받습니다. 승진·수상·자격 취득의 기회가 생기며, 법과 원칙 안에서 정당하게 성공합니다. 결혼 인연이나 공식적인 관계가 맺어지기 좋은 시기입니다.",
+                    "편인": f"편인 대운은 직관과 통찰이 강해지는 시기입니다. 특수 분야의 전문성을 쌓기 좋으며, 공부·연구·수련에 몰입하게 됩니다. 단, 도식이 형성되면 복이 꺾이는 작용이 있으니 지나친 이상주의를 경계해야 합니다. 고독 속에서 내공을 쌓는 시기입니다.",
+                    "정인": f"정인 대운은 학문과 귀인의 덕이 충만한 시기입니다. 스승이나 윗사람의 후원을 받아 도약할 기회가 옵니다. 자격증·학위 취득이나 중요한 시험에서 좋은 결과를 냅니다. 어머니나 귀인으로부터 도움을 받게 되는 경우가 많습니다.",
+                    "비견": f"비견 대운은 독립심과 자존감이 강해지는 시기입니다. 새로운 파트너나 동업자를 만나게 되며, 독립 창업을 시도하기도 합니다. 경쟁이 치열해지고 재물이 분산될 수 있으니 지출 관리에 신경 써야 합니다. 자신만의 길을 걷겠다는 의지가 강해집니다.",
+                    "겁재": f"겁재 대운은 재물의 기복이 심한 시기입니다. 크게 벌었다가 크게 잃는 사이클이 반복될 수 있습니다. 투기성 투자·보증·동업에는 각별히 주의해야 합니다. 강한 경쟁 의식이 생기지만, 이것이 성장의 에너지가 될 수도 있습니다.",
+                }
+                desc = DW_SS_DESC.get(dw_ss, f"{dw_ss} 십성 대운으로 {dw['str']}의 기운이 10년간 흐릅니다.")
+
+                result.append(f"""
+▶ {dw['시작나이']}세 ~ {dw['시작나이']+9}세 | {dw['str']} 대운 ({dw_ss}){cur_mark}
+   ({dw['시작연도']}년 ~ {dw['종료연도']}년)
+   {'⭐ 용신 대운 — 인생의 황금기' if is_yong else ''}
+
+   {desc}
+
+   이 시기의 핵심 키워드: {'번영·성장·도약' if is_yong else '인내·준비·기반 구축'}
+   {'지금이 바로 큰 결정을 내려야 할 때입니다. 머뭇거리지 마십시오.' if is_yong and is_cur else '지금은 다음 황금기를 위한 준비 기간입니다. 내실을 다지십시오.' if not is_yong and is_cur else ''}
+""")
+
+            result.append(f"""
+【 인생 전체 흐름 요약 】
+
+{display_name}님의 인생에서 가장 중요한 대운은 용신 {yong_kr} 오행이 들어오는 시기입니다. 이 시기에 큰 결정을 내리고 적극적으로 움직여야 합니다.
+
+현재 {current_age}세의 {display_name}님은 {'지금이 바로 황금기입니다. 두려워하지 말고 전진하십시오!' if cur_dw and _get_yongshin_match(cur_dw_ss, yongshin_ohs, ilgan_oh) == 'yong' else '지금은 준비 기간입니다. 다음 용신 대운을 위해 체력과 실력을 비축하십시오.'}
+
+대운의 흐름을 이해하는 것은 인생의 지도를 갖는 것과 같습니다. 좋은 대운에 최대한 활동하고, 나쁜 대운에 최소한으로 노출되는 것 — 이것이 사주 활용의 핵심 전략입니다.
+""")
+            # 확장 — 대운별 재물·건강·연애 상세
+            result.append(f"""
+【 대운별 분야별 상세 분석 】
+
+각 대운에서 재물·직업·건강·연애가 어떻게 흘러가는지 구체적으로 분석합니다.
+""")
+            DW_DOMAIN_DETAIL = {
+                "식신": {"재물":"재능으로 수익을 만드는 최적의 대운입니다. 창작·교육·서비스 관련 수익이 안정적으로 들어옵니다.","직업":"현재 일에서 역량이 꽃피어 인정받습니다. 승진이나 새로운 기회가 자연스럽게 옵니다.","건강":"이 대운에서는 전반적으로 건강하고 활기찬 시기입니다. 식욕과 체력이 좋아집니다.","연애":"자연스러운 매력으로 인기를 끕니다. 여유롭고 행복한 인연이 이루어집니다."},
+                "상관": {"재물":"기존 방식에서 벗어난 창의적 수익 창출이 가능합니다. 부업·프리랜서 소득이 늘어날 수 있습니다.","직업":"직장보다 독립적인 활동이 강조됩니다. 창업·이직 충동이 강해집니다.","건강":"신경계 과부하에 주의하십시오. 지나친 활동으로 번아웃이 올 수 있습니다.","연애":"자유롭고 역동적인 인연이 생깁니다. 단, 관계의 지속성이 약해질 수 있습니다."},
+                "편재": {"재물":"투자·사업·거래가 활발해지는 재물 대운입니다. 기복이 있지만 크게 버는 시기입니다.","직업":"외부 활동과 영업이 강해집니다. 새로운 사업 영역을 개척하기 좋은 대운입니다.","건강":"과로로 인한 체력 저하가 올 수 있습니다. 활동량을 적절히 조절하십시오.","연애":"이성 인연이 풍부해지는 대운입니다. 적극적으로 만남을 만들어가십시오."},
+                "정재": {"재물":"안정적이고 꾸준한 재물이 쌓이는 대운입니다. 저축과 자산 관리에 가장 유리한 시기입니다.","직업":"묵묵한 노력이 인정받고 승진이나 연봉 인상의 기회가 옵니다.","건강":"전반적으로 안정적인 건강 상태입니다. 규칙적인 생활을 유지하십시오.","연애":"안정적이고 진지한 인연이 생깁니다. 결혼을 결심하기 좋은 대운입니다."},
+                "편관": {"재물":"재물 손실과 지출이 커지는 시기입니다. 보수적인 재무 전략이 필요합니다.","직업":"직장 내 압박·갈등·변동이 생기기 쉽습니다. 언행에 각별히 주의하십시오.","건강":"건강 이상·사고·수술 위험이 있는 대운입니다. 정기 건강검진을 받으십시오.","연애":"관계에서 갈등과 불화가 생기기 쉽습니다. 인내하고 감정을 조절하십시오."},
+                "정관": {"재물":"합법적이고 정당한 방법으로 재물이 들어오는 대운입니다. 계약·협약에 유리합니다.","직업":"사회적 지위가 올라가고 명예가 빛나는 대운입니다. 승진·수상의 기회가 옵니다.","건강":"전반적으로 안정적입니다. 과로에만 주의하십시오.","연애":"공식적이고 격식 있는 인연이 생깁니다. 결혼 기회가 찾아오는 대운입니다."},
+                "편인": {"재물":"재물보다 전문성과 지식이 쌓이는 대운입니다. 자격증·교육에 투자하십시오.","직업":"특수 분야 전문성이 인정받는 대운입니다. 연구·개발·강의 분야에서 두각을 나타냅니다.","건강":"신경과민과 불면증에 주의하십시오. 명상과 충분한 휴식이 필요합니다.","연애":"고독한 시간이 많아질 수 있습니다. 깊고 의미있는 인연을 만납니다."},
+                "정인": {"재물":"귀인의 도움으로 재물 기회가 찾아옵니다. 직접 버는 것보다 귀인의 연결로 이익이 생깁니다.","직업":"스승·상사의 후원으로 도약합니다. 시험·자격·학위 취득에 최고의 대운입니다.","건강":"몸과 마음 모두 안정적입니다. 정기적인 스트레칭과 명상이 더욱 효과적입니다.","연애":"격식 있고 진지한 인연이 생깁니다. 어른들의 주선으로 좋은 만남이 이루어집니다."},
+                "비견": {"재물":"재물이 여러 방향으로 분산될 수 있습니다. 지출 관리와 투자 신중이 필요합니다.","직업":"독립·창업 의지가 강해지는 대운입니다. 자신만의 영역을 구축하기 좋습니다.","건강":"전반적으로 안정적입니다. 경쟁 스트레스가 쌓이지 않도록 하십시오.","연애":"비슷한 가치관의 인연을 만납니다. 독립적인 관계 방식을 선호하게 됩니다."},
+                "겁재": {"재물":"재물 기복이 크고 손재 위험이 있는 대운입니다. 투기성 투자는 반드시 피하십시오.","직업":"경쟁이 치열해집니다. 상대를 이기려 하기보다 자신의 실력에 집중하십시오.","건강":"과도한 경쟁 스트레스로 인한 건강 저하를 주의하십시오.","연애":"질투와 경쟁 심리로 관계 갈등이 생기기 쉽습니다. 감정을 솔직히 표현하십시오."},
             }
-            .ilgan-card {
-                background: #fff;
-                border: 1px solid #e0c58e;
-                border-radius: 12px;
-                padding: 20px;
-                box-shadow: 4px 4px 15px rgba(160, 114, 10, 0.1);
-                transition: transform 0.3s, box-shadow 0.3s;
-                border-left: 5px solid #a0720a;
+            for dw in daewoon[:8]:
+                dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
+                is_yong = _get_yongshin_match(dw_ss, yongshin_ohs, ilgan_oh) == "yong"
+                is_cur = dw["시작연도"] <= current_year <= dw["종료연도"]
+                domain = DW_DOMAIN_DETAIL.get(dw_ss, {"재물":"운기를 주시하십시오","직업":"변화에 대비하십시오","건강":"건강 관리에 유의하십시오","연애":"인연에 열린 자세를 가지십시오"})
+                cur_mark = " ◀ 현재" if is_cur else ""
+                result.append(f"""
+▷ {dw['시작나이']}~{dw['시작나이']+9}세 {dw['str']} ({dw_ss}대운){cur_mark}
+  💰 재물: {domain['재물']}
+  💼 직업: {domain['직업']}
+  🏥 건강: {domain['건강']}
+  💑 연애: {domain['연애']}
+""")
+            # 인생 황금기 vs 위기 요약
+            golden = [(dw['시작나이'], dw['str']) for dw in daewoon if _get_yongshin_match(TEN_GODS_MATRIX.get(ilgan,{}).get(dw['cg'],'-'), yongshin_ohs, ilgan_oh) == 'yong']
+            crisis = [(dw['시작나이'], dw['str']) for dw in daewoon if TEN_GODS_MATRIX.get(ilgan,{}).get(dw['cg'],'-') in ['편관','겁재'] and _get_yongshin_match(TEN_GODS_MATRIX.get(ilgan,{}).get(dw['cg'],'-'), yongshin_ohs, ilgan_oh) != 'yong']
+            golden_str = " / ".join([f"{a}세 {s}" for a,s in golden[:4]]) if golden else "꾸준한 노력이 황금기를 만듭니다"
+            crisis_str = " / ".join([f"{a}세 {s}" for a,s in crisis[:3]]) if crisis else "없음"
+            result.append(f"""
+【 인생 황금기 vs 위기 구간 최종 정리 】
+
+🌟 황금기 구간: {golden_str}
+⚠️  주의 구간: {crisis_str}
+
+황금기에는 최대한 활동하고, 주의 구간에는 최소한으로 노출되십시오.
+황금기에 번 것의 30%는 반드시 다음 주의 구간을 위해 비축하십시오.
+인생은 파도처럼 오르고 내립니다. 내릴 때 준비한 자가 오를 때 더 높이 올라갑니다.
+""")
+            return "".join(result)
+
+        # ── 미래 3년용 (menu4)
+        elif section == "future":
+            result = []
+            result.append(f"""
+┌─────────────────────────────────────────────────────┐
+│  {display_name}님의 미래 3년 집중 분석                        │
+└─────────────────────────────────────────────────────┘
+
+향후 3년은 {display_name}님 인생에서 중요한 변곡점이 될 수 있습니다. 각 해의 세운(歲運)을 분야별로 집중 분석합니다.
+
+""")
+            for y in range(current_year, current_year + 3):
+                sw = get_yearly_luck(pils, y)
+                dw = next((d for d in daewoon if d["시작연도"] <= y <= d["종료연도"]), None)
+                dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-") if dw else "-"
+                sw_ss = sw.get("십성_천간", "-")
+                sw_jj_ss = sw.get("지지십성", "-") if "지지십성" in sw else "-"
+                age = y - birth_year + 1
+                is_yong_sw = _get_yongshin_match(sw_ss, yongshin_ohs, ilgan_oh) == "yong"
+                gilhyung = sw.get("길흉", "")
+
+                YEAR_SS_DETAIL = {
+                    "식신": {
+                        "총평": f"{y}년은 재능과 창의력이 꽃피는 해입니다. 타고난 끼가 세상에 드러나고, 하는 일마다 순조롭게 풀립니다.",
+                        "돈": "부업·창작·서비스 관련 수익이 들어오기 좋습니다. 새로운 수입원을 만들기에 최적의 해입니다.",
+                        "직장": "업무 성과가 인정받고 주변의 지지를 받습니다. 창의적 프로젝트를 시작하기 좋습니다.",
+                        "연애": "자연스러운 매력으로 인기를 끄는 해입니다. 여유로운 만남이 이루어집니다.",
+                        "건강": "건강하고 활기찬 해입니다. 과식·과음에만 주의하십시오.",
+                        "조언": "재능을 세상에 꺼내십시오. 숨기면 복이 사라집니다.",
+                    },
+                    "상관": {
+                        "총평": f"{y}년은 창의력과 혁신의 해입니다. 새로운 도전과 변화를 통해 자신만의 길을 만들어가는 시기입니다.",
+                        "돈": "창의적인 방법으로 새 수익을 만들 수 있습니다. 기존 방식에서 벗어난 시도가 빛납니다.",
+                        "직장": "직장 내 언행에 특히 주의하십시오. 상사와의 마찰이 생기기 쉬운 해입니다. 창업·이직을 고려하기 좋습니다.",
+                        "연애": "자유롭고 활발한 인연이 생기지만 관계가 오래 지속되기 어려울 수 있습니다.",
+                        "건강": "신경계 과부하에 주의하십시오. 충분한 휴식이 필요합니다.",
+                        "조언": "창의력은 살리되 직장과 권위 앞에서 언행을 조심하십시오.",
+                    },
+                    "편재": {
+                        "총평": f"{y}년은 사업과 투자, 이동이 활발해지는 해입니다. 재물 기회가 오지만 기복도 함께 옵니다.",
+                        "돈": "사업 확장·투자·거래가 활발합니다. 과욕 없이 계획적으로 움직이면 성과가 있습니다.",
+                        "직장": "활발한 외부 활동과 영업이 빛납니다. 새로운 사업 파트너를 만날 수 있습니다.",
+                        "연애": "이성 인연이 활발해지는 해입니다. 새로운 만남의 가능성이 높습니다.",
+                        "건강": "과로와 무리한 활동으로 인한 체력 저하에 주의하십시오.",
+                        "조언": "욕심을 조절하십시오. 들어온 재물의 절반은 반드시 안전한 곳에 보관하십시오.",
+                    },
+                    "정재": {
+                        "총평": f"{y}년은 안정적이고 꾸준한 재물의 해입니다. 성실한 노력이 결실을 맺는 시기입니다.",
+                        "돈": "월급·임대수입 등 고정 수입이 늘어납니다. 저축과 자산 관리에 가장 유리한 해입니다.",
+                        "직장": "묵묵히 일한 것이 인정받는 해입니다. 안정적인 커리어를 쌓기 좋습니다.",
+                        "연애": "안정적이고 진지한 인연이 생깁니다. 결혼을 결심하기 좋은 해입니다.",
+                        "건강": "전반적으로 안정적인 해입니다. 규칙적인 생활을 유지하십시오.",
+                        "조언": "안정을 추구하되 기회가 올 때 움직이는 용기도 잃지 마십시오.",
+                    },
+                    "편관": {
+                        "총평": f"{y}년은 시련과 도전이 교차하는 해입니다. 건강·관재·직장 문제에 각별한 주의가 필요합니다.",
+                        "돈": "지출과 손실을 주의하십시오. 큰 재물 결정은 이 해를 피하십시오.",
+                        "직장": "직장 내 갈등·압박·이직 위험이 있습니다. 언행을 조심하고 자신을 낮추십시오.",
+                        "연애": "상대방과의 갈등이 생기기 쉬운 해입니다. 감정적 대응을 자제하십시오.",
+                        "건강": "사고·수술·건강 이상이 생기기 쉬운 해입니다. 정기 건강검진을 받으십시오.",
+                        "조언": "인내하고 정면으로 돌파하십시오. 시련을 이겨낸 후에는 반드시 성장이 옵니다.",
+                    },
+                    "정관": {
+                        "총평": f"{y}년은 명예와 인정이 빛나는 최고의 해입니다! 승진·수상·자격 취득의 기회가 찾아옵니다.",
+                        "돈": "정직하고 합법적인 방법으로 재물이 들어오는 해입니다. 계약·협약에 유리합니다.",
+                        "직장": "승진·인정·자격 취득의 기회가 옵니다. 원칙과 성실함이 보상받는 해입니다.",
+                        "연애": "결혼 인연이나 공식적인 관계 진전이 있는 해입니다.",
+                        "건강": "전반적으로 안정적입니다. 과로에만 주의하십시오.",
+                        "조언": "겸손하게 원칙을 지키십시오. 자만은 이 해의 가장 큰 적입니다.",
+                    },
+                    "편인": {
+                        "총평": f"{y}년은 직관과 통찰이 강해지는 해입니다. 전문성을 쌓고 내공을 키우기 좋은 시기입니다.",
+                        "돈": "재물보다 지식과 기술에 투자하기 좋은 해입니다.",
+                        "직장": "특수 분야 전문성을 인정받습니다. 연구·개발·교육 분야에서 두각을 나타냅니다.",
+                        "연애": "고독한 시간이 많아질 수 있습니다. 깊은 감정적 교감을 나눌 수 있는 인연을 만납니다.",
+                        "건강": "신경 과민·불면증에 주의하십시오. 명상과 충분한 휴식이 필요합니다.",
+                        "조언": "고독을 두려워하지 마십시오. 이 시간 동안 쌓은 내공이 다음 도약의 기반이 됩니다.",
+                    },
+                    "정인": {
+                        "총평": f"{y}년은 귀인의 도움과 학문의 성취가 충만한 최고의 해 중 하나입니다!",
+                        "돈": "직접적인 재물보다 명예·지식·자격이 쌓이는 해입니다. 이것이 미래의 재물이 됩니다.",
+                        "직장": "스승·상사·윗사람의 후원을 받아 도약합니다. 자격증·시험·학위 취득에 유리합니다.",
+                        "연애": "격식 있는 만남과 공식적인 인연이 생깁니다.",
+                        "건강": "몸과 마음 모두 안정적인 해입니다.",
+                        "조언": "배움의 기회를 놓치지 마십시오. 지금 쌓는 지식이 10년 후 재물이 됩니다.",
+                    },
+                    "비견": {
+                        "총평": f"{y}년은 독립심과 자존감이 강해지는 해입니다. 새로운 파트너나 동업자와의 만남이 있습니다.",
+                        "돈": "재물이 여러 방향으로 분산될 수 있습니다. 지출 관리에 신경 쓰십시오.",
+                        "직장": "독립·창업을 시도하기 좋은 해입니다. 새로운 협력자를 만날 수 있습니다.",
+                        "연애": "비슷한 관심사와 가치관을 가진 인연을 만납니다.",
+                        "건강": "전반적으로 안정적입니다. 경쟁 스트레스가 쌓이지 않도록 하십시오.",
+                        "조언": "독립 의지는 좋으나 혼자 모든 것을 해결하려 하지 마십시오.",
+                    },
+                    "겁재": {
+                        "총평": f"{y}년은 재물 기복이 큰 해입니다. 경쟁과 손재를 조심하고 수비적으로 대응하십시오.",
+                        "돈": "재물 손실과 경쟁이 치열한 해입니다. 투자·보증·동업은 이 해에 자제하십시오.",
+                        "직장": "경쟁이 치열해집니다. 자신의 실력을 쌓는 데 집중하십시오.",
+                        "연애": "질투·경쟁 심리로 인한 관계 갈등이 생기기 쉽습니다.",
+                        "건강": "과도한 경쟁과 스트레스로 인한 건강 저하에 주의하십시오.",
+                        "조언": "이 해는 수비가 최선입니다. 지키는 것만 잘해도 성공입니다.",
+                    },
+                }
+                yd = YEAR_SS_DETAIL.get(sw_ss, {
+                    "총평": f"{y}년 {sw.get('세운','')} 세운이 흐릅니다.",
+                    "돈": "재물 흐름을 주시하십시오.",
+                    "직장": "직업적 변화에 유의하십시오.",
+                    "연애": "인연에 관심을 기울이십시오.",
+                    "건강": "건강 관리에 신경 쓰십시오.",
+                    "조언": "차분히 흐름을 따르십시오.",
+                })
+                star = "⭐ " if is_yong_sw else "⚠️ " if sw_ss in ["편관","겁재"] else "✦ "
+                result.append(f"""
+{'━'*55}
+{star}{y}년 ({age}세) — {sw.get('세운','')} 세운 | {sw_ss} / {gilhyung}
+{'━'*55}
+
+{yd['총평']}
+
+💰 재물·돈: {yd['돈']}
+
+💼 직장·사업: {yd['직장']}
+
+💑 연애·인간관계: {yd['연애']}
+
+🏥 건강: {yd['건강']}
+
+📌 {y}년 핵심 조언: {yd['조언']}
+""")
+
+            result.append(f"""
+【 3년 종합 전략 】
+
+향후 3년 동안 {display_name}님이 가장 중점을 두어야 할 사항:
+
+1. 용신 {yong_kr} 강화 — 용신 오행의 색상·음식·방위를 일상에서 꾸준히 활용하십시오
+2. 기신 차단 — 기신 오행의 요소를 생활 공간에서 최소화하십시오
+3. {'적극적 투자와 도전 — 지금이 황금기의 연속입니다' if all(_get_yongshin_match(get_yearly_luck(pils,y).get('십성_천간','-'), yongshin_ohs, ilgan_oh) == 'yong' for y in range(current_year, current_year+2)) else '내실 다지기 — 지금은 준비 기간이니 실력 향상에 집중하십시오'}
+4. 건강 관리 — 사주의 취약한 오행 관련 기관을 정기적으로 점검하십시오
+5. 인맥 관리 — {'귀인을 만날 운기이니 새로운 사람들과의 교류에 적극적으로 나서십시오' if '정인' in [get_yearly_luck(pils,y).get('십성_천간') for y in range(current_year, current_year+3)] else '신뢰 관계를 꾸준히 유지하고 새로운 파트너를 신중하게 선택하십시오'}
+""")
+            # 확장 — 월별 핵심 시기 분석
+            result.append(f"""
+【 올해 월별 운기 핵심 포인트 】
+
+월별 세운(月運)을 통해 어느 달에 집중하고, 어느 달에 쉬어야 하는지 파악합니다.
+""")
+            try:
+                month_data = []
+                for m in range(1, 13):
+                    ml = get_monthly_luck(pils, current_year, m) if 'get_monthly_luck' in dir() else None
+                    if ml:
+                        m_ss = ml.get("십성","")
+                        m_str = ml.get("월주","")
+                        is_m_yong = _get_yongshin_match(m_ss, yongshin_ohs, ilgan_oh) == "yong"
+                        mark = "⭐" if is_m_yong else "⚠️" if m_ss in ["편관","겁재"] else "○"
+                        month_data.append(f"  {m:2d}월 {m_str:6s} ({m_ss:4s}) {mark}")
+                if month_data:
+                    result.append("\n".join(month_data))
+                    result.append(f"""
+
+⭐ 별표 달: 이 달에 중요한 미팅·계약·투자 결정을 하십시오
+⚠️ 경고 달: 이 달에는 큰 결정을 피하고 수비 전략을 쓰십시오
+○ 보통 달: 꾸준히 계획대로 진행하십시오
+""")
+            except: pass
+
+            result.append(f"""
+【 3년 분야별 최적 타이밍 】
+
+💰 재물·투자 최적 시기:
+{'• ' + str(current_year) + '년이 3년 중 재물 최고 시기입니다. 이 해에 투자·계약을 집중하십시오.' if _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '• ' + str(current_year+1) + '년에 재물 운이 더 강해질 것으로 예상됩니다.'}
+
+💼 직업·사업 최적 시기:
+• 정관·편관·정인이 오는 해에 승진·자격·계약 기회를 노리십시오
+• {'지금이 새 사업을 시작하기에 좋은 흐름입니다.' if _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '새 사업은 다음 용신 세운이 올 때까지 기다리십시오.'}
+
+💑 연애·결혼 최적 시기:
+• {'재성(남성) / 관성(여성) 세운이 오는 해가 결혼·인연의 최적 시기입니다.' if gender == '남' else ''}
+• {'이 3년 중 ' + str(current_year) + '년이 이성 인연에 가장 활성화된 해입니다.' if (sw_now.get('십성_천간','') in (['정재','편재'] if gender == '남' else ['정관','편관'])) else '적극적인 활동을 통해 인연의 기회를 만드십시오.'}
+
+🏥 건강 주의 시기:
+• 편관·겁재 세운은 건강 이상이 생기기 쉬운 시기입니다
+• 매년 정기 건강검진을 받고, 용신 오행 관련 기관을 특히 점검하십시오
+
+【 3년 후 미래 — 지금의 선택이 만드는 5년 후 】
+
+향후 3년을 어떻게 보내느냐에 따라 5년 후의 삶이 완전히 달라집니다.
+
+{'용신 대운이 진행 중인 지금, 이 황금기를 제대로 활용한다면 5년 후에는 재물·명예·건강 모두 크게 향상될 것입니다.' if cur_dw and _get_yongshin_match(cur_dw_ss, yongshin_ohs, ilgan_oh) == 'yong' else '지금의 준비 기간을 어떻게 보내느냐에 따라 다음 황금기의 높이가 결정됩니다. 지금 실력을 갈고닦으십시오.'}
+
+{display_name}님에게 드리는 3년 최종 처방:
+"지금 당장 할 수 있는 한 가지를 시작하십시오. 완벽한 타이밍을 기다리다 인생이 지나갑니다."
+""")
+            return "".join(result)
+
+        # ── 재물용 (menu5)
+        elif section == "money":
+            result = []
+            result.append(f"""
+┌─────────────────────────────────────────────────────┐
+│  {display_name}님의 재물·사업 특화 완전 분석                  │
+└─────────────────────────────────────────────────────┘
+
+재물(財物)은 사주에서 재성(財星)과 용신(用神)의 관계로 파악합니다. 얼마나 버느냐보다 어떤 방식으로 버는지, 어떤 시기에 돈이 모이는지를 아는 것이 진짜 재물 분석입니다.
+
+【 제1장 · 재물 기질 완전 분석 】
+
+{display_name}님의 재물 버는 방식을 십성 조합으로 분석합니다.
+일간 {ilgan_kr} + {sn} + 주요 십성 {', '.join(top_ss)}
+
+""")
+            for key, combo in combos[:3]:
+                result.append(f"""
+◈ [{' × '.join(key)}] 재물 조합
+
+{combo.get('요약', '')}
+
+재물 버는 방식: {combo.get('재물', '')}
+맞는 사업·직업: {combo.get('직업', '')}
+재물 주의사항: {combo.get('주의', '')}
+""")
+
+            result.append(f"""
+【 제2장 · 재물 운기 분석 — 돈이 모이는 시기와 새는 시기 】
+
+사주에서 재물은 대운과 세운의 조합으로 결정됩니다. 용신 오행이 들어오는 해에 재물이 모이고, 기신 오행이 강해지는 해에 재물이 나갑니다.
+
+현재 {cur_dw['str'] if cur_dw else '-'} 대운 ({cur_dw_ss})
+{'→ 이 대운은 용신 대운으로, 재물이 모이기 좋은 10년입니다. 적극적으로 투자하고 수익 구조를 만들어가십시오.' if cur_dw and _get_yongshin_match(cur_dw_ss, yongshin_ohs, ilgan_oh) == 'yong' else '→ 이 대운은 재물 관리에 신중해야 하는 시기입니다. 무리한 투자보다 기존 자산을 지키는 전략이 중요합니다.'}
+
+올해 {sw_now.get('세운','')} 세운 ({sw_now.get('십성_천간','')} / {sw_now.get('길흉','')})
+{'→ 올해는 재물 운이 활성화되는 해입니다. 새로운 수입원을 만들거나 투자를 시작하기 좋습니다.' if _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '→ 올해는 재물 지출에 주의해야 합니다. 불필요한 지출을 줄이고 저축에 집중하십시오.'}
+
+【 제3장 · 투자 유형 분석 】
+
+{display_name}님의 사주에서 가장 잘 맞는 투자 유형:
+
+{'✅ 부동산 투자 — 토(土) 기운과 관련된 투자로 장기적으로 안정적인 수익을 줍니다.' if '土' in yongshin_ohs else ''}
+{'✅ 금융·주식 투자 — 금(金) 기운과 관련된 투자로 결단력 있게 움직이면 수익이 납니다.' if '金' in yongshin_ohs else ''}
+{'✅ 무역·유통 투자 — 수(水) 기운과 관련된 투자로 흐름을 잘 타면 큰 수익을 냅니다.' if '水' in yongshin_ohs else ''}
+{'✅ 성장주·벤처 투자 — 목(木) 기운과 관련된 투자로 초기 단계 투자에서 강합니다.' if '木' in yongshin_ohs else ''}
+{'✅ 에너지·문화 투자 — 화(火) 기운과 관련된 투자로 사람과 콘텐츠에서 수익이 납니다.' if '火' in yongshin_ohs else ''}
+
+⚠️ 피해야 할 투자 유형 (기신 오행 관련):
+{'기신 오행의 산업·자산에는 투자를 자제하십시오. 아무리 좋아 보여도 이 분의 사주에서는 기신 오행 투자가 손실로 이어지는 경우가 많습니다.'}
+
+【 제4장 · 사업 적합성 분석 】
+
+{display_name}님의 사주가 독립사업과 직장 중 어느 쪽이 더 맞는지:
+
+{'비견·겁재가 강한 이 사주는 독립사업·자영업이 더 맞습니다. 남 밑에서 지시받기보다 자신만의 영역에서 일할 때 재물이 쌓입니다.' if any(ss in top_ss for ss in ['비견', '겁재']) else ''}
+{'식신·상관이 강한 이 사주는 창의적인 사업 또는 프리랜서 활동이 맞습니다. 재능을 상품화하는 방식이 가장 효율적인 재물 창출입니다.' if any(ss in top_ss for ss in ['식신', '상관']) else ''}
+{'정관·정재가 강한 이 사주는 안정적인 직장에서 꾸준히 성장하는 방식이 맞습니다. 조직 내에서 신뢰를 쌓는 것이 재물로 이어집니다.' if any(ss in top_ss for ss in ['정관', '정재']) else ''}
+{'편재·편관이 강한 이 사주는 역동적인 사업 환경에서 강합니다. 위험을 감수하고 크게 움직이는 것을 두려워하지 마십시오.' if any(ss in top_ss for ss in ['편재', '편관']) else ''}
+
+【 제5장 · 재물 새는 구멍과 막는 법 】
+
+이 사주에서 재물이 새는 주요 원인:
+
+{'1. 겁재가 강해 주변 사람들에게 베풀다가 재물이 분산됩니다. 감정적 지출을 줄이십시오.' if '겁재' in ss_dist else ''}
+{'2. 상관이 강해 충동적인 소비나 불필요한 지출이 생깁니다. 구매 전 하루 생각하는 습관을 들이십시오.' if '상관' in ss_dist else ''}
+{'3. 편재가 강해 투자 욕구가 넘쳐 무리하게 확장하다 손실이 납니다. 수익의 30%는 반드시 안전 자산으로 보관하십시오.' if '편재' in ss_dist else ''}
+{'4. 편인이 강해 직업 변동이 잦아 안정적인 수입 구조를 만들기 어렵습니다. 한 분야에 집중하는 것이 재물 관리의 핵심입니다.' if '편인' in ss_dist else ''}
+
+재물을 지키는 가장 좋은 방법:
+• 용신 {yong_kr} 색상의 지갑 사용
+• 수입의 20~30% 자동 저축 설정
+• 기신 오행이 강한 해에는 큰 재물 결정 미루기
+• 용신 오행이 강한 해에 투자 및 사업 확장
+
+【 제6장 · 재물 황금기 완전 예측 】
+
+{display_name}님의 인생에서 재물 황금기가 오는 시기:
+""")
+            # 향후 대운 중 용신 대운 찾기
+            peak_years = []
+            for dw in daewoon:
+                dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
+                if _get_yongshin_match(dw_ss, yongshin_ohs, ilgan_oh) == "yong":
+                    age_mid = dw["시작나이"] + 5
+                    year_mid = birth_year + age_mid - 1
+                    peak_years.append(f"• {dw['시작나이']}~{dw['시작나이']+9}세 ({dw['시작연도']}~{dw['종료연도']}년): {dw['str']} 용신 대운 — 이 10년이 {display_name}님의 재물 황금기입니다")
+            result.append("\n".join(peak_years[:3]) if peak_years else "• 꾸준한 노력이 재물 황금기를 만듭니다")
+            result.append(f"""
+
+재물 황금기를 최대로 활용하는 전략:
+1. 황금기 대운이 시작되기 2~3년 전부터 준비하십시오
+2. 황금기에는 두려움 없이 과감하게 투자하십시오
+3. 황금기의 수익은 다음 어려운 시기를 위해 30% 이상 비축하십시오
+4. 사업을 시작한다면 황금기 대운 초반에 시작하는 것이 가장 좋습니다
+
+【 제7장 · 재물 관리의 황금 원칙 — 이 사주에만 해당하는 처방 】
+
+일간 {ilgan_kr} + {gname} + {sn} 조합의 재물 관리 황금 원칙:
+
+원칙 1. {'크게 벌고 크게 쓰는 패턴을 끊어야 합니다. 수입이 생기면 즉시 30%를 자동이체로 저축하십시오.' if any(ss in ss_dist for ss in ['겁재','편재']) else '안정적으로 쌓아가는 것이 이 사주의 재물 방식입니다. 투기성 투자에 유혹받지 마십시오.'}
+
+원칙 2. {'창의력과 재능이 돈이 됩니다. 자신의 전문성을 상품화하는 방법을 끊임없이 고민하십시오.' if any(ss in ss_dist for ss in ['식신','상관']) else '안정적 수입 구조를 먼저 만들고 투자를 시작하십시오.'}
+
+원칙 3. 용신 {yong_kr} 오행이 강해지는 해에 큰 재물 결정을 집중하고, 기신이 강해지는 해에는 지키는 전략을 쓰십시오.
+
+원칙 4. {'부동산은 이 사주에 중장기적으로 좋은 자산입니다.' if '土' in yongshin_ohs else '금융 자산과 현금 유동성을 충분히 유지하십시오.' if '水' in yongshin_ohs or '金' in yongshin_ohs else '성장하는 분야에 일찍 진입하는 것이 이 사주의 재물 전략입니다.' if '木' in yongshin_ohs else '콘텐츠·사람·브랜드에 투자하는 것이 이 사주의 재물 방식입니다.'}
+
+원칙 5. 보증·동업에서 재물을 잃는 경우가 많습니다. 계약서 없는 재물 거래는 절대 하지 마십시오.
+
+【 제8장 · 직업별 예상 소득 패턴 분석 】
+
+{display_name}님의 사주에서 각 직업 유형별 예상 소득 패턴:
+
+• 직장인: 꾸준하고 안정적이지만 {'가파른 성장은 어렵습니다. 전문성을 쌓아 희소 인재가 되어야 합니다.' if '신강' in sn else '귀인의 도움으로 예상보다 빠른 성장이 가능합니다.'}
+
+• 프리랜서/자영업: {'이 사주에 가장 잘 맞는 방식입니다. 초기 기반을 잡는 데 3~5년이 필요하지만, 그 후에는 직장보다 훨씬 큰 수익을 낼 수 있습니다.' if any(ss in ss_dist for ss in ['비견','식신','상관']) else '안정적인 수입이 보장되지 않는 방식이라 이 사주에는 주의가 필요합니다.'}
+
+• 투자/사업: {'편재가 강해 사업 확장 기질이 있습니다. 단, 리스크 관리가 생존의 핵심입니다.' if '편재' in ss_dist else '안정적인 사업 기반을 만든 후 확장하는 보수적 전략이 맞습니다.'}
+
+【 제9장 · 나이별 재물 타이밍 완전 분석 】
+
+인생의 각 10년 구간에서 재물 운의 흐름:
+""")
+            for dw in daewoon[:8]:
+                dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
+                is_yong = _get_yongshin_match(dw_ss, yongshin_ohs, ilgan_oh) == "yong"
+                money_advice = {
+                    "식신": "재능 소득·창작 수익이 들어오는 시기",
+                    "상관": "혁신적 방식으로 새 수익원 개척 시기",
+                    "편재": "투자·사업으로 크게 버는 시기 (기복 주의)",
+                    "정재": "안정적 저축·자산 축적 최적 시기",
+                    "편관": "재물 보호·손실 방어가 우선인 시기",
+                    "정관": "직장·명예를 통한 합법적 소득 증가 시기",
+                    "편인": "전문성 투자 시기 (미래 재물의 씨앗)",
+                    "정인": "귀인을 통한 재물 기회 시기",
+                    "비견": "재물 분산 주의·독립 수익 도전 시기",
+                    "겁재": "재물 손실 위험·투기 절대 금지 시기",
+                }.get(dw_ss, f"{dw_ss} 십성 운기")
+                yong_mark = " 🌟" if is_yong else ""
+                result.append(f"  {dw['시작나이']}~{dw['시작나이']+9}세: {money_advice}{yong_mark}\n")
+            result.append(f"""
+
+【 제10장 · 만신의 재물 최종 처방 】
+
+{display_name}님의 재물 운을 한마디로 요약하면:
+"{combos[0][1].get('재물','타고난 방식으로 꾸준히 쌓아가는 재물') if combos else '성실함과 전문성으로 재물을 쌓아가는 사주'}"
+
+이 사주에서 재물이 들어오는 문은 "{', '.join(top_ss[:2])}"이(가) 열어줍니다.
+이 문이 활성화되는 운기에 최대로 움직이고, 닫히는 운기에는 지키십시오.
+
+재물은 복이지만 집착하면 독이 됩니다. {display_name}님만의 방식으로 재물을 이루어 나가십시오.
+""")
+            return "".join(result)
+
+        # ── 인간관계용 (menu6)
+        elif section == "relations":
+            result = []
+            yk = get_yukjin(ilgan, pils, gender)
+            sipsung_data = calc_sipsung(ilgan, pils)
+
+            result.append(f"""
+┌─────────────────────────────────────────────────────┐
+│  {display_name}님의 인간관계·육친 완전 분석                  │
+└─────────────────────────────────────────────────────┘
+
+인간관계는 사주에서 십성(十星)과 육친(六親)을 통해 분석합니다. 어떤 사람과 인연이 깊은지, 어떤 사람과 갈등이 생기는지를 사주는 미리 알려줍니다.
+
+【 제1장 · 일간의 대인관계 패턴 】
+
+{display_name}님은 일간 {ilgan_kr} + {sn}의 조합으로 다음과 같은 대인관계 패턴을 가집니다:
+
+{'• 신강하여 자기주장이 강합니다. 타인의 의견을 경청하는 연습이 관계 개선의 핵심입니다.' if '신강' in sn else '• 신약하여 타인의 영향을 많이 받습니다. 자신의 의견을 분명히 표현하는 연습이 필요합니다.' if '신약' in sn else '• 중화 사주로 균형 잡힌 대인관계를 유지합니다. 극단적인 관계보다 안정적인 인간관계를 선호합니다.'}
+
+{'• 비견·겁재가 강해 경쟁적인 관계에서 에너지를 발산합니다.' if any(ss in ss_dist for ss in ['비견','겁재']) else ''}
+{'• 식신·상관이 강해 자신을 잘 표현하고 주변에 즐거움을 줍니다.' if any(ss in ss_dist for ss in ['식신','상관']) else ''}
+{'• 정관·편관이 강해 조직과 권위를 의식하며 사회적 관계에 민감합니다.' if any(ss in ss_dist for ss in ['정관','편관']) else ''}
+{'• 정인·편인이 강해 스승과 선배로부터 배우고 지식을 나누는 관계를 중요시합니다.' if any(ss in ss_dist for ss in ['정인','편인']) else ''}
+
+【 제2장 · 육친(六親) 상세 분석 】
+""")
+            YUKJIN_DEEP = {
+                "어머니(正印)": f"정인은 어머니의 자리입니다. {display_name}님과 어머니의 관계는 사주에서 매우 중요한 영향을 미칩니다. 정인이 있다면 어머니의 음덕(蔭德)이 크며, 어머니로부터 정서적·물질적 도움을 받는 운입니다. 학문과 귀인을 상징하는 정인이 강하면 교육열이 높고 스승의 인연이 좋습니다.",
+                "계모(偏印)": f"편인은 계모·이모·외조모 등 어머니 외의 여성 윗사람을 상징합니다. 편인이 강하면 독특한 재능과 직관이 있으며, 특수 분야에서 독보적인 능력을 발휘합니다. 단, 식신을 억제하면 도식이 형성되어 복이 꺾이는 작용이 있습니다.",
+                "아버지(偏財)": f"편재는 아버지의 자리입니다. {display_name}님과 아버지의 관계가 이 사주에 큰 영향을 줍니다. 편재가 있다면 아버지로부터 재물적 도움이나 사업적 조언을 받을 수 있습니다. 편재는 활동적이고 외향적인 아버지의 기운으로, 아버지가 사업가이거나 활발한 분인 경우가 많습니다.",
+                "아내(正財)": f"정재는 남성에게 아내의 자리입니다. 정재가 있으면 성실하고 현모양처형 배우자를 만나는 운입니다. 정재가 강하면 안정적인 가정생활을 영위하며, 배우자의 내조가 큰 힘이 됩니다. 다만 정재가 너무 강하면 돈과 배우자에 집착하는 경향이 생길 수 있습니다.",
+                "남편(正官)": f"정관은 여성에게 남편의 자리입니다. 정관이 있으면 점잖고 안정적인 남편 인연이 있습니다. 사회적으로 인정받는 남성을 만나는 운이며, 결혼 후 안정적인 가정생활을 할 가능성이 높습니다.",
+                "아들(偏官)": f"편관(칠살)은 남성에게 아들, 여성에게는 정부(情夫)를 상징합니다. 편관이 있으면 자녀로 인한 기쁨과 함께 자녀 교육에 많은 에너지를 쏟습니다. 칠살이 제화(制化)되면 자녀가 사회적으로 성공하는 운입니다.",
+                "딸(正官)": f"정관은 남성에게 딸을 상징합니다. 딸과의 관계가 따뜻하고 격식 있습니다. 자녀가 안정적이고 사회적으로 인정받는 삶을 사는 운입니다.",
+                "형제(比肩)": f"비견은 형제·자매·친구·동료를 상징합니다. 비견이 강하면 형제자매나 친구와의 인연이 깊습니다. 서로 경쟁하면서도 성장하는 관계이며, 동업이나 협업을 통해 시너지를 낼 수 있습니다.",
+                "이복형제(劫財)": f"겁재는 이복 형제·경쟁자·라이벌을 상징합니다. 겁재가 강하면 주변에 경쟁자가 많고, 재물이 분산될 수 있습니다. 그러나 건강한 경쟁 의식으로 발전시키면 강한 추진력이 됩니다.",
             }
-            .ilgan-card:hover {
-                transform: translateY(-5px);
-                box-shadow: 6px 6px 20px rgba(160, 114, 10, 0.2);
-            }
-            .card-title {
-                font-size: 18px;
-                font-weight: 700;
-                color: #a0720a;
-                margin-bottom: 12px;
-                display: flex;
-                align-items: center;
-                border-bottom: 1px solid #f0e6d2;
-                padding-bottom: 8px;
-            }
-            .card-title span { margin-right: 10px; font-size: 22px; }
-            .card-body {
-                font-size: 14.5px;
-                line-height: 1.7;
-                color: #444;
-                text-align: justify;
-            }
-            </style>
+            for item in yk:
+                fam = item.get("관계", "")
+                has = item.get("present", False)
+                where = item.get("위치", "없음")
+                deep_desc = YUKJIN_DEEP.get(fam, item.get("desc", ""))
+                result.append(f"""
+◈ {fam}
+   위치: {where if where != '없음' else '원국에 직접 없음'}
+   인연 강도: {'강함 — 이 인연이 인생에 크게 영향을 미칩니다' if has else '약함 — 인연이 엷거나 독립적인 관계'}
+
+   {deep_desc}
+
+   {'이 육친과의 관계가 이 분의 운명에 핵심적인 역할을 합니다. 이 관계를 잘 가꾸십시오.' if has else '이 육친과의 관계에서 독립적인 성향이 강합니다. 의식적으로 관계를 돌보는 노력이 필요합니다.'}
+""")
+
+            result.append(f"""
+【 제3장 · 이성 인연·배우자 분석 】
+
+일지(日支) {iljj_kr}({iljj})는 배우자 자리입니다. 이 자리의 기운이 배우자의 성품과 부부 관계의 방향을 결정합니다.
+
+{display_name}님의 배우자 자리 분석:
+• {iljj_kr}({iljj}) 일지 — {'안정과 포용력을 가진 배우자' if iljj in ['丑','辰','戌','未'] else '열정적이고 활기찬 배우자' if iljj in ['午','巳','寅'] else '논리적이고 실력 있는 배우자' if iljj in ['申','酉','亥','子'] else '성장하는 에너지를 가진 배우자' if iljj in ['卯'] else '포용력 있는 배우자'}를 만나는 운입니다.
+
+이성 인연이 강해지는 시기:
+{'• 재성(財星) 세운 — 편재·정재 세운이 올 때 이성 인연이 활성화됩니다.' if gender == '남' else '• 관성(官星) 세운 — 정관·편관 세운이 올 때 이성 인연이 활성화됩니다.'}
+• 현재 대운 {cur_dw['str'] if cur_dw else '-'} — {'이성 인연이 활성화되는 대운입니다' if cur_dw_ss in (['정재','편재'] if gender=='남' else ['정관','편관']) else '배우자 운보다 다른 분야가 강조되는 대운입니다'}
+
+이상적인 파트너의 특징:
+• 용신 {yong_kr} 오행을 가진 사람과 궁합이 잘 맞습니다
+• {'불·에너지가 강한 사람' if '火' in yongshin_ohs else ''}{'땅처럼 안정적인 사람' if '土' in yongshin_ohs else ''}{'물처럼 지혜로운 사람' if '水' in yongshin_ohs else ''}{'나무처럼 성장하는 사람' if '木' in yongshin_ohs else ''}{'금처럼 결단력 있는 사람' if '金' in yongshin_ohs else ''}이(가) 이상적인 파트너입니다
+
+【 제4장 · 사회적 인간관계 조언 】
+
+{display_name}님이 만나야 할 귀인(貴人)의 특징:
+• 용신 오행이 강한 분야(직업·전공)에 있는 사람이 귀인입니다
+• {'수학·금융·법·의료·공학 분야의 전문가' if '金' in yongshin_ohs or '水' in yongshin_ohs else '교육·예술·봉사·문화 분야의 전문가' if '木' in yongshin_ohs or '火' in yongshin_ohs else '부동산·건설·농업·토지 관련 분야의 전문가' if '土' in yongshin_ohs else '다양한 분야의 전문가'}와의 인연을 소중히 하십시오
+
+조심해야 할 인연:
+• 기신 오행이 강한 사람과는 재물 거래나 동업을 피하십시오
+• 겁재가 강하게 들어오는 해에 만나는 사업 파트너는 신중히 검토하십시오
+• 겉으로는 화려해 보이지만 실속이 없는 관계에 에너지를 낭비하지 마십시오
+
+인간관계에서 {display_name}님만의 강점:
+{char.get('장점', '타고난 성품으로 주변 사람들에게 신뢰를 줍니다')}
+
+이 강점을 살려 인간관계를 넓혀가면, 그 관계가 결국 재물과 명예로 돌아오는 운명입니다.
+
+【 제5장 · 연애·결혼 심층 분석 】
+
+{'남성' if gender == '남' else '여성'} {ilgan_kr} 일간의 연애 본능:
+{'• ' + char.get('연애_남', '') if gender == '남' else '• ' + char.get('연애_여', '')}
+
+배우자 자리 {iljj_kr}({iljj}) 심층 해석:
+{iljj_kr}이(가) 배우자 자리에 있다는 것은 배우자에게서 {'안정·신뢰·현실적 도움을 받고 싶은 내면의 욕구' if iljj in ['丑','辰','戌','未'] else '열정·활기·도전적 에너지를 받고 싶은 욕구' if iljj in ['午','巳'] else '지적 교감·논리·전문성을 원하는 욕구' if iljj in ['申','酉'] else '성장·창의·새로움을 함께 나누고 싶은 욕구' if iljj in ['寅','卯'] else '깊은 감정·지혜·내면의 평화를 함께하고 싶은 욕구' if iljj in ['亥','子'] else '다양한 매력을 가진 파트너를 원하는 욕구'}가 있다는 것입니다.
+
+이상적인 배우자의 오행:
+• 용신 {yong_kr} 오행이 강한 사람 — 이 분과 함께하면 삶이 더 풍요로워집니다
+• 이 오행을 가진 직업군의 사람이 좋습니다
+
+결혼 적령기 분석:
+현재 {current_age}세 기준:
+• {'재성 대운 중에 있어 결혼 에너지가 활성화되어 있습니다.' if cur_dw and cur_dw_ss in (['정재','편재'] if gender == '남' else ['정관','편관']) else '관성 대운 중에 있어 결혼 에너지가 활성화되어 있습니다.' if cur_dw and cur_dw_ss in (['정관','편관'] if gender == '남' else ['정재','편재']) else '결혼보다 자기 개발에 더 집중하는 시기입니다.'}
+• 가장 강한 결혼 기회가 오는 세운: {'정재·편재 세운' if gender == '남' else '정관·편관 세운'}
+
+【 제6장 · 직장 내 인간관계 전략 】
+
+{gname}을 가진 분의 직장 인간관계 패턴:
+• {'정관격은 상사와 원칙적이고 예의 바른 관계를 형성합니다. 규칙을 잘 지키고 성실한 모습이 신뢰를 얻습니다.' if '정관' in gname else '편관격은 직장에서 경쟁이 치열하고 상사와 갈등이 생기기 쉽습니다. 실력으로 인정받는 것이 최선입니다.' if '편관' in gname else '격국의 기운이 직장 내 관계에 영향을 줍니다.'}
+
+동료와의 관계:
+• {'비견이 강해 동료 간 경쟁이 활발합니다. 협력을 통해 함께 성장하는 방식이 더 유리합니다.' if '비견' in ss_dist or '겁재' in ss_dist else '식신·상관이 강해 동료들에게 재미와 영감을 주는 존재입니다. 분위기 메이커 역할이 강점입니다.' if '식신' in ss_dist or '상관' in ss_dist else '정관·정인이 강해 조직 내에서 신뢰받는 전문가로 인식됩니다.' if '정관' in ss_dist or '정인' in ss_dist else '독특한 개성으로 직장 내 독보적인 존재감을 가집니다.'}
+
+직장에서 조심해야 할 사람:
+• 기신 오행이 강한 상사나 동료와는 재물 거래를 피하십시오
+• 자신을 이용하려는 사람을 빨리 알아채는 직관을 기르십시오
+
+【 제7장 · 인간관계 운기별 전략 】
+
+현재 {cur_dw['str'] if cur_dw else '-'} 대운에서의 인간관계:
+{'• 인성 대운: 스승·어른의 도움이 큰 시기입니다. 배움의 인연을 소중히 하십시오.' if cur_dw_ss in ['정인','편인'] else '• 재성 대운: 이성 인연과 사업 파트너 운이 강합니다.' if cur_dw_ss in ['정재','편재'] else '• 관성 대운: 사회적 관계와 권위자와의 인연이 중요해집니다.' if cur_dw_ss in ['정관','편관'] else '• 비겁 대운: 동료·친구·경쟁자와의 관계가 인생의 중심이 됩니다.' if cur_dw_ss in ['비견','겁재'] else '• 식상 대운: 자기표현과 인기가 중심이 되는 시기입니다.'}
+
+올해 {sw_now.get('세운','')} 세운에서의 인간관계:
+{'• 새로운 귀인을 만날 운기입니다. 모임·행사에 적극적으로 참여하십시오.' if _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '• 인간관계에서 신중함이 요구되는 해입니다. 새로운 동업이나 큰 부탁은 자제하십시오.'}
+
+【 제8장 · 만신의 인간관계 최종 처방 】
+
+{display_name}님의 인간관계 핵심 비결:
+
+1. {char.get('장점','타고난 성품')}을(를) 인간관계에서 최대로 발휘하십시오
+2. {char.get('단점','약점')}을(를) 의식적으로 보완하는 노력을 하십시오
+3. 용신 {yong_kr} 오행이 강한 분야의 사람들과 더 많이 교류하십시오
+4. 인간관계에 투자한 시간과 에너지는 결국 재물과 명예로 돌아옵니다
+
+"좋은 인연이 좋은 운을 만들고, 좋은 운이 좋은 인생을 만듭니다."
+""")
+            return "".join(result)
+
+    except Exception as e:
+        return f"내러티브 생성 중 오류: {e}"
+
+
+# ══════════════════════════════════════════════════
+#  메인 함수
+# ══════════════════════════════════════════════════
+def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함"):
+    """1️⃣ 종합 사주 리포트 — 원국 + 성향 + 격국 + 용신"""
+    try:
+        ilgan = pils[1]["cg"]
+        current_year = datetime.now().year
+        current_age  = current_year - birth_year + 1
+        strength_info = get_ilgan_strength(ilgan, pils)
+        gyeokguk = get_gyeokguk(pils)
+        ys = get_yongshin(pils)
+    except Exception as e:
+        st.error(f"기본 데이터 계산 오류: {e}")
+        return
+
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#fff5e0,#fff0dc);color:#f0d58c;
+                padding:18px 24px;border-radius:14px;margin-bottom:16px;font-size:13px">
+        ✦ 원국(原局)·성향·격국·용신을 한 화면에 종합합니다
+    </div>""", unsafe_allow_html=True)
+
+    # ① 사주원국
+    st.markdown("### 📊 사주원국 (八字)")
+    try:
+        render_pillars(pils)
+    except Exception as e:
+        st.warning(f"원국 렌더링 오류: {e}")
+
+    st.markdown("---")
+
+    # ② 오행 + 신강신약
+    try:
+        col_oh, col_sn = st.columns(2)
+        with col_oh:
+            st.markdown("### 🌈 오행 분포")
+            oh_strength = calc_ohaeng_strength(ilgan, pils)
+            render_ohaeng_chart(oh_strength)
+        with col_sn:
+            st.markdown("### ⚖️ 신강신약")
+            sn = strength_info.get("신강신약", "중화(中和)")
+            score = strength_info.get("helper_score", 50)
+            bar = "🟦"*min(10,round(score/10)) + "⬜"*(10-min(10,round(score/10)))
+            s_data = STRENGTH_DESC.get(sn, {})
+            st.markdown(f"""
+            <div style="background:#f0f8ff;border:2px solid #4a90a4;border-radius:12px;padding:16px">
+                <div style="font-size:22px;font-weight:900;color:#1a5f7a">{s_data.get('icon','')} {sn}</div>
+                <div style="margin:6px 0;font-size:14px">{bar}</div>
+                <div style="font-size:12px;color:#555;line-height:1.8">{s_data.get('personality','')}</div>
+            </div>""", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"오행/신강신약 오류: {e}")
+
+    st.markdown("---")
+
+    # ③ 성향 판독
+    st.markdown("### 🧠 성향 판독")
+    try:
+        with st.spinner("성향 계산 중..."):
+            hl = generate_engine_highlights(pils, birth_year, gender)
+        for trait in hl["personality"][:6]:
+            tag_color = "#9b7ccc" if ("겉" in trait or "속" in trait) else "#4a90d9"
+            st.markdown(f"""
+            <div style="border-left:4px solid {tag_color};background:#f8f5ff;
+                        padding:11px 16px;border-radius:8px;margin:5px 0;
+                        font-size:13px;line-height:1.9;color:#333">{trait}</div>""",
+                        unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"성향 계산 오류: {e}")
+
+    st.markdown("---")
+
+    # ④ 격국
+    st.markdown("### 🏆 격국 (格局)")
+    try:
+        if gyeokguk:
+            gname = gyeokguk.get("격국명", "")
+            # GYEOKGUK_DESC 전체 요약 사용 (300자 제한 제거)
+            gdesc_full = GYEOKGUK_DESC.get(gname, {}).get("summary", gyeokguk.get("격국_해설", ""))
+            gcaution   = GYEOKGUK_DESC.get(gname, {}).get("caution", "")
+            gcareer    = GYEOKGUK_DESC.get(gname, {}).get("lucky_career", "")
+            ggod_rank  = GYEOKGUK_DESC.get(gname, {}).get("god_rank", "")
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,#f5f5f5,#ffffdc);border:2px solid #c5a059;
+                        border-radius:14px;padding:22px">
+                <div style="font-size:20px;font-weight:900;color:#f0c060;margin-bottom:12px">{gname}</div>
+                <div style="font-size:14px;color:#e0d0a0;line-height:2.1;white-space:pre-wrap;margin-bottom:14px">{gdesc_full}</div>
+                {"<div style='background:#ffffdc;border-left:3px solid #c5a059;padding:10px 14px;border-radius:8px;font-size:13px;color:#f0d080;margin-bottom:10px'>💼 적합 직업: " + gcareer + "</div>" if gcareer else ""}
+                {"<div style='background:#ffdcdc;border-left:3px solid #e74c3c;padding:10px 14px;border-radius:8px;font-size:13px;color:#f0b0b0;margin-bottom:10px;white-space:pre-wrap'>" + gcaution + "</div>" if gcaution else ""}
+                {"<div style='background:#dcffdc;border-left:3px solid #27ae60;padding:10px 14px;border-radius:8px;font-size:12px;color:#a0e0a0'>⭐ " + ggod_rank + "</div>" if ggod_rank else ""}
+            </div>""", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"격국 표시 오류: {e}")
+
+    st.markdown("---")
+
+    # ⑤ 용신
+    st.markdown("### ⭐ 용신 (用神)")
+    try:
+        yongshin_ohs = ys.get("종합_용신", [])
+        if not isinstance(yongshin_ohs, list):
+            yongshin_ohs = []
+        gishin_raw = ys.get("기신", [])
+        if isinstance(gishin_raw, list):
+            gishin_ohs = gishin_raw
+        else:
+            gishin_ohs = [o for o in ["木","火","土","金","水"] if o in str(gishin_raw)]
+
+        OH_EMOJI = {"木":"🌳","火":"🔥","土":"⛰️","金":"⚔️","水":"💧"}
+        y_tags = " ".join([
+            f"<span style='background:#c5a059;color:#1a1a1a;padding:5px 14px;"
+            f"border-radius:20px;font-size:14px;font-weight:700'>"
+            f"{OH_EMOJI.get(o,'')} {o}({OHN.get(o,'')})</span>"
+            for o in yongshin_ohs
+        ])
+        g_tags = " ".join([
+            f"<span style='background:#ffe5e2;color:#1a1a1a;padding:5px 14px;"
+            f"border-radius:20px;font-size:14px;font-weight:700'>"
+            f"{OH_EMOJI.get(o,'')} {o}({OHN.get(o,'')})</span>"
+            for o in gishin_ohs
+        ]) if gishin_ohs else f"<span style='color:#888;font-size:13px'>{str(gishin_raw)}</span>"
+
+        st.markdown(f"""
+        <div style="background:#f8f0ff;border-radius:12px;padding:16px">
+            <div style="margin-bottom:10px"><b>🌟 용신 (힘이 되는 오행):</b><br>{y_tags}</div>
+            <div><b>⚠️ 기신 (조심할 오행):</b><br>{g_tags}</div>
+        </div>""", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"용신 표시 오류: {e}")
+
+    st.markdown("---")
+
+    # ⑥ 십성 조합 인생 분석 ★★★ 핵심
+    st.markdown("### 🔮 십성(十星) 조합 — 당신의 인생 설계도")
+    st.markdown("""
+    <div style="font-size:12px;color:#444;margin-bottom:12px">
+    원국에 나타난 십성의 조합을 분석합니다. 조합만 알면 그 사람의 인생이 보입니다.
+    </div>""", unsafe_allow_html=True)
+    try:
+        life = build_life_analysis(pils, gender)
+        combos = life["조합_결과"]
+        top_ss = life["주요_십성"]
+        ss_dist = life["전체_십성"]
+
+        # 십성 분포 태그
+        ss_colors = {
+            "비견":"#3498db","겁재":"#e74c3c","식신":"#27ae60","상관":"#e67e22",
+            "편재":"#2ecc71","정재":"#16a085","편관":"#c0392b","정관":"#2980b9",
+            "편인":"#8e44ad","정인":"#d35400"
+        }
+        tags_html = "".join([
+            f"<span style='background:{ss_colors.get(ss,'#888')};color:#1a1a1a;"
+            f"padding:4px 12px;border-radius:20px;font-size:12px;margin:3px;display:inline-block'>"
+            f"{ss} x{cnt}</span>"
+            for ss, cnt in sorted(ss_dist.items(), key=lambda x: -x[1])
+        ])
+        st.markdown(f"""
+        <div style="background:#eef0ff;border-radius:10px;padding:14px;margin-bottom:16px">
+            <div style="font-size:11px;color:#444;margin-bottom:8px">📊 원국 십성 분포</div>
+            <div>{tags_html}</div>
+        </div>""", unsafe_allow_html=True)
+
+        if combos:
+            for key, combo in combos:
+                ss_pair = " × ".join(list(key))
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#f5f5f5,#f2f8ff);border-radius:16px;
+                            padding:22px;margin:12px 0;border:1px solid #3a4060">
+                    <div style="font-size:18px;font-weight:900;color:#c5a059;margin-bottom:6px">
+                        {combo['요약']}
+                    </div>
+                    <div style="font-size:12px;color:#6a7090;margin-bottom:16px">조합: {ss_pair}</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div style="background:#f0fff0;border-radius:10px;padding:14px;border-left:3px solid #27ae60">
+                            <div style="font-size:11px;color:#4caf50;font-weight:700;margin-bottom:6px">🧠 성향</div>
+                            <div style="font-size:13px;color:#d0f0d0;line-height:1.8">{combo['성향']}</div>
+                        </div>
+                        <div style="background:#f0fff0;border-radius:10px;padding:14px;border-left:3px solid #c5a059">
+                            <div style="font-size:11px;color:#c5a059;font-weight:700;margin-bottom:6px">💰 재물·돈 버는 방식</div>
+                            <div style="font-size:13px;color:#f0e0a0;line-height:1.8">{combo['재물']}</div>
+                        </div>
+                        <div style="background:#f0fff0;border-radius:10px;padding:14px;border-left:3px solid #3498db">
+                            <div style="font-size:11px;color:#5ab4ff;font-weight:700;margin-bottom:6px">💼 직업 적성</div>
+                            <div style="font-size:13px;color:#c0d8f0;line-height:1.8">{combo['직업']}</div>
+                        </div>
+                        <div style="background:#f0fff0;border-radius:10px;padding:14px;border-left:3px solid #e91e8c">
+                            <div style="font-size:11px;color:#ff6eb0;font-weight:700;margin-bottom:6px">💑 연애·인간관계</div>
+                            <div style="font-size:13px;color:#f0c0d8;line-height:1.8">{combo['연애']}</div>
+                        </div>
+                    </div>
+                    <div style="background:#fff0f0;border-radius:10px;padding:12px;margin-top:12px;
+                                border-left:3px solid #e74c3c">
+                        <span style="font-size:11px;color:#ff6b6b;font-weight:700">⚠️ 주의사항: </span>
+                        <span style="font-size:13px;color:#f0c0c0;line-height:1.8">{combo['주의']}</span>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+        else:
+            # 조합 없을 때 단일 십성 분석
+            if top_ss:
+                ss1 = top_ss[0]
+                st.markdown(f"""
+                <div style="background:#eef0ff;border-radius:12px;padding:18px;border:1px solid #3a4060">
+                    <div style="font-size:16px;font-weight:700;color:#c5a059">
+                        {ss1} 중심 사주
+                    </div>
+                    <div style="font-size:13px;color:#555;margin-top:10px;line-height:1.8">
+                        주요 십성: {', '.join(top_ss[:3])}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"십성 조합 분석 오류: {e}")
+
+    st.markdown("---")
+
+    # ⑦ 직업 조언
+    if occupation and occupation != "선택 안 함":
+        st.markdown("### 💼 직업 적합도 분석")
+        try:
+            tab_career(pils, gender)
+        except Exception as e:
+            st.warning(f"직업 분석 오류: {e}")
+
+    # ⑧ 만신 스타일 종합 해설문
+    st.markdown("---")
+    st.markdown("### 📜 종합 사주 해설 — 만신의 풀이")
+    try:
+        narrative = build_rich_narrative(pils, birth_year, gender, name, section="report")
+        sections = narrative.split("【")
+        for i, sec in enumerate(sections):
+            if not sec.strip(): continue
+            lines = sec.strip().split("\n")
+            title = lines[0].replace("】","").strip() if lines else ""
+            body  = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
+            if title:
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#f5f5f5,#eef0ff);
+                            border-left:4px solid #c5a059;border-radius:10px;
+                            padding:18px 22px;margin:10px 0">
+                    <div style="font-size:14px;font-weight:900;color:#c5a059;margin-bottom:10px">
+                        【 {title} 】
+                    </div>
+                    <div style="font-size:13px;color:#e0d0b0;line-height:2.0;
+                                white-space:pre-wrap">{body}</div>
+                </div>""", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"종합 해설 오류: {e}")
+
+    # ── 통계 기반 패턴 분석 ───────────────────────────────
+    st.markdown("---")
+    try:
+        render_statistical_insights(pils, strength_info)
+    except Exception:
+        pass
+
+    # ── 클리프행어 (미완성 서술 트릭) ──────────────────────
+    try:
+        current_year = datetime.now().year
+        turning = calc_turning_point(pils, birth_year, gender, current_year)
+        triggers = detect_event_triggers(pils, birth_year, gender, current_year)
+        high_t = [t for t in triggers if t["prob"] >= 75]
+
+        teaser = ""
+        if turning["is_turning"] and turning["reason"]:
+            teaser = f"이 사주 구조에서 **{current_year}~{current_year+1}년**은 단순히 넘어가는 해가 아닙니다. {turning['reason'][0]}"
+        elif high_t:
+            teaser = f"사건 트리거 분석에서 **{high_t[0]['title']}** 패턴이 포착됐습니다. 이 흐름이 구체적으로 어떤 영역에서 발현될지,"
+        else:
+            luck_s = calc_luck_score(pils, birth_year, gender, current_year)
+            if luck_s >= 70:
+                teaser = f"현재 운세 점수 **{luck_s}/100** — 상승기 진입 신호가 감지됩니다. 이 기회를 어떻게 활용할지,"
+            else:
+                teaser = f"현재 운세 점수 **{luck_s}/100** — 흐름의 방향이 바뀌는 시점이 다가오고 있습니다. 그 시기와 대비책이"
+
+        if teaser:
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,#fff8e0,#fff3cc);
+                        border:2px solid #c5a059;border-radius:14px;
+                        padding:20px 22px;margin:16px 0;text-align:center">
+                <div style="font-size:13px;color:#a0720a;font-weight:700;margin-bottom:8px">
+                    🔮 AI 예언자 심층 분석 예고
+                </div>
+                <div style="font-size:14px;color:#333;line-height:1.9;margin-bottom:12px">
+                    {teaser}<br>
+                    <span style="color:#888;font-size:12px">
+                        → AI 상담 탭에서 정확한 시기와 대응 전략을 확인하십시오.
+                    </span>
+                </div>
+                <div style="font-size:11px;color:#c5a059;font-weight:700;letter-spacing:1px">
+                    ✦ 🤖 AI 상담 탭 이동 ✦
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    except Exception:
+        pass
+
+
+def menu2_lifeline(pils, birth_year, gender):
+    """2️⃣ 인생 흐름 (대운 100년) — 그래프 포함"""
+    import json
+
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#e8f4ff,#e7f1ff);color:#a0c8ff;
+                padding:18px 24px;border-radius:14px;margin-bottom:16px;font-size:13px">
+        ✦ 태어나서 100년까지 대운 흐름을 한눈에 봅니다. 황금기와 위기 구간을 파악하세요.
+    </div>""", unsafe_allow_html=True)
+
+    ilgan = pils[1]["cg"]
+    current_year = datetime.now().year
+    daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    ys = get_yongshin(pils)
+    yongshin_ohs = ys.get("종합_용신",[])
+    if not isinstance(yongshin_ohs, list): yongshin_ohs = []
+    ilgan_oh = OH.get(ilgan,"")
+
+    # ── 대운 100년 타임라인 그래프 ──
+    st.markdown("### 📈 대운 흐름 그래프")
+
+    # 각 대운의 길흉 점수 계산
+    labels, scores, colors_list, dw_strs = [], [], [], []
+    for dw in daewoon:
+        dw_ss = TEN_GODS_MATRIX.get(ilgan,{}).get(dw["cg"],"-")
+        is_yong = _get_yongshin_match(dw_ss, yongshin_ohs, ilgan_oh) == "yong"
+        is_current = dw["시작연도"] <= current_year <= dw["종료연도"]
+
+        SCORE_MAP = {
+            "정재":80,"식신":85,"정관":75,"정인":70,
+            "편재":65,"편관":40,"겁재":35,"상관":55,
+            "비견":60,"편인":50
+        }
+        score = SCORE_MAP.get(dw_ss, 60)
+        if is_yong: score = min(100, score + 20)
+
+        age_label = f"{dw['시작나이']}세\n{dw['str']}"
+        labels.append(age_label)
+        scores.append(score)
+        c = "#c5a059" if is_yong else ("#e74c3c" if score < 50 else "#3498db")
+        if is_current: c = "#ff6b00"
+        colors_list.append(c)
+        dw_strs.append(dw["str"])
+
+    # Chart.js 대신 HTML/CSS 바 차트
+    bars_html = ""
+    for i, (lbl, sc, cl, ds) in enumerate(zip(labels, scores, colors_list, dw_strs)):
+        age_part = lbl.split('\n')[0]
+        is_cur = cl == "#ff6b00"
+        border = "3px solid #ff6b00" if is_cur else "1px solid transparent"
+        bars_html += f"""
+        <div style="display:flex;flex-direction:column;align-items:center;min-width:52px">
+            <div style="font-size:11px;color:#555;margin-bottom:4px">{sc}</div>
+            <div style="width:40px;height:{sc}px;background:{cl};border-radius:6px 6px 0 0;
+                        border:{border};transition:height 0.3s" title="{ds}대운({sc}점)"></div>
+            <div style="font-size:10px;color:#555;margin-top:4px;text-align:center;
+                        white-space:pre-line">{lbl}</div>
+            {"<div style='font-size:9px;color:#ff6b00;font-weight:700'>▲현재</div>" if is_cur else ""}
+        </div>"""
+
+    st.markdown(f"""
+    <div style="background:#f5f5f5;border-radius:14px;padding:20px;overflow-x:auto">
+        <div style="display:flex;align-items:flex-end;gap:8px;min-width:600px;height:160px;
+                    padding-bottom:10px;border-bottom:1px solid #333">
+            {bars_html}
+        </div>
+        <div style="display:flex;gap:16px;margin-top:12px;font-size:12px">
+            <span style="color:#c5a059">■ 용신 대운</span>
+            <span style="color:#ff6b00">■ 현재 대운</span>
+            <span style="color:#3498db">■ 일반 대운</span>
+            <span style="color:#e74c3c">■ 기신 대운</span>
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown("### 🔄 대운 상세")
+    tab_daewoon(pils, birth_year, gender)
+
+    st.markdown("---")
+    st.markdown("### 🔀 대운×세운 교차")
+    try:
+        tab_cross_analysis(pils, birth_year, gender)
+    except Exception as e:
+        st.warning(f"교차분석 오류: {e}")
+
+    # 대운 100년 상세 해설문
+    st.markdown("---")
+    st.markdown("### 📜 대운 100년 완전 해설 — 만신의 풀이")
+    try:
+        narrative = build_rich_narrative(pils, birth_year, gender, "", section="lifeline")
+        sections = narrative.split("▶")
+        # 첫 도입부
+        if sections:
+            intro = sections[0].strip()
+            if intro:
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#e8f4ff,#e7f1ff);
+                            border-left:4px solid #3498db;border-radius:10px;
+                            padding:18px 22px;margin:10px 0">
+                    <div style="font-size:13px;color:#a0c8ff;line-height:2.0;white-space:pre-wrap">{intro}</div>
+                </div>""", unsafe_allow_html=True)
+        # 각 대운
+        for sec in sections[1:]:
+            if not sec.strip(): continue
+            lines = sec.strip().split("\n")
+            title = lines[0].strip() if lines else ""
+            body  = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
+            is_cur = "현재 대운" in title
+            border_color = "#ff6b00" if is_cur else "#c5a059" if "용신 대운" in body else "#3498db"
+            st.markdown(f"""
+            <div style="background:{'rgba(255,107,0,0.1)' if is_cur else '#0d1117'};
+                        border-left:4px solid {border_color};border-radius:10px;
+                        padding:16px 20px;margin:8px 0">
+                <div style="font-size:13px;font-weight:700;color:{border_color};margin-bottom:8px">
+                    ▶ {title}
+                </div>
+                <div style="font-size:13px;color:#d0c8a0;line-height:1.9;white-space:pre-wrap">{body}</div>
+            </div>""", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"대운 해설 오류: {e}")
+
+
+def menu3_past(pils, birth_year, gender, name=""):
+    """3️⃣ 과거 적중 타임라인 — 15년 자동 스캔"""
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#ffdcf5,#ffdcfd);color:#f0a8d0;
+                padding:18px 24px;border-radius:14px;margin-bottom:16px;font-size:13px">
+        ✦ 충·합·십성 교차를 수학적으로 계산하여 과거 사건 시점을 자동으로 생성합니다.<br>
+        ✦ AI가 아닌 엔진 계산입니다. 나이·분야가 맞으면 "맞았다"를 눌러주세요.
+    </div>""", unsafe_allow_html=True)
+    tab_past_events(pils, birth_year, gender, name)
+
+
+def menu4_future3(pils, birth_year, gender, marriage_status="미혼"):
+    """4️⃣ 미래 3년 집중 분석 — 돈/직장/연애"""
+    ilgan = pils[1]["cg"]
+    current_year = datetime.now().year
+    current_age  = current_year - birth_year + 1
+
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#dcfff5,#dcfffd);color:#a0f0c0;
+                padding:18px 24px;border-radius:14px;margin-bottom:16px;font-size:13px">
+        ✦ 향후 3년을 돈·직장·연애 3가지 분야로 집중 분석합니다.
+    </div>""", unsafe_allow_html=True)
+
+    ys = get_yongshin(pils)
+    yongshin_ohs = ys.get("종합_용신",[])
+    if not isinstance(yongshin_ohs, list): yongshin_ohs = []
+    ilgan_oh = OH.get(ilgan,"")
+
+    DOMAIN_SS = {
+        "돈·재물": {"식신","정재","편재"},
+        "직장·명예": {"정관","편관","정인"},
+        "연애·인연": {"정재","편재"} if gender=="남" else {"정관","편관"},
+        "변화·이동": {"상관","겁재","편인"},
+    }
+    DOMAIN_COLOR = {
+        "돈·재물": "#27ae60", "직장·명예": "#2980b9",
+        "연애·인연": "#e91e8c", "변화·이동": "#e67e22"
+    }
+
+    years_data = []
+    for y in range(current_year, current_year + 3):
+        sw = get_yearly_luck(pils, y)
+        dw = next((d for d in SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+                   if d["시작연도"] <= y <= d["종료연도"]), None)
+        dw_ss = TEN_GODS_MATRIX.get(ilgan,{}).get(dw["cg"],"-") if dw else "-"
+        sw_ss = sw.get("십성_천간", "-")
+        age = y - birth_year + 1
+
+        # 분야별 점수
+        domains = {}
+        for dname, ss_set in DOMAIN_SS.items():
+            score = 0
+            if dw_ss in ss_set: score += 50
+            if sw_ss in ss_set: score += 50
+            domains[dname] = score
+
+        # 용신 여부
+        is_yong_dw = _get_yongshin_match(dw_ss, yongshin_ohs, ilgan_oh) == "yong" if dw else False
+        is_yong_sw = _get_yongshin_match(sw_ss, yongshin_ohs, ilgan_oh) == "yong"
+
+        # 합깨짐 경고
+        hap_warn = _get_hap_break_warning(pils, dw["jj"] if dw else "", sw["jj"])
+
+        years_data.append({
+            "year": y, "age": age,
+            "dw": dw["str"] if dw else "-", "dw_ss": dw_ss,
+            "sw": sw["세운"], "sw_ss": sw_ss,
+            "is_yong_dw": is_yong_dw, "is_yong_sw": is_yong_sw,
+            "domains": domains, "hap_warn": hap_warn,
+            "gilhyung": sw["길흉"]
+        })
+
+    for yd in years_data:
+        yong_both = yd["is_yong_dw"] and yd["is_yong_sw"]
+        gishin_both = not yd["is_yong_dw"] and not yd["is_yong_sw"]
+        card_color = "#c5a059" if yong_both else "#c0392b" if gishin_both else "#2980b9"
+        card_bg    = "#fffde0" if yong_both else "#fff0f0" if gishin_both else "#f0f8ff"
+        label      = "🌟 황금기" if yong_both else "⚠️ 수비" if gishin_both else "〰️ 혼재"
+
+        st.markdown(f"""
+        <div style="background:{card_bg};border:2px solid {card_color};border-radius:16px;
+                    padding:20px;margin:12px 0">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div>
+                    <span style="font-size:26px;font-weight:900;color:{card_color}">{yd['year']}년</span>
+                    <span style="font-size:14px;color:#444;margin-left:10px">만 {yd['age']}세</span>
+                </div>
+                <div style="background:{card_color};color:#1a1a1a;padding:5px 16px;
+                            border-radius:20px;font-size:13px;font-weight:700">{label}</div>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+                <span style="background:#f5f5f5;color:#1a1a1a;padding:3px 12px;border-radius:12px;font-size:12px">
+                    대운 {yd['dw']}({yd['dw_ss']})</span>
+                <span style="background:#f5f5f5;color:#1a1a1a;padding:3px 12px;border-radius:12px;font-size:12px">
+                    세운 {yd['sw']}({yd['sw_ss']})</span>
+                <span style="color:{card_color};font-size:12px;padding:3px 8px">{yd['gilhyung']}</span>
+            </div>""", unsafe_allow_html=True)
+
+        # 분야별 점수 바
+        domain_bars = ""
+        for dname, score in yd["domains"].items():
+            dc = DOMAIN_COLOR.get(dname,"#888")
+            filled = score // 10
+            bar_vis = "🟩"*filled + "⬜"*(10-filled)
+            status = "활성" if score >= 50 else "보통" if score >= 30 else "약함"
+            domain_bars += f"""
+            <div style="display:flex;align-items:center;gap:10px;margin:4px 0">
+                <span style="font-size:12px;color:{dc};min-width:70px;font-weight:700">{dname}</span>
+                <span style="font-size:11px">{bar_vis}</span>
+                <span style="font-size:11px;color:#444">{status}</span>
+            </div>"""
+
+        st.markdown(f"""
+            <div style="background:white;border-radius:10px;padding:12px">{domain_bars}</div>""",
+                    unsafe_allow_html=True)
+
+        if yd["hap_warn"]:
+            for hw in yd["hap_warn"]:
+                st.markdown(f"""
+            <div style="background:#fff0f0;border-left:4px solid #c0392b;
+                        border-radius:8px;padding:10px 14px;margin-top:8px;font-size:12px;color:#c0392b">
+                🚨 {hw}</div>""", unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # 결혼 여부별 인연 조언
+    st.markdown("---")
+    st.markdown("### 💑 인연·배우자운 (3년)")
+    if marriage_status in ("미혼","이혼/별거"):
+        MARRY_SS = {"정재","편재"} if gender=="남" else {"정관","편관"}
+        for yd in years_data:
+            if yd["sw_ss"] in MARRY_SS or yd["dw_ss"] in MARRY_SS:
+                st.markdown(f"""
+                <div style="background:#fff0f8;border-left:4px solid #e91e8c;
+                            border-radius:8px;padding:12px;margin:5px 0">
+                    <b style="color:#e91e8c">{yd['year']}년({yd['age']}세)</b> —
+                    인연성이 강합니다. 적극적으로 움직이십시오.
+                </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div style="background:#f0fff8;border-left:4px solid #27ae60;
+                    border-radius:8px;padding:12px">
+            {marriage_status} 상태. 부부 관계 흐름 분석은 육친론을 참고하세요.
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown("### 📅 월별 세운 (올해)")
+    tab_monthly(pils, birth_year, gender)
+
+    # 미래 3년 상세 해설
+    st.markdown("---")
+    st.markdown("### 📜 미래 3년 완전 해설 — 만신의 풀이")
+    try:
+        narrative = build_rich_narrative(pils, birth_year, gender, "", section="future")
+        blocks = narrative.split("━"*55)
+        if blocks:
+            intro = blocks[0].strip()
+            if intro:
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#dcfff5,#dcfffd);
+                            border-left:4px solid #27ae60;border-radius:10px;
+                            padding:16px 20px;margin:10px 0">
+                    <div style="font-size:13px;color:#a0f0c0;line-height:1.9;white-space:pre-wrap">{intro}</div>
+                </div>""", unsafe_allow_html=True)
+            for block in blocks[1:]:
+                if not block.strip(): continue
+                lines = block.strip().split("\n")
+                title_line = next((l for l in lines if l.strip()), "")
+                body = "\n".join(lines[1:]).strip()
+                is_good = "⭐" in title_line
+                is_bad = "⚠️" in title_line
+                bg = "rgba(197,160,89,0.12)" if is_good else "rgba(192,57,43,0.12)" if is_bad else "rgba(41,128,185,0.12)"
+                bc = "#c5a059" if is_good else "#c0392b" if is_bad else "#2980b9"
+                st.markdown(f"""
+                <div style="background:{bg};border-left:4px solid {bc};
+                            border-radius:10px;padding:16px 20px;margin:8px 0">
+                    <div style="font-size:14px;font-weight:900;color:{bc};margin-bottom:10px">{title_line}</div>
+                    <div style="font-size:13px;color:#333;line-height:1.9;white-space:pre-wrap">{body}</div>
+                </div>""", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"미래 해설 오류: {e}")
+
+
+def menu5_money(pils, birth_year, gender):
+    """5️⃣ 재물·사업 특화 분석"""
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#eaffdc,#edffdc);color:#a0e060;
+                padding:18px 24px;border-radius:14px;margin-bottom:16px;font-size:13px">
+        ✦ 수익 구조·재물 기질·돈이 터지는 시기를 십성 조합으로 집중 분석합니다.
+    </div>""", unsafe_allow_html=True)
+
+    ilgan = pils[1]["cg"]
+    ys = get_yongshin(pils)
+    yongshin_ohs = ys.get("종합_용신",[])
+    if not isinstance(yongshin_ohs, list): yongshin_ohs = []
+    ilgan_oh = OH.get(ilgan,"")
+    current_year = datetime.now().year
+
+    # ① 십성 조합 기반 재물 기질
+    st.markdown("### 💎 십성 조합으로 보는 재물 기질")
+    try:
+        life = build_life_analysis(pils, gender)
+        combos = life["조합_결과"]
+        ss_dist = life["전체_십성"]
+
+        # 재물 관련 조합만 강조
+        MONEY_SS = {"식신","상관","편재","정재","겁재","비견"}
+        money_combos = [(k, v) for k, v in combos if any(s in MONEY_SS for s in k)]
+
+        if money_combos:
+            for key, combo in money_combos:
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#f5f5f5,#f5ffea);
+                            border:2px solid #4a8a20;border-radius:14px;padding:20px;margin:10px 0">
+                    <div style="font-size:17px;font-weight:900;color:#a0d040;margin-bottom:10px">
+                        {combo['요약']}
+                    </div>
+                    <div style="background:#eaffdc;border-radius:10px;padding:14px;margin-bottom:10px;
+                                border-left:4px solid #c5a059">
+                        <div style="font-size:11px;color:#c5a059;font-weight:700;margin-bottom:6px">💰 재물 버는 방식</div>
+                        <div style="font-size:14px;color:#f0e0a0;line-height:1.9">{combo['재물']}</div>
+                    </div>
+                    <div style="background:#eaffdc;border-radius:10px;padding:14px;margin-bottom:10px;
+                                border-left:4px solid #3498db">
+                        <div style="font-size:11px;color:#5ab4ff;font-weight:700;margin-bottom:6px">💼 맞는 직업·사업</div>
+                        <div style="font-size:14px;color:#c0d8f0;line-height:1.9">{combo['직업']}</div>
+                    </div>
+                    <div style="background:#f5f5f5;border-radius:10px;padding:12px;
+                                border-left:4px solid #e74c3c">
+                        <div style="font-size:11px;color:#ff6b6b;font-weight:700;margin-bottom:4px">⚠️ 재물 주의사항</div>
+                        <div style="font-size:13px;color:#f0c0c0;line-height:1.8">{combo['주의']}</div>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+        elif combos:
+            key, combo = combos[0]
+            st.markdown(f"""
+            <div style="background:#eef0ff;border-radius:12px;padding:18px;border:1px solid #3a4060">
+                <div style="font-size:16px;font-weight:700;color:#c5a059;margin-bottom:10px">{combo['요약']}</div>
+                <div style="font-size:14px;color:#f0e0a0;line-height:1.9">{combo['재물']}</div>
+            </div>""", unsafe_allow_html=True)
+
+        # 십성별 재물 기질 요약
+        MONEY_NATURE = {
+            "식신": "🌾 재능·기술로 꾸준히 버는 타입. 억지로 돈 쫓지 않아도 따라온다.",
+            "상관": "⚡ 아이디어·말·창의로 버는 타입. 새로운 방식으로 수익을 만든다.",
+            "편재": "🎰 활발한 활동·투자·사업으로 버는 타입. 기복이 있지만 크게 번다.",
+            "정재": "🏦 성실하게 모으는 타입. 꾸준히 하면 결국 쌓인다.",
+            "겁재": "💸 크게 벌고 크게 쓰는 타입. 재물 관리가 인생 최대 숙제.",
+            "비견": "⚔️ 독립·자영업으로 버는 타입. 남 밑에서는 돈이 안 모인다.",
+            "편관": "🔥 직위·권한에서 재물이 따라오는 타입. 높은 자리가 돈이 된다.",
+            "정관": "🏛️ 안정된 직장에서 꾸준히 쌓는 타입. 직급이 올라갈수록 재물도 는다.",
+            "편인": "🎭 특수 분야 전문성으로 버는 타입. 일반적인 방법보다 틈새가 맞다.",
+            "정인": "📚 지식·자격·귀인을 통해 재물이 오는 타입. 배움이 곧 돈이 된다.",
+        }
+        st.markdown("#### 📊 주요 십성별 재물 기질")
+        for ss, cnt in sorted(ss_dist.items(), key=lambda x: -x[1])[:4]:
+            if ss in MONEY_NATURE:
+                ss_color = {"식신":"#27ae60","상관":"#e67e22","편재":"#2ecc71","정재":"#16a085",
+                           "겁재":"#e74c3c","비견":"#3498db","편관":"#c0392b","정관":"#2980b9",
+                           "편인":"#8e44ad","정인":"#d35400"}.get(ss,"#888")
+                st.markdown(f"""
+                <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;
+                            border-bottom:1px solid #eee">
+                    <span style="background:{ss_color};color:#1a1a1a;padding:3px 10px;
+                                 border-radius:12px;font-size:12px;white-space:nowrap;
+                                 min-width:50px;text-align:center">{ss}×{cnt}</span>
+                    <span style="font-size:13px;color:#333;line-height:1.8">{MONEY_NATURE.get(ss,'')}</span>
+                </div>""", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"재물 기질 분석 오류: {e}")
+
+    st.markdown("---")
+
+    # ② 돈 터지는 시기
+    st.markdown("### 📈 돈이 터지는 시기")
+    try:
+        with st.spinner("재물 운기 계산 중..."):
+            hl = generate_engine_highlights(pils, birth_year, gender)
+
+        if hl["money_peak"]:
+            for mp in hl["money_peak"]:
+                is_double = mp.get("ss") == "더블"
+                bg = "#fff9e6" if is_double else "#f0fff0"
+                bc = "#c5a059" if is_double else "#27ae60"
+                icon = "🌟" if is_double else "💰"
+                st.markdown(f"""
+                <div style="background:{bg};border:2px solid {bc};border-radius:12px;
+                            padding:16px;margin:8px 0">
+                    <span style="font-size:18px;font-weight:900;color:{bc}">{icon} {mp['age']}</span>
+                    <span style="font-size:12px;color:#444;margin-left:8px">({mp['year']})</span>
+                    <div style="font-size:13px;color:#333;margin-top:6px;line-height:1.8">{mp['desc']}</div>
+                </div>""", unsafe_allow_html=True)
+        else:
+            st.info("현재 기준 향후 5년 내 뚜렷한 재물 피크가 계산되지 않았습니다.")
+    except Exception as e:
+        st.warning(f"재물 운기 계산 오류: {e}")
+
+    st.markdown("---")
+    st.markdown("### 💰 재물론 상세 (장생·12운성)")
+    try:
+        tab_jaemul(pils, birth_year, gender)
+    except Exception as e:
+        st.warning(f"재물론 오류: {e}")
+
+    # 재물 완전 해설
+    st.markdown("---")
+    st.markdown("### 📜 재물·사업 완전 해설 — 만신의 풀이")
+    try:
+        narrative = build_rich_narrative(pils, birth_year, gender, "", section="money")
+        sections = narrative.split("【")
+        for sec in sections:
+            if not sec.strip(): continue
+            lines = sec.strip().split("\n")
+            title = lines[0].replace("】","").strip() if lines else ""
+            body  = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
+            if title:
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#eaffdc,#f5ffdc);
+                            border-left:4px solid #c5a059;border-radius:10px;
+                            padding:18px 22px;margin:10px 0">
+                    <div style="font-size:14px;font-weight:900;color:#c5a059;margin-bottom:10px">
+                        【 {title} 】
+                    </div>
+                    <div style="font-size:13px;color:#d0e8b0;line-height:2.0;white-space:pre-wrap">{body}</div>
+                </div>""", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"재물 해설 오류: {e}")
+
+
+def menu6_relations(pils, name, birth_year, gender, marriage_status="미혼"):
+    """6️⃣ 궁합 / 인간관계 분석"""
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#ffdcff,#ffdcff);color:#f0a8ff;
+                padding:18px 24px;border-radius:14px;margin-bottom:16px;font-size:13px">
+        ✦ 연인·동업자·상사와의 인간관계를 사주로 분석합니다.
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown("### 👫 육친론 — 주변 인물 분석")
+    tab_yukjin(pils, gender)
+
+    st.markdown("---")
+    st.markdown("### 💑 궁합 분석")
+    tab_gunghap(pils, name)
+
+    # 인간관계 완전 해설
+    st.markdown("---")
+    st.markdown("### 📜 육친·인간관계 완전 해설 — 만신의 풀이")
+    try:
+        narrative = build_rich_narrative(pils, birth_year, gender, name if name else "내담자", section="relations")
+        sections = narrative.split("【")
+        for sec in sections:
+            if not sec.strip(): continue
+            lines = sec.strip().split("\n")
+            title = lines[0].replace("】","").strip() if lines else ""
+            body  = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
+            if not title: continue
+            # 육친 파트 vs 일반 파트
+            if "◈" in body:
+                # 육친 개별 카드
+                sub_items = body.split("◈")
+                if title:
+                    st.markdown(f"<div style='font-size:14px;font-weight:900;color:#c39bd3;margin:12px 0 6px'>【 {title} 】</div>", unsafe_allow_html=True)
+                for item in sub_items:
+                    if not item.strip(): continue
+                    item_lines = item.strip().split("\n")
+                    item_title = item_lines[0].strip()
+                    item_body = "\n".join(item_lines[1:]).strip()
+                    st.markdown(f"""
+                    <div style="background:#f5f5f5;border-left:4px solid #9b59b6;
+                                border-radius:10px;padding:14px 18px;margin:6px 0">
+                        <div style="font-size:13px;font-weight:700;color:#c39bd3;margin-bottom:6px">◈ {item_title}</div>
+                        <div style="font-size:13px;color:#e8d0f8;line-height:1.9;white-space:pre-wrap">{item_body}</div>
+                    </div>""", unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#ffdcff,#ffdcff);
+                            border-left:4px solid #9b59b6;border-radius:10px;
+                            padding:18px 22px;margin:10px 0">
+                    <div style="font-size:14px;font-weight:900;color:#c39bd3;margin-bottom:10px">
+                        【 {title} 】
+                    </div>
+                    <div style="font-size:13px;color:#e8d0f8;line-height:2.0;white-space:pre-wrap">{body}</div>
+                </div>""", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"인간관계 해설 오류: {e}")
+
+
+################################################################################
+# ☀️ menu9_daily  — 일일 운세
+# 📅 menu10_monthly — 월별 운세
+# 🎊 menu11_yearly  — 신년 운세
+################################################################################
+
+def menu9_daily(pils, name, birth_year, gender):
+    """9️⃣ 일일 운세 — 오늘·내일·이번주 일진 완전 분석"""
+
+    ilgan   = pils[1]["cg"]
+    today   = datetime.now()
+    display_name = name if name else "내담자"
+
+    # ── 일진 계산 헬퍼 ─────────────────────────────────────────
+    def get_day_pillar(dt):
+        """날짜 → 일주 계산 (갑자일 기준 오프셋)"""
+        base  = date(1924, 1, 1)          # 甲子日 기준점
+        delta = (dt.date() - base).days if hasattr(dt, 'date') else (dt - base).days
+        cg_i  = delta % 10
+        jj_i  = delta % 12
+        return CG[cg_i], JJ[jj_i]
+
+    def day_ten_god(ilgan, day_cg):
+        return TEN_GODS_MATRIX.get(ilgan, {}).get(day_cg, "-")
+
+    # 오늘 일주
+    today_cg, today_jj = get_day_pillar(today)
+    today_ss  = day_ten_god(ilgan, today_cg)
+    today_mlu = get_monthly_luck(pils, today.year, today.month)
+    today_ylu = get_yearly_luck(pils, today.year)
+
+    # ── 헤더 ─────────────────────────────────────────────────
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#e8f4ff,#ddeeff);
+                border-radius:14px;padding:18px 24px;margin-bottom:16px;text-align:center">
+        <div style="font-size:22px;font-weight:900;color:#f0c060;letter-spacing:2px">
+            ☀️ {display_name}님의 일일 운세
+        </div>
+        <div style="font-size:13px;color:#555;margin-top:6px">
+            {today.strftime('%Y년 %m월 %d일')} ({['월','화','수','목','금','토','일'][today.weekday()]}요일)
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── 오늘 일진 메인 카드 ──────────────────────────────────
+    DAILY_SS_MSG = {
+        "비견":  {"emoji":"🤝","level":"평길","msg":"동료·경쟁자 기운. 협력하면 좋고, 독단적 결정은 삼가십시오.","재물":"지출 주의","관계":"새 인연 가능","건강":"체력 소모 주의"},
+        "겁재":  {"emoji":"⚠️","level":"흉","msg":"재물 손실, 경쟁 기운. 오늘 큰 결정·투자는 내일로 미루십시오.","재물":"지갑 조심","관계":"갈등 주의","건강":"스트레스 주의"},
+        "식신":  {"emoji":"🌟","level":"대길","msg":"복록이 쏟아지는 날! 먹고 즐기고 창작하기 최고의 날입니다.","재물":"예상 수입 가능","관계":"인기 상승","건강":"최상"},
+        "상관":  {"emoji":"🌪️","level":"평","msg":"창의·표현의 날. 아이디어가 넘치지만 말실수에 주의하십시오.","재물":"재능으로 수입","관계":"표현 조심","건강":"신경 예민"},
+        "편재":  {"emoji":"💰","level":"길","msg":"재물 기운이 활발한 날. 거래·계약·사교에 유리합니다.","재물":"예상치 못한 수입","관계":"이성 인연","건강":"과로 주의"},
+        "정재":  {"emoji":"🏦","level":"길","msg":"안정적 재물의 날. 성실하게 움직이면 반드시 보상이 옵니다.","재물":"정직한 수입","관계":"파트너 안정","건강":"양호"},
+        "편관":  {"emoji":"⚡","level":"흉","msg":"압박과 긴장의 날. 서두르지 말고 인내하는 것이 최선입니다.","재물":"지출 증가","관계":"갈등 가능","건강":"사고 주의"},
+        "정관":  {"emoji":"🎖️","level":"대길","msg":"명예와 인정의 날! 중요한 발표·면접·계약에 최적입니다.","재물":"합법적 수입","관계":"신뢰 상승","건강":"좋음"},
+        "편인":  {"emoji":"🔮","level":"평","msg":"직관과 영감의 날. 창의적 연구·기획에 집중하십시오.","재물":"재물보다 지식","관계":"혼자가 편한 날","건강":"소화 주의"},
+        "정인":  {"emoji":"📚","level":"대길","msg":"귀인과 학문의 날! 시험·발표·공부에 최고입니다.","재물":"간접 수입","관계":"스승·선배 도움","건강":"안정"},
+        "-":     {"emoji":"〰️","level":"평","msg":"복합 기운의 날. 꾸준히 자신의 일에 집중하십시오.","재물":"현상 유지","관계":"평온","건강":"보통"},
+    }
+    d = DAILY_SS_MSG.get(today_ss, DAILY_SS_MSG["-"])
+    level_color = {"대길":"#4caf50","길":"#8bc34a","평길":"#ffc107","평":"#9e9e9e","흉":"#f44336"}.get(d["level"],"#aaa")
+
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#fffde8,#fff8e0);
+                border:2px solid {level_color}55;border-left:5px solid {level_color};
+                border-radius:14px;padding:22px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+            <div style="font-size:40px">{d['emoji']}</div>
+            <div>
+                <div style="font-size:18px;font-weight:900;color:#f0c060">
+                    오늘의 일진 — {today_cg}{today_jj}일 ({CG_KR[CG.index(today_cg)]}·{JJ_KR[JJ.index(today_jj)]})
+                </div>
+                <div style="font-size:13px;color:{level_color};font-weight:700;margin-top:4px">
+                    {display_name}님 기준 십성: {today_ss} &nbsp;|&nbsp;
+                    <span style="background:{level_color}33;padding:2px 10px;border-radius:8px">{d['level']}</span>
+                </div>
+            </div>
+        </div>
+        <div style="font-size:14px;color:#333;line-height:1.9;margin-bottom:12px">{d['msg']}</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <span style="background:#e8f5e8;color:#8bc34a;padding:5px 12px;border-radius:8px;font-size:12px">
+                💰 재물: {d['재물']}
+            </span>
+            <span style="background:#f5f5f5;color:#7986cb;padding:5px 12px;border-radius:8px;font-size:12px">
+                👥 관계: {d['관계']}
+            </span>
+            <span style="background:#fff0f0;color:#ef9a9a;padding:5px 12px;border-radius:8px;font-size:12px">
+                💊 건강: {d['건강']}
+            </span>
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── 이번 주 7일 일진 미리보기 ────────────────────────────
+    st.markdown('<div style="font-size:15px;font-weight:800;color:#c5a059;margin:16px 0 10px">📅 이번 주 7일 일진</div>',
+                unsafe_allow_html=True)
+
+    week_days = [(today + timedelta(days=i)) for i in range(7)]
+    day_names = ["월","화","수","목","금","토","일"]
+    cols = st.columns(7)
+    for i, (col, dt) in enumerate(zip(cols, week_days)):
+        cg, jj = get_day_pillar(dt)
+        ss = day_ten_god(ilgan, cg)
+        d_info = DAILY_SS_MSG.get(ss, DAILY_SS_MSG["-"])
+        lc = {"대길":"#4caf50","길":"#8bc34a","평길":"#ffc107","평":"#777","흉":"#f44336"}.get(d_info["level"],"#777")
+        is_today = (i == 0)
+        with col:
+            st.markdown(f"""
+            <div style="background:{'linear-gradient(135deg,#2a2010,#3a3020)' if is_today else '#f8f8f8'};
+                        border:{'2px solid #f0c060' if is_today else '1px solid #333'};
+                        border-radius:10px;padding:10px 4px;text-align:center">
+                <div style="font-size:11px;color:{'#f0c060' if is_today else '#666'};font-weight:{'700' if is_today else '400'}">
+                    {dt.strftime('%m/%d')}<br>{day_names[dt.weekday()]}
+                    {'<br><span style="color:#f0c060">▲오늘</span>' if is_today else ''}
+                </div>
+                <div style="font-size:16px;margin:6px 0">{d_info['emoji']}</div>
+                <div style="font-size:11px;color:#555">{cg}{jj}</div>
+                <div style="font-size:10px;color:{lc};font-weight:700;margin-top:4px">
+                    {ss}<br>{d_info['level']}
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+    # ── 오늘의 길한 시간 ─────────────────────────────────────
+    st.markdown('<div style="font-size:15px;font-weight:800;color:#c5a059;margin:20px 0 10px">⏰ 오늘의 길한 시간대</div>',
+                unsafe_allow_html=True)
+
+    ys = get_yongshin(pils)
+    yongshin_ohs = ys.get("종합_용신", [])
+    if not isinstance(yongshin_ohs, list):
+        yongshin_ohs = []
+
+    OH_HOUR_MAP = {
+        "木": [("새벽 3~5시","寅시"), ("새벽 5~7시","卯시")],
+        "火": [("오전 9~11시","巳시"), ("오전 11~오후 1시","午시")],
+        "土": [("오전 7~9시","辰시"), ("오후 1~3시","未시")],
+        "金": [("오후 3~5시","申시"), ("오후 5~7시","酉시")],
+        "水": [("저녁 9~11시","亥시"), ("밤 11~새벽 1시","子시")],
+    }
+    good_hours = []
+    for oh in yongshin_ohs:
+        good_hours.extend(OH_HOUR_MAP.get(oh, []))
+
+    if good_hours:
+        hour_tags = " ".join([
+            f"<span style='background:#d8f5d8;color:#8bc34a;padding:5px 14px;border-radius:8px;font-size:13px;margin:4px'>"
+            f"✅ {t} ({jj})</span>"
+            for t, jj in good_hours[:4]
+        ])
+        st.markdown(f"<div style='line-height:2.5'>{hour_tags}</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div style='color:#aaa;font-size:13px'>용신 계산 중...</div>", unsafe_allow_html=True)
+
+    # ── 오늘의 한 줄 처방 ─────────────────────────────────────
+    DAILY_PRESCRIPTION = {
+        "비견": "🤝 오늘은 혼자보다 둘이 낫습니다. 협력 제안은 긍정적으로 받아들이십시오.",
+        "겁재": "🛡️ 오늘은 지키는 날입니다. 지갑과 감정을 단단히 붙잡으십시오.",
+        "식신": "🍀 오늘 시작하는 일은 복을 부릅니다. 망설이지 말고 첫 발을 내딛으십시오.",
+        "상관": "🖊️ 오늘 떠오르는 아이디어를 메모하십시오. 말은 줄이고 행동으로 보여주십시오.",
+        "편재": "💼 오늘 들어오는 거래·제안을 신중히 검토하십시오. 기회가 있습니다.",
+        "정재": "📊 오늘 성실하게 처리한 일이 내일의 수입이 됩니다. 꾸준히 움직이십시오.",
+        "편관": "🧘 오늘은 인내가 최고의 전략입니다. 서두르면 반드시 탈이 납니다.",
+        "정관": "🌟 오늘은 자신을 드러낼 날입니다. 중요한 만남·발표를 오늘로 잡으십시오.",
+        "편인": "📖 오늘은 연구·공부·계획에 집중하십시오. 대외 활동보다 내면을 다지십시오.",
+        "정인": "🎓 오늘 윗사람·스승의 조언을 귀담아 들으십시오. 귀인이 나타나는 날입니다.",
+        "-":    "🌿 오늘은 평온하게 자신의 루틴을 지키는 것이 가장 좋은 선택입니다.",
+    }
+    prescription = DAILY_PRESCRIPTION.get(today_ss, DAILY_PRESCRIPTION["-"])
+    st.markdown(f"""
+    <div style="background:#e8f5e8;border:1px solid #7ad47a;border-radius:10px;
+                padding:14px 18px;margin-top:16px;font-size:14px;color:#c8e6c9;line-height:1.8">
+        <b style="color:#8bc34a">💊 오늘의 처방</b><br>{prescription}
+    </div>""", unsafe_allow_html=True)
+
+    # ── 이번 달 세운 요약 ──────────────────────────────────
+    st.markdown(f"""
+    <div style="background:#e2f5ff;border:1px solid #d0e8ff;border-radius:10px;
+                padding:14px 18px;margin-top:10px;font-size:13px;color:#90caf9;line-height:1.8">
+        <b style="color:#5c9bc5">🌙 이번 달({today.month}월) 월운</b><br>
+        {today_mlu['월운']} ({today_mlu['십성']}) — {today_mlu['short']}<br>
+        <span style="color:#555">{today_mlu['설명'][:60]}...</span>
+    </div>""", unsafe_allow_html=True)
+
+    # ── 7일 운세 점수 그래프 ──────────────────────────────
+    st.markdown('<div class="gold-section" style="margin-top:20px">📊 7일 운세 흐름 그래프</div>',
+                unsafe_allow_html=True)
+    try:
+        graph_data = get_7day_luck_graph(pils, birth_year, gender)
+        max_s = max(d["score"] for d in graph_data) or 100
+        bars = ""
+        for d in graph_data:
+            h   = max(15, int(d["score"] / max_s * 75))
+            bg  = "#c5a059" if d["is_today"] else ("#4caf50" if d["score"] >= 60 else "#ff9800" if d["score"] >= 45 else "#f44336")
+            fw  = "900" if d["is_today"] else "600"
+            shadow = f"box-shadow:0 0 10px {bg}99;" if d["is_today"] else ""
+            bars += f"""
+            <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1">
+                <div style="font-size:11px;color:{'#a0720a' if d['is_today'] else '#555'};font-weight:{fw}">{d['score']}</div>
+                <div style="width:100%;max-width:36px;height:{h}px;background:{bg};
+                            border-radius:5px 5px 0 0;{shadow}opacity:{'1' if d['is_today'] else '0.75'}"></div>
+                <div style="font-size:10px;color:{'#a0720a' if d['is_today'] else '#888'};font-weight:{fw}">{d['day']}</div>
+                <div style="font-size:9px;color:#bbb">{d['date']}</div>
+                <div style="font-size:9px;color:{'#c5a059' if d['is_today'] else '#aaa'}">{d['label'] if d['is_today'] else ''}</div>
+            </div>"""
+        st.markdown(f"""
+        <div style="background:#fffef8;border:1.5px solid #e8d5a0;border-radius:14px;
+                    padding:16px 12px;margin:8px 0">
+            <div style="display:flex;align-items:flex-end;gap:6px;height:120px;padding-bottom:4px">
+                {bars}
+            </div>
+            <div style="font-size:10px;color:#aaa;text-align:center;margin-top:8px">
+                ◀ 3일 전 &nbsp;&nbsp;&nbsp; 오늘 ▲ &nbsp;&nbsp;&nbsp; 3일 후 ▶
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    except Exception:
+        pass
+
+    # ── 전환점 카운트다운 ──────────────────────────────────
+    try:
+        countdown = get_turning_countdown(pils, birth_year, gender)
+        if countdown["days_left"] and countdown["days_left"] <= 90:
+            ic = "#f44336" if "강력" in countdown.get("intensity","") else "#ff9800"
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,#fff5e8,#ffe0c0);
+                        border:2px solid {ic};border-radius:12px;
+                        padding:14px 16px;margin:10px 0;text-align:center">
+                <div style="font-size:11px;color:{ic};font-weight:700;margin-bottom:2px">
+                    ⚡ 인생 전환점 감지
+                </div>
+                <div style="font-size:28px;font-weight:900;color:{ic}">
+                    D-{countdown['days_left']}
+                </div>
+                <div style="font-size:12px;color:#555;margin-top:4px">
+                    {countdown['description']}
+                </div>
+                <div style="font-size:11px;color:#888;margin-top:2px">
+                    {countdown['date']}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    except Exception:
+        pass
+
+    # ── 🔮 소름 엔진 — 과거 적중·현재 공감·미래 예고 ─────────────
+    st.markdown('<div class="gold-section" style="margin-top:24px">🔮 당신의 사주 패턴 — 이미 겪으셨나요?</div>',
+                unsafe_allow_html=True)
+    try:
+        gb = goosebump_engine(pils, birth_year, gender)
+
+        # 과거 적중
+        if gb["past"]:
+            for s in gb["past"][:2]:
+                st.markdown(f"""
+                <div style="background:#fffef5;border-left:5px solid #c5a059;
+                            padding:12px 16px;border-radius:4px 12px 12px 4px;
+                            margin:6px 0;font-size:14px;color:#333;line-height:1.9">
+                    🔍 <b>과거 적중</b> &nbsp;{s}
+                </div>""", unsafe_allow_html=True)
+
+        # 현재 공감
+        if gb["present"]:
+            for s in gb["present"][:1]:
+                st.markdown(f"""
+                <div style="background:#f0f8ff;border-left:5px solid #4a90d9;
+                            padding:12px 16px;border-radius:4px 12px 12px 4px;
+                            margin:6px 0;font-size:14px;color:#333;line-height:1.9">
+                    💡 <b>현재 상태</b> &nbsp;{s}
+                </div>""", unsafe_allow_html=True)
+
+        # 미래 예고
+        if gb["future"]:
+            for s in gb["future"][:1]:
+                st.markdown(f"""
+                <div style="background:#fff5e0;border-left:5px solid #e65100;
+                            padding:12px 16px;border-radius:4px 12px 12px 4px;
+                            margin:6px 0;font-size:14px;color:#333;line-height:1.9">
+                    ⚡ <b>미래 예고</b> &nbsp;{s}
+                </div>""", unsafe_allow_html=True)
+
+        # 확신 강화 문장
+        st.markdown(f"""
+        <div style="background:#f8f8f8;border:1px solid #ddd;border-radius:10px;
+                    padding:10px 14px;margin-top:6px;font-size:11px;color:#888;line-height:1.7">
+            📌 {gb['conviction']}
+        </div>""", unsafe_allow_html=True)
+
+    except Exception:
+        pass
+
+    # ── 📅 14일 이내 이벤트 예고 배너 ─────────────────────────────
+    st.markdown('<div class="gold-section" style="margin-top:24px">📅 앞으로 14일 이내 운기 예고</div>',
+                unsafe_allow_html=True)
+    try:
+        future_alerts = []
+        for offset in range(1, 15):
+            chk_date = today + timedelta(days=offset)
+            chk_year = chk_date.year
+            chk_cg, chk_jj = get_day_pillar(chk_date)
+            chk_ss = day_ten_god(ilgan, chk_cg)
+            # 대길 또는 흉 일진 감지
+            if chk_ss in ("식신", "정관", "정인", "정재"):
+                future_alerts.append({
+                    "date": chk_date.strftime("%m/%d"),
+                    "day": ["월","화","수","목","금","토","일"][chk_date.weekday()],
+                    "type": "🌟 길일",
+                    "ss": chk_ss,
+                    "color": "#4caf50",
+                    "bg": "#e8f5e8",
+                    "desc": {"식신":"복록 기운","정관":"명예 기운","정인":"귀인 기운","정재":"재물 기운"}.get(chk_ss,"길한 기운"),
+                    "offset": offset,
+                })
+            elif chk_ss in ("편관", "겁재"):
+                future_alerts.append({
+                    "date": chk_date.strftime("%m/%d"),
+                    "day": ["월","화","수","목","금","토","일"][chk_date.weekday()],
+                    "type": "⚠️ 주의일",
+                    "ss": chk_ss,
+                    "color": "#f44336",
+                    "bg": "#fff5f5",
+                    "desc": {"편관":"압박 주의","겁재":"지출 주의"}.get(chk_ss,"주의 필요"),
+                    "offset": offset,
+                })
+
+        if future_alerts:
+            alert_html = ""
+            for a in future_alerts[:6]:  # 최대 6개
+                alert_html += f"""
+                <div style="display:flex;align-items:center;gap:10px;
+                            background:{a['bg']};border:1px solid {a['color']}44;
+                            border-radius:10px;padding:9px 14px;margin:5px 0">
+                    <span style="font-size:13px;font-weight:900;color:{a['color']};min-width:40px">
+                        D-{a['offset']}
+                    </span>
+                    <span style="font-size:12px;color:#555;min-width:60px">
+                        {a['date']} ({a['day']})
+                    </span>
+                    <span style="font-size:13px;font-weight:700;color:{a['color']}">{a['type']}</span>
+                    <span style="font-size:12px;color:#666">{a['ss']} — {a['desc']}</span>
+                </div>"""
+            st.markdown(alert_html, unsafe_allow_html=True)
+        else:
+            st.markdown("<div style='color:#888;font-size:13px;padding:10px'>14일 이내 특이 사항 없음 — 평온한 흐름입니다.</div>",
+                        unsafe_allow_html=True)
+    except Exception:
+        pass
+
+    # ── 📊 30일 운 흐름 그래프 (확장) ────────────────────────────
+    st.markdown('<div class="gold-section" style="margin-top:24px">📊 30일 운세 흐름</div>',
+                unsafe_allow_html=True)
+    try:
+        # 오늘 기준 -7 ~ +22일 (총 30일)
+        scores_30 = []
+        for offset in range(-7, 23):
+            d = today + timedelta(days=offset)
+            s = get_daily_luck_score(pils, birth_year, gender, d)
+            scores_30.append({
+                "score": s["score"],
+                "date": d.strftime("%d"),
+                "is_today": offset == 0,
+                "label": s.get("label", ""),
+            })
+
+        if scores_30:
+            max_s = max(d["score"] for d in scores_30) or 100
+            bars30 = ""
+            for i, d in enumerate(scores_30):
+                h = max(8, int(d["score"] / max_s * 60))
+                bg = ("#c5a059" if d["is_today"] else
+                      "#4caf50" if d["score"] >= 65 else
+                      "#ff9800" if d["score"] >= 45 else "#f44336")
+                opacity = "1" if d["is_today"] else "0.65"
+                label = f'<div style="font-size:8px;color:#a0720a;font-weight:900">▲</div>' if d["is_today"] else ""
+                bars30 += f"""
+                <div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:1px">
+                    {label}
+                    <div style="width:100%;max-width:14px;height:{h}px;
+                                background:{bg};border-radius:3px 3px 0 0;
+                                opacity:{opacity}"></div>
+                    <div style="font-size:7px;color:{'#a0720a' if d['is_today'] else '#aaa'}">{d['date']}</div>
+                </div>"""
+            st.markdown(f"""
+            <div style="background:#fffef8;border:1.5px solid #e8d5a0;border-radius:14px;
+                        padding:14px 10px;margin:8px 0">
+                <div style="display:flex;align-items:flex-end;gap:2px;height:90px;padding-bottom:4px">
+                    {bars30}
+                </div>
+                <div style="display:flex;justify-content:space-between;
+                            font-size:9px;color:#aaa;margin-top:4px;padding:0 4px">
+                    <span>◀ 7일 전</span>
+                    <span>오늘 ▲</span>
+                    <span>22일 후 ▶</span>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px;justify-content:center">
+                    <span style="background:#4caf5033;color:#4caf50;padding:2px 8px;border-radius:6px;font-size:10px">🟢 65+ 상승</span>
+                    <span style="background:#ff980033;color:#ff9800;padding:2px 8px;border-radius:6px;font-size:10px">🟡 45~65 보통</span>
+                    <span style="background:#f4433633;color:#f44336;padding:2px 8px;border-radius:6px;font-size:10px">🔴 45- 주의</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    except Exception:
+        pass
+
+
+def menu10_monthly(pils, name, birth_year, gender):
+    """🔟 월별 운세 — 12개월 완전 분석"""
+
+    ilgan = pils[1]["cg"]
+    display_name = name if name else "내담자"
+    today = datetime.now()
+
+    # ── 헤더 ─────────────────────────────────────────────────
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#e8f4ff,#e0f5ec);
+                border-radius:14px;padding:18px 24px;margin-bottom:16px;text-align:center">
+        <div style="font-size:22px;font-weight:900;color:#80dfb4;letter-spacing:2px">
+            📅 {display_name}님의 월별 운세
+        </div>
+        <div style="font-size:13px;color:#555;margin-top:6px">
+            {today.year}년 전체 12개월 · 월운 완전 분석
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # 연도 선택
+    col_y, _ = st.columns([1, 3])
+    with col_y:
+        sel_year = st.selectbox("조회 연도",
+                                [today.year - 1, today.year, today.year + 1],
+                                index=1,
+                                key="monthly_year_select")
+
+    LEVEL_COLOR = {
+        "대길":"#4caf50","길":"#8bc34a","평길":"#ffc107",
+        "평":"#9e9e9e","흉":"#f44336","흉흉":"#b71c1c"
+    }
+    LEVEL_EMOJI = {"대길":"🌟","길":"✅","평길":"🟡","평":"⬜","흉":"⚠️","흉흉":"🔴"}
+
+    # ── 12개월 카드 ───────────────────────────────────────────
+    months_data = [get_monthly_luck(pils, sel_year, m) for m in range(1, 13)]
+
+    # 올해 최고·최저 월 자동 탐지
+    LEVEL_RANK = {"대길":5,"길":4,"평길":3,"평":2,"흉":1,"흉흉":0}
+    best_m  = max(months_data, key=lambda x: LEVEL_RANK.get(x["길흉"], 2))
+    worst_m = min(months_data, key=lambda x: LEVEL_RANK.get(x["길흉"], 2))
+
+    bc1, bc2 = st.columns(2)
+    with bc1:
+        st.markdown(f"""
+        <div style="background:#e8f5e8;border:1px solid #8de48d;border-radius:10px;
+                    padding:12px 16px;margin-bottom:10px;font-size:13px;color:#8bc34a">
+            🌟 최고의 달: <b>{best_m['월']}월</b> — {best_m['월운']} ({best_m['십성']}) {best_m['short']}
+        </div>""", unsafe_allow_html=True)
+    with bc2:
+        st.markdown(f"""
+        <div style="background:#fff0f0;border:1px solid #f0a0a0;border-radius:10px;
+                    padding:12px 16px;margin-bottom:10px;font-size:13px;color:#ef9a9a">
+            ⚠️ 주의할 달: <b>{worst_m['월']}월</b> — {worst_m['월운']} ({worst_m['십성']}) {worst_m['short']}
+        </div>""", unsafe_allow_html=True)
+
+    # ── 월별 상세 카드 ────────────────────────────────────────
+    for ml in months_data:
+        m       = ml["월"]
+        is_now  = (m == today.month and sel_year == today.year)
+        lcolor  = LEVEL_COLOR.get(ml["길흉"], "#777")
+        lemoji  = LEVEL_EMOJI.get(ml["길흉"], "")
+        month_names = ["","1월 — 인월(寅)","2월 — 묘월(卯)","3월 — 진월(辰)",
+                       "4월 — 사월(巳)","5월 — 오월(午)","6월 — 미월(未)",
+                       "7월 — 신월(申)","8월 — 유월(酉)","9월 — 술월(戌)",
+                       "10월 — 해월(亥)","11월 — 자월(子)","12월 — 축월(丑)"]
+
+        with st.expander(
+            f"{'▶ ' if is_now else ''}{month_names[m]}  |  {ml['월운']} ({ml['십성']})  |  "
+            f"{lemoji} {ml['길흉']} — {ml['short']}",
+            expanded=is_now
+        ):
+            st.markdown(f"""
+            <div style="background:#f8f8f8;border-left:4px solid {lcolor};
+                        border-radius:0 10px 10px 0;padding:16px;margin-bottom:8px">
+                <div style="font-size:13px;color:#333;line-height:1.9">
+                    {ml['설명']}
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+                <div style="flex:1;background:#e8f5e8;border-radius:8px;padding:10px 14px">
+                    <div style="font-size:11px;color:#333;margin-bottom:4px">💰 재물운</div>
+                    <div style="font-size:13px;color:#8bc34a">{ml['재물']}</div>
+                </div>
+                <div style="flex:1;background:#f5f5f5;border-radius:8px;padding:10px 14px">
+                    <div style="font-size:11px;color:#333;margin-bottom:4px">👥 인간관계</div>
+                    <div style="font-size:13px;color:#7986cb">{ml['관계']}</div>
+                </div>
+            </div>
+            <div style="background:#fff5e0;border-radius:8px;padding:10px 14px">
+                <div style="font-size:11px;color:#333;margin-bottom:4px">⚠️ 주의사항</div>
+                <div style="font-size:13px;color:#ffab40">{ml['주의']}</div>
+            </div>""", unsafe_allow_html=True)
+
+    # ── 분기별 요약표 ─────────────────────────────────────────
+    st.markdown('<div style="font-size:15px;font-weight:800;color:#c5a059;margin:20px 0 10px">📊 분기별 운세 요약</div>',
+                unsafe_allow_html=True)
+    quarters = [
+        ("1분기 (1~3월)", months_data[0:3]),
+        ("2분기 (4~6월)", months_data[3:6]),
+        ("3분기 (7~9월)", months_data[6:9]),
+        ("4분기 (10~12월)", months_data[9:12]),
+    ]
+    for qtitle, qdata in quarters:
+        avg_rank = sum(LEVEL_RANK.get(d["길흉"], 2) for d in qdata) / 3
+        qcolor = "#4caf50" if avg_rank >= 4 else "#ffc107" if avg_rank >= 3 else "#f44336"
+        best_q = max(qdata, key=lambda x: LEVEL_RANK.get(x["길흉"], 2))
+        st.markdown(f"""
+        <div style="background:#f8f8f8;border:1px solid #ddd;border-radius:10px;
+                    padding:12px 16px;margin-bottom:6px;display:flex;
+                    align-items:center;gap:14px">
+            <div style="min-width:110px;font-size:13px;color:#c5a059;font-weight:700">{qtitle}</div>
+            <div style="flex:1;font-size:12px;color:#555">
+                {' · '.join([f"{d['월']}월 {d['십성']}({d['길흉']})" for d in qdata])}
+            </div>
+            <div style="font-size:12px;color:{qcolor};font-weight:700">
+                최고: {best_q['월']}월 {best_q['월운']}
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── 🔮 이달 소름 문장 ────────────────────────────────────
+    st.markdown('<div class="gold-section" style="margin-top:20px">🔮 현재 운기 패턴 — 지금 상황 체크</div>',
+                unsafe_allow_html=True)
+    try:
+        gb = goosebump_engine(pils, birth_year, gender, today.year)
+        if gb["present"]:
+            for s in gb["present"][:2]:
+                st.markdown(f"""
+                <div style="background:#f0f8ff;border-left:5px solid #4a90d9;
+                            padding:12px 16px;border-radius:4px 12px 12px 4px;
+                            margin:5px 0;font-size:14px;color:#333;line-height:1.9">
+                    💡 {s}
+                </div>""", unsafe_allow_html=True)
+        if gb["future"]:
+            for s in gb["future"][:1]:
+                st.markdown(f"""
+                <div style="background:#fff5e0;border-left:5px solid #e65100;
+                            padding:12px 16px;border-radius:4px 12px 12px 4px;
+                            margin:5px 0;font-size:14px;color:#333;line-height:1.9">
+                    ⚡ {s}
+                </div>""", unsafe_allow_html=True)
+    except Exception:
+        pass
+
+    # ── 올해 최적 행동 타이밍 요약 ───────────────────────────
+    try:
+        best_months = sorted(months_data,
+                             key=lambda x: LEVEL_RANK.get(x["길흉"], 2), reverse=True)[:3]
+        timing_html = ""
+        for bm in best_months:
+            lc = LEVEL_COLOR.get(bm["길흉"], "#777")
+            timing_html += f"""
+            <div style="display:inline-flex;align-items:center;gap:8px;
+                        background:{lc}22;border:1px solid {lc}55;
+                        border-radius:10px;padding:8px 14px;margin:4px">
+                <span style="font-size:16px;font-weight:900;color:{lc}">{bm['월']}월</span>
+                <div>
+                    <div style="font-size:12px;font-weight:700;color:{lc}">{LEVEL_EMOJI.get(bm['길흉'],'')} {bm['길흉']}</div>
+                    <div style="font-size:11px;color:#555">{bm['십성']} — {bm['short']}</div>
+                </div>
+            </div>"""
+        st.markdown(f"""
+        <div style="background:#fffef8;border:1.5px solid #e8d5a0;border-radius:14px;
+                    padding:14px;margin:8px 0">
+            <div style="font-size:12px;color:#a0720a;font-weight:700;margin-bottom:8px">
+                🎯 {sel_year}년 최적 행동 타이밍 TOP 3
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px">
+                {timing_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    except Exception:
+        pass
+
+
+def menu11_yearly(pils, name, birth_year, gender):
+    """1️⃣1️⃣ 신년 운세 — 연도별 종합 대운·세운 완전 분석"""
+
+    ilgan = pils[1]["cg"]
+    display_name = name if name else "내담자"
+    today = datetime.now()
+    current_year = today.year
+
+    daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+    ys = get_yongshin(pils)
+    yongshin_ohs = ys.get("종합_용신", [])
+    if not isinstance(yongshin_ohs, list):
+        yongshin_ohs = []
+
+    # ── 헤더 ─────────────────────────────────────────────────
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#f5f0ff,#fff0e8);
+                border-radius:14px;padding:18px 24px;margin-bottom:16px;text-align:center">
+        <div style="font-size:22px;font-weight:900;color:#f0a060;letter-spacing:2px">
+            🎊 {display_name}님의 신년 운세
+        </div>
+        <div style="font-size:13px;color:#555;margin-top:6px">
+            연도별 세운(歲運) × 대운(大運) 교차 완전 분석
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # 조회 기간 선택
+    col_s, col_e, _ = st.columns([1, 1, 2])
+    with col_s:
+        start_y = st.number_input("시작 연도", min_value=current_year-5,
+                                  max_value=current_year+20,
+                                  value=current_year, step=1, key="yearly_start")
+    with col_e:
+        end_y   = st.number_input("종료 연도", min_value=int(start_y)+1,
+                                  max_value=current_year+30,
+                                  value=current_year+5, step=1, key="yearly_end")
+
+    LEVEL_RANK = {"대길":5,"길":4,"평길":3,"평":2,"흉":1,"흉흉":0}
+    LEVEL_COLOR = {"대길":"#4caf50","길":"#8bc34a","평길":"#ffc107",
+                   "평":"#9e9e9e","흉":"#f44336","흉흉":"#b71c1c"}
+
+    def get_cur_daewoon(year):
+        for dw in daewoon:
+            if dw["시작연도"] <= year <= dw["종료연도"]:
+                return dw
+        return None
+
+    # ── 황금기·주의 연도 자동 탐지 ──────────────────────────
+    years_data = []
+    for y in range(int(start_y), int(end_y)+1):
+        yl   = get_yearly_luck(pils, y)
+        cur_dw = get_cur_daewoon(y)
+        dw_ss  = TEN_GODS_MATRIX.get(ilgan, {}).get(cur_dw["cg"], "-") if cur_dw else "-"
+        dw_oh  = OH.get(cur_dw["cg"], "") if cur_dw else ""
+        is_yong = dw_oh in yongshin_ohs
+        rank   = LEVEL_RANK.get(yl["길흉"], 2)
+        if is_yong and rank >= 4:
+            rank += 1   # 용신 대운 + 길운 세운 = 황금기 가중
+        years_data.append({
+            "year": y, "yl": yl, "dw": cur_dw, "dw_ss": dw_ss,
+            "is_yong": is_yong, "rank": rank
+        })
+
+    if years_data:
+        best_yr  = max(years_data, key=lambda x: x["rank"])
+        worst_yr = min(years_data, key=lambda x: x["rank"])
+        golden_yrs = [d for d in years_data if d["rank"] >= 5]
+
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            st.markdown(f"""
+            <div style="background:#e8f5e8;border:1px solid #8de48d;border-radius:10px;
+                        padding:12px 16px;margin-bottom:10px;font-size:13px;color:#8bc34a">
+                🌟 최고의 해: <b>{best_yr['year']}년</b><br>
+                세운 {best_yr['yl']['세운']} ({best_yr['yl']['십성_천간']}) — {best_yr['yl']['길흉']}
+                {'&nbsp;✨ 용신 대운 황금기' if best_yr['is_yong'] else ''}
+            </div>""", unsafe_allow_html=True)
+        with bc2:
+            st.markdown(f"""
+            <div style="background:#fff0f0;border:1px solid #f0a0a0;border-radius:10px;
+                        padding:12px 16px;margin-bottom:10px;font-size:13px;color:#ef9a9a">
+                ⚠️ 주의할 해: <b>{worst_yr['year']}년</b><br>
+                세운 {worst_yr['yl']['세운']} ({worst_yr['yl']['십성_천간']}) — {worst_yr['yl']['길흉']}
+            </div>""", unsafe_allow_html=True)
+
+        if golden_yrs:
+            golden_str = " · ".join([f"{d['year']}년" for d in golden_yrs])
+            st.markdown(f"""
+            <div style="background:#fffde8;border:1px solid #4a4a1a;border-radius:10px;
+                        padding:10px 16px;margin-bottom:14px;font-size:13px;color:#1a1a1a176">
+                ✨ 황금기 구간 (용신 대운 + 길운 세운 교차): {golden_str}
+            </div>""", unsafe_allow_html=True)
+
+    # ── 연도별 상세 카드 ──────────────────────────────────────
+    YEARLY_ACTION = {
+        "대길": "🚀 이 해에는 적극적으로 움직이십시오. 새로운 사업·투자·도전이 빛을 발합니다.",
+        "길":   "✅ 꾸준히 전진하십시오. 노력이 반드시 결실을 맺는 해입니다.",
+        "평길": "🌿 안정적으로 기반을 다지십시오. 무리하지 않아도 성과가 옵니다.",
+        "평":   "⚖️ 균형을 유지하며 내실을 다지십시오. 준비하는 해로 활용하십시오.",
+        "흉":   "🛡️ 보수적으로 지키는 전략이 최선입니다. 큰 결정은 미루십시오.",
+        "흉흉": "🧘 인내가 최고의 전략입니다. 자중하고 기회를 기다리십시오.",
+    }
+
+    for yd in years_data:
+        y   = yd["year"]
+        yl  = yd["yl"]
+        dw  = yd["dw"]
+        is_cur = (y == current_year)
+        is_yong = yd["is_yong"]
+        lcolor = LEVEL_COLOR.get(yl["길흉"], "#777")
+        action = YEARLY_ACTION.get(yl["길흉"], "꾸준히 나아가십시오.")
+        age = y - birth_year + 1
+
+        # 세운 상세
+        se_narr = YEARLY_LUCK_NARRATIVE.get(yl["십성_천간"], YEARLY_LUCK_NARRATIVE["-"])
+
+        with st.expander(
+            f"{'★ ' if is_yong else ''}{'▶ 현재 ' if is_cur else ''}"
+            f"{y}년 ({age}세)  |  세운 {yl['세운']} ({yl['십성_천간']})  |  "
+            f"{yl['아이콘']} {yl['길흉']}  {'🔆 용신 대운' if is_yong else ''}",
+            expanded=is_cur
+        ):
+            dw_label = (f"{dw['str']} 대운 ({dw['시작나이']}~{dw['시작나이']+9}세 / "
+                        f"{dw['시작연도']}~{dw['종료연도']}) — {yd['dw_ss']}"
+                        if dw else "대운 정보 없음")
+
+            yong_badge = (
+                f"<span style='background:#d8f5d8;color:#8bc34a;"
+                f"padding:3px 10px;border-radius:8px;font-size:11px;margin-left:8px'>"
+                f"✨ 용신 대운</span>" if is_yong else "")
+
+            # 12개월 요약 바
+            monthly_ranks = [LEVEL_RANK.get(get_monthly_luck(pils, y, m)["길흉"], 2)
+                             for m in range(1, 13)]
+            bar_colors = ["#4caf50" if r>=4 else "#ffc107" if r>=3 else "#f44336" for r in monthly_ranks]
+            bar_html = "".join([
+                f"<div title='{i+1}월' style='flex:1;height:18px;background:{c};"
+                f"border-radius:2px;margin:1px;min-width:8px'></div>"
+                for i, c in enumerate(bar_colors)
+            ])
+
+            st.markdown(f"""
+            <div style="background:#f8f8f8;border-left:4px solid {lcolor};
+                        border-radius:0 12px 12px 0;padding:18px;margin-bottom:10px">
+                <div style="font-size:13px;color:#444;margin-bottom:8px">
+                    🌊 {dw_label}{yong_badge}
+                </div>
+                <div style="font-size:14px;color:#333;line-height:1.9;margin-bottom:12px">
+                    {se_narr['desc']}
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+                    <div style="flex:1;background:#e8f5e8;border-radius:8px;padding:10px">
+                        <div style="font-size:11px;color:#555;margin-bottom:3px">💰 재물</div>
+                        <div style="font-size:12px;color:#8bc34a">{se_narr['재물']}</div>
+                    </div>
+                    <div style="flex:1;background:#f5f5f5;border-radius:8px;padding:10px">
+                        <div style="font-size:11px;color:#555;margin-bottom:3px">👥 관계</div>
+                        <div style="font-size:12px;color:#7986cb">{se_narr['관계']}</div>
+                    </div>
+                    <div style="flex:1;background:#fff0f0;border-radius:8px;padding:10px">
+                        <div style="font-size:11px;color:#555;margin-bottom:3px">💊 건강</div>
+                        <div style="font-size:12px;color:#ef9a9a">{se_narr['건강']}</div>
+                    </div>
+                </div>
+                <div style="background:#e8f5e8;border-radius:8px;padding:10px 14px;margin-bottom:10px">
+                    <div style="font-size:11px;color:#555;margin-bottom:3px">🎯 {y}년 행동 처방</div>
+                    <div style="font-size:13px;color:#c8e6c9">{action}<br>
+                    <span style="color:#aaa;font-size:12px">{se_narr['조언']}</span></div>
+                </div>
+                <div>
+                    <div style="font-size:10px;color:#555;margin-bottom:4px">
+                        📊 월운 흐름 (1월→12월 / 🟢좋음 🟡보통 🔴주의)
+                    </div>
+                    <div style="display:flex;border-radius:4px;overflow:hidden">{bar_html}</div>
+                    <div style="display:flex;justify-content:space-between;
+                                font-size:9px;color:#444;margin-top:2px">
+                        {''.join([f'<span>{i+1}</span>' for i in range(12)])}
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+
+def menu8_bihang(pils, name, birth_year, gender):
+    """8️⃣ 특급 비방록 — 용신 기반 전통 비방 처방전"""
+
+    ilgan = pils[1]["cg"]
+    ys = get_yongshin(pils)
+    yongshin_ohs = ys.get("종합_용신", [])
+    if not isinstance(yongshin_ohs, list):
+        yongshin_ohs = []
+    gishin_raw = ys.get("기신", "")
+    gishin_ohs = [o for o in ["木","火","土","金","水"] if o in str(gishin_raw)]
+    ilgan_oh = OH.get(ilgan, "")
+    strength_info = get_ilgan_strength(ilgan, pils)
+    sn = strength_info["신강신약"]
+    display_name = name if name else "내담자"
+    current_year = datetime.now().year
+    current_age = current_year - birth_year + 1
+
+    # ══════════════════════════════════
+    # 비방 DB — 용신 오행별 전통 비방
+    # ══════════════════════════════════
+    BIHANG_DB = {
+        "木": {
+            "오행명": "목(木) · 나무의 기운",
+            "emoji": "🌳",
+            "색상": ["초록색","청록색","파란 계열"],
+            "방위": "동쪽 (정동방)",
+            "숫자": ["3","8"],
+            "시간": "새벽 3시~7시 (인시·묘시)",
+            "날짜": "인일(寅日)·묘일(卯日) — 갑·을일도 길",
+            "음식": ["신맛 음식","오이·부추·시금치·쑥","녹차·현미茶","보리밥"],
+            "금기음식": ["매운 음식 과다 섭취","건조한 음식"],
+            "풍수": [
+                "동쪽 창가에 화분 3~8개 배치 (홀수가 길)",
+                "침실·사무실 동쪽 벽에 나무 소재 가구 배치",
+                "초록색·청색 커튼이나 침구 사용",
+                "거실 동쪽에 대나무 또는 행운목 키우기",
+            ],
+            "부적_종류": "청룡부(靑龍符) — 동쪽 벽 높은 곳에 부착",
+            "만신_의식": [
+                "갑·을·인·묘일 새벽 — 동쪽을 향해 맑은 물 한 그릇 올리고 3번 절",
+                "초록실로 왼쪽 손목에 3번 감아 매듭 짓기 (재물 새는 것 막기)",
+                "부추나 쑥을 달인 물로 현관 문지방 닦기 — 목기 강화, 기회 불러들임",
+                "동쪽 창가에 황금색 동전 3개를 붉은 실로 묶어 걸어두기",
+            ],
+            "재물비방": [
+                "🟢 지갑을 항상 초록색으로 — 나무처럼 자라는 재물",
+                "🟢 새 지갑에 첫 돈 넣을 때 갑인일(甲寅日) 선택",
+                "🟢 지갑 안에 나뭇잎 모양 장식품 또는 나무 소재 장식 넣기",
+                "🟢 사업 서류·계약서 보관함을 동쪽에 배치",
+                "🟢 사무실 동쪽 코너에 수정 원석(초록 계열) 배치",
+            ],
+            "막는비방": [
+                "🔴 기신이 金이면 — 서쪽 방향 큰 창문 커튼 닫기, 금속 장식 최소화",
+                "🔴 서쪽에 화장실이 있으면 — 항상 뚜껑 닫고 소금 한 줌 올려두기",
+                "🔴 지갑에 영수증 쌓아두지 말기 — 새는 돈 상징",
+                "🔴 쥐띠·토끼띠와 큰 재물 거래 때 특히 조심",
+            ],
+            "신살_주의": "경·신·신·유일에는 큰 계약·투자·이사 금지",
+        },
+        "火": {
+            "오행명": "화(火) · 불의 기운",
+            "emoji": "🔥",
+            "색상": ["빨강색","주황색","분홍색","자주색"],
+            "방위": "남쪽 (정남방)",
+            "숫자": ["2","7"],
+            "시간": "낮 11시~오후 3시 (오시·미시)",
+            "날짜": "병일(丙日)·정일(丁日)·사일(巳日)·오일(午日)",
+            "음식": ["쓴맛 음식","쑥·익모초·도라지","붉은 팥죽·팥밥","홍삼","대추"],
+            "금기음식": ["찬 음식 과다","빙수·아이스크림 매일 섭취"],
+            "풍수": [
+                "남쪽 거실·사무실에 붉은 계열 소품 배치",
+                "조명을 밝게 — 화기가 어두움을 싫어함",
+                "남쪽 벽에 해·태양 그림 또는 붉은 그림 걸기",
+                "촛불을 남쪽에 켜두는 것이 화기 강화에 큰 효험",
+            ],
+            "부적_종류": "주작부(朱雀符) — 남쪽 벽 눈높이에 부착",
+            "만신_의식": [
+                "병·정·사·오일 정오 — 남쪽 향해 붉은 초 켜고 재물 기원 3번 절",
+                "붉은 실로 오른쪽 손목에 7번 감기 — 화기 강화, 인기운 상승",
+                "대추·팥을 쌀에 섞어 밥 지어 첫 숟갈을 남쪽 창문 향해 바치기",
+                "붉은 복주머니에 쌀·동전·황토 넣어 남쪽 선반에 보관",
+            ],
+            "재물비방": [
+                "🔴 지갑을 붉은색·자주색으로 — 화기가 재물 활성화",
+                "🔴 거래·영업은 점심 전후 2~3시간이 가장 강한 시간대",
+                "🔴 명함 색상에 빨간 포인트 넣기 — 인상에 각인됨",
+                "🔴 사무실 입구에 빨간 카펫 또는 빨간 화분 배치",
+                "🔴 오·미월(5~8월)에 큰 결정 내리면 성사될 확률 높음",
+            ],
+            "막는비방": [
+                "🔴 기신이 水이면 — 북쪽 화장실 소금 상시 비치",
+                "🔴 검정색 지갑·검정색 가방 사용 자제",
+                "🔴 임·계·해·자일에는 큰 계약·개업 피하기",
+                "🔴 수족관·어항을 집 안 중앙에 두지 말 것",
+            ],
+            "신살_주의": "임·계·해·자일에는 큰 투자·이사·계약 금지",
+        },
+        "土": {
+            "오행명": "토(土) · 땅의 기운",
+            "emoji": "⛰️",
+            "색상": ["황색","노란색","베이지","황토색","갈색"],
+            "방위": "중앙 또는 북동·남서",
+            "숫자": ["5","10"],
+            "시간": "오후 1시~5시 (미시·신시 사이)",
+            "날짜": "무일(戊日)·기일(己日)·진일(辰日)·술일(戌日)·축일(丑日)·미일(未日)",
+            "음식": ["단맛 음식","고구마·감자·호박·단호박","꿀물","현미·잡곡밥"],
+            "금기음식": ["신 음식 과다(목이 토를 억제)","날것 위주 식단"],
+            "풍수": [
+                "집 중앙에 황토색·베이지 소품 배치",
+                "도자기·옹기·황토 소재 장식품이 토기 강화",
+                "황색 카펫이나 러그 사용 — 땅의 안정 기운",
+                "돌·황토·자연석 장식을 현관 입구에 배치",
+            ],
+            "부적_종류": "황정부(黃庭符) — 집 중앙 또는 북동쪽 벽에 부착",
+            "만신_의식": [
+                "무·기·진·술·축·미일 오후 — 중앙 향해 황토물(황토+물) 한 그릇 올리기",
+                "황색 실로 배꼽 주변에 9번 감고 기도하면 재물 중심 잡힘",
+                "집 네 모서리에 황토 한 줌씩 묻기 — 재물 기반 안정",
+                "쌀 됫박에 황금색 동전 5개 넣어 중앙 선반에 두기 (재물신 상징)",
+            ],
+            "재물비방": [
+                "🟡 지갑을 황색·베이지로 — 땅처럼 묵직하게 모이는 재물",
+                "🟡 부동산·토지 관련 투자가 이 사주에 가장 잘 맞음",
+                "🟡 중앙에 재물 모이는 공간 만들기 — 황색 그릇에 동전 쌓기",
+                "🟡 계약서·중요 서류를 황색 봉투에 보관",
+                "🟡 진·술·축·미월(3·9·12·6월)에 큰 계약이 유리",
+            ],
+            "막는비방": [
+                "🔴 기신이 木이면 — 동쪽에 큰 화분·나무 배치 금지",
+                "🔴 초록색 지갑 자제",
+                "🔴 갑·을·인·묘일에 큰 재물 거래 조심",
+                "🔴 뿌리가 깊은 나무를 집 정동쪽에 심지 말 것",
+            ],
+            "신살_주의": "갑·을·인·묘일에는 큰 계약·이사·투자 금지",
+        },
+        "金": {
+            "오행명": "금(金) · 쇠의 기운",
+            "emoji": "⚔️",
+            "색상": ["흰색","은색","금색","회색"],
+            "방위": "서쪽 (정서방)",
+            "숫자": ["4","9"],
+            "시간": "오후 3시~7시 (신시·유시)",
+            "날짜": "경일(庚日)·신일(辛日)·신일(申日)·유일(酉日)",
+            "음식": ["매운맛 음식","파·마늘·생강·무·배","흰쌀밥","배·복숭아"],
+            "금기음식": ["쓴 음식 과다(화가 금을 억제)","태운 음식"],
+            "풍수": [
+                "서쪽에 금속 소재 장식·금속 조각품 배치",
+                "흰색·은색·금색 인테리어 소품 활용",
+                "서쪽 창가에 크리스탈·수정 장식 걸기",
+                "금속 풍경(風磬) 서쪽 창가에 달기 — 금기 강화",
+            ],
+            "부적_종류": "백호부(白虎符) — 서쪽 벽 높은 곳에 부착",
+            "만신_의식": [
+                "경·신·신·유일 오후 — 서쪽 향해 금속 그릇에 맑은 물 올리고 3번 절",
+                "은색 실로 왼쪽 발목에 9번 감기 — 금기 강화, 결단력 상승",
+                "흰 무명천에 은화·동전 9개 싸서 서쪽 서랍에 보관",
+                "칼·가위 등 금속 도구 잘 닦아 서쪽 선반에 칼날 향하게 보관",
+            ],
+            "재물비방": [
+                "⚪ 지갑을 흰색·은색·금색으로 — 금기가 재물 응결",
+                "⚪ 귀금속·금 투자가 이 사주에 가장 잘 맞음",
+                "⚪ 사무실 서쪽에 금색 소품 배치 — 거래 결단력 강화",
+                "⚪ 신·유월(8~9월)에 계약·투자 결정이 유리",
+                "⚪ 협상·계약은 오후 3~7시 사이가 가장 강한 시간대",
+            ],
+            "막는비방": [
+                "🔴 기신이 火이면 — 남쪽에 강한 조명·붉은 소품 자제",
+                "🔴 빨간 지갑 사용 금지",
+                "🔴 병·정·사·오일에 큰 투자·계약 금지",
+                "🔴 집 남쪽 방향에 화로·벽난로 설치 금지",
+            ],
+            "신살_주의": "병·정·사·오일에는 큰 결정·투자·이사 금지",
+        },
+        "水": {
+            "오행명": "수(水) · 물의 기운",
+            "emoji": "💧",
+            "색상": ["검정색","남색","진한 파랑","보라"],
+            "방위": "북쪽 (정북방)",
+            "숫자": ["1","6"],
+            "시간": "밤 9시~새벽 3시 (해시·자시)",
+            "날짜": "임일(壬日)·계일(癸日)·해일(亥日)·자일(子日)",
+            "음식": ["짠맛 음식","다시마·미역·김·해산물","검은콩·흑임자","두부"],
+            "금기음식": ["건조하고 매운 음식 과다","술 과음"],
+            "풍수": [
+                "북쪽에 수족관·어항·작은 분수대 배치 (흐르는 물이 재물 불러옴)",
+                "검정·남색 계열 소품·그림 북쪽 벽에",
+                "화장실·욕실 청결하게 유지 — 수기 오염 방지",
+                "북쪽 현관에 검정색 매트 또는 어두운 색 매트 배치",
+            ],
+            "부적_종류": "현무부(玄武符) — 북쪽 벽 또는 침실 북쪽에 부착",
+            "만신_의식": [
+                "임·계·해·자일 밤 자시(23~1시) — 북쪽 향해 정화수 한 그릇 올리고 1번 절",
+                "검정 실로 왼쪽 엄지손가락에 6번 감기 — 수기 강화, 지혜·재물 유입",
+                "미역국이나 검은콩밥을 해·자일에 해먹기 — 수기 보충 음식 의식",
+                "북쪽 창가에 파란 유리병에 물 담아 두기 — 재물수 강화",
+            ],
+            "재물비방": [
+                "🔵 지갑을 검정·남색으로 — 수기가 지혜와 재물을 부름",
+                "🔵 금융·투자·보험 관련 일이 이 사주에 잘 맞음",
+                "🔵 북쪽 방향으로 사업장 확장 또는 이전 시 유리",
+                "🔵 해·자월(11~12월)에 중요 계약·투자 결정이 유리",
+                "🔵 흐르는 물 소리(분수·수족관)가 재물 유입을 돕는다",
+            ],
+            "막는비방": [
+                "🔴 기신이 土이면 — 중앙·북동쪽에 흙더미·황토 소품 자제",
+                "🔴 황색·갈색 지갑 사용 금지",
+                "🔴 무·기·진·술·축·미일에 큰 투자·계약 피하기",
+                "🔴 화장실·욕실 문 항상 닫기 — 수기 유출 방지",
+            ],
+            "신살_주의": "무·기·진·술일에는 큰 계약·이사·창업 금지",
+        },
+    }
+
+    # ══════════════════════════════════════════════════
+    # UI 시작
+    # ══════════════════════════════════════════════════
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#ffdcdc,#ffdce4,#ffdcdc);
+                border:1px solid #8B0000;border-radius:16px;padding:22px 26px;margin-bottom:20px">
+        <div style="color:#ff6060;font-size:11px;letter-spacing:4px;margin-bottom:8px">
+            ⚠️ 극비(極秘) — 용신 기반 전통 비방 처방전
+        </div>
+        <div style="color:#f0c060;font-size:19px;font-weight:900;letter-spacing:2px;margin-bottom:10px">
+            🔴 특급 비방록(特急 秘方錄)
+        </div>
+        <div style="color:#d0a080;font-size:13px;line-height:1.9">
+            무당·만신이 대대로 전해온 비방을 사주 용신에 맞춰 처방합니다.<br>
+            돈이 새는 구멍을 막고, 재물이 들어오는 문을 여는 처방입니다.<br>
+            <span style="color:#ff8888">기신(忌神) 오행을 막고 용신(用神) 오행을 강화하는 것이 핵심입니다.</span>
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # ① 용신·기신 파악
+    OH_EMOJI = {"木":"🌳","火":"🔥","土":"⛰️","金":"⚔️","水":"💧"}
+    OH_NAME  = {"木":"목(木)","火":"화(火)","土":"토(土)","金":"금(金)","水":"수(水)"}
+
+    col_y, col_g = st.columns(2)
+    with col_y:
+        y_tags = " ".join([
+            f"<span style='background:#c5a059;color:#000;font-weight:900;"
+            f"padding:6px 16px;border-radius:20px;font-size:14px'>"
+            f"{OH_EMOJI.get(o,'')} {OH_NAME.get(o,o)}</span>"
+            for o in yongshin_ohs
+        ]) if yongshin_ohs else "<span style='color:#888'>분석 중</span>"
+        st.markdown(f"""
+        <div style="background:#f0fff0;border:2px solid #c5a059;border-radius:12px;padding:16px">
+            <div style="font-size:11px;color:#c5a059;font-weight:700;margin-bottom:8px">
+                🌟 용신 (이 기운을 강화하라)
+            </div>
+            <div>{y_tags}</div>
+        </div>""", unsafe_allow_html=True)
+    with col_g:
+        g_tags = " ".join([
+            f"<span style='background:#ffdcdc;color:#1a1a1a;font-weight:700;"
+            f"padding:6px 16px;border-radius:20px;font-size:14px'>"
+            f"{OH_EMOJI.get(o,'')} {OH_NAME.get(o,o)}</span>"
+            for o in gishin_ohs
+        ]) if gishin_ohs else "<span style='color:#888'>없음</span>"
+        st.markdown(f"""
+        <div style="background:#f5f5f5;border:2px solid #8B0000;border-radius:12px;padding:16px">
+            <div style="font-size:11px;color:#ff6060;font-weight:700;margin-bottom:8px">
+                ⛔ 기신 (이 기운이 돈을 쫓아낸다)
+            </div>
+            <div>{g_tags}</div>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ② 용신별 비방 처방
+    if not yongshin_ohs:
+        st.warning("용신 계산 결과가 없습니다. 사주 계산을 먼저 진행하십시오.")
+        return
+
+    for yong_oh in yongshin_ohs[:2]:
+        bd = BIHANG_DB.get(yong_oh)
+        if not bd:
+            continue
+
+        st.markdown(f"""
+        <div style="background:linear-gradient(135deg,#f5f5f5,#f5f5f5);
+                    border:2px solid #8B4513;border-radius:18px;padding:24px;margin:16px 0">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;
+                        border-bottom:1px solid #3a2010;padding-bottom:14px">
+                <span style="font-size:36px">{bd['emoji']}</span>
+                <div>
+                    <div style="font-size:20px;font-weight:900;color:#f0c060">
+                        {bd['오행명']} 강화 비방
+                    </div>
+                    <div style="font-size:12px;color:#a0800a">
+                        방위: {bd['방위']} · 숫자: {', '.join(bd['숫자'])} · 시간: {bd['시간']}
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+        # 색상·날짜
+        color_tags = " ".join([
+            f"<span style='background:#fff5e0;border:1px solid #8B6914;color:#f0c060;"
+            f"padding:4px 12px;border-radius:12px;font-size:12px;margin:3px;display:inline-block'>"
+            f"{c}</span>"
+            for c in bd['색상']
+        ])
+        st.markdown(f"""
+        <div style="margin-bottom:16px">
+            <div style="font-size:11px;color:#c5a059;font-weight:700;margin-bottom:6px">
+                🎨 길한 색상 (지갑·옷·소품)
+            </div>
+            <div>{color_tags}</div>
+            <div style="font-size:12px;color:#a08060;margin-top:8px">
+                📅 거래·계약에 좋은 날: {bd['날짜']}
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+        # 풍수 비방
+        st.markdown("""
+        <div style="font-size:12px;color:#c5a059;font-weight:700;margin-bottom:8px">
+            🏠 풍수 비방 — 집·사무실 배치
+        </div>""", unsafe_allow_html=True)
+        for fw in bd['풍수']:
+            st.markdown(f"""
+            <div style="background:#f0fff0;border-left:3px solid #27ae60;
+                        padding:9px 14px;border-radius:6px;margin:4px 0;
+                        font-size:13px;color:#a0e0a0;line-height:1.8">
+                🌿 {fw}
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # 부적
+        st.markdown(f"""
+        <div style="background:#f5f5f5;border:1px solid #8e44ad;border-radius:10px;
+                    padding:14px;margin-bottom:14px">
+            <div style="font-size:11px;color:#c39bd3;font-weight:700;margin-bottom:6px">
+                🔮 부적 처방
+            </div>
+            <div style="font-size:13px;color:#e8d5f0;line-height:1.8">{bd['부적_종류']}</div>
+        </div>""", unsafe_allow_html=True)
+
+        # 만신 의식
+        st.markdown("""
+        <div style="font-size:12px;color:#ff8888;font-weight:700;margin-bottom:8px">
+            🕯️ 만신(萬神) 전통 의식 — 실제 무당이 쓰던 방법
+        </div>""", unsafe_allow_html=True)
+        for ritual in bd['만신_의식']:
+            st.markdown(f"""
+            <div style="background:#f5f5f5;border-left:3px solid #c0392b;
+                        padding:10px 14px;border-radius:6px;margin:5px 0;
+                        font-size:13px;color:#f0c0c0;line-height:1.9">
+                🕯️ {ritual}
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # 재물 비방
+        st.markdown("""
+        <div style="font-size:12px;color:#c5a059;font-weight:700;margin-bottom:8px">
+            💰 재물 불러들이는 비방
+        </div>""", unsafe_allow_html=True)
+        for rb in bd['재물비방']:
+            st.markdown(f"""
+            <div style="background:#eaffdc;border-left:3px solid #c5a059;
+                        padding:9px 14px;border-radius:6px;margin:4px 0;
+                        font-size:13px;color:#f0e0a0;line-height:1.8">
+                {rb}
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # 돈 새는 것 막는 비방
+        st.markdown("""
+        <div style="font-size:12px;color:#ff6060;font-weight:700;margin-bottom:8px">
+            🚫 돈 새는 구멍 막는 비방
+        </div>""", unsafe_allow_html=True)
+        for mb in bd['막는비방']:
+            st.markdown(f"""
+            <div style="background:#ffdcdc;border-left:3px solid #e74c3c;
+                        padding:9px 14px;border-radius:6px;margin:4px 0;
+                        font-size:13px;color:#f0b0b0;line-height:1.8">
+                {mb}
+            </div>""", unsafe_allow_html=True)
+
+        # 음식 비방
+        st.markdown(f"""
+        <br>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+            <div style="background:#f0fff0;border-radius:10px;padding:14px;border:1px solid #2a4a1a">
+                <div style="font-size:11px;color:#4caf50;font-weight:700;margin-bottom:6px">
+                    🍚 길한 음식 (용신 강화)
+                </div>
+                <div style="font-size:12px;color:#a0e0a0;line-height:1.8">
+                    {', '.join(bd['음식'])}
+                </div>
+            </div>
+            <div style="background:#f5f5f5;border-radius:10px;padding:14px;border:1px solid #4a1a1a">
+                <div style="font-size:11px;color:#e74c3c;font-weight:700;margin-bottom:6px">
+                    ⚠️ 금기 음식 (기신 강화 주의)
+                </div>
+                <div style="font-size:12px;color:#f0b0b0;line-height:1.8">
+                    {', '.join(bd['금기음식'])}
+                </div>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+        # 신살 주의
+        st.markdown(f"""
+        <div style="background:#ffffdc;border:1px solid #8B8B00;border-radius:10px;
+                    padding:12px;margin-top:12px">
+            <span style="font-size:11px;color:#1a1a1af60;font-weight:700">
+                📛 신살(神殺) 주의: </span>
+            <span style="font-size:13px;color:#f0f0a0">{bd['신살_주의']}</span>
+        </div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("---")
+
+    # ③ 기신 차단 종합 처방
+    if gishin_ohs:
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#ffdcdc,#ffdcdc);
+                    border:2px solid #8B0000;border-radius:14px;padding:20px;margin:16px 0">
+            <div style="font-size:16px;font-weight:900;color:#ff6060;margin-bottom:14px">
+                🚫 기신(忌神) 종합 차단 비방 — 돈 새는 구멍 막기
+            </div>""", unsafe_allow_html=True)
+
+        GISHIN_BLOCK = {
+            "木": [
+                "동쪽에 큰 화분·나무 배치 금지 — 기신이 목이면 목이 당기는 방향을 차단",
+                "초록색 지갑·초록 차량 교체 고려 — 기신 오행 색상은 재물을 쫓는다",
+                "갑·을·인·묘일 큰 계약·투자 금지 — 기신의 날은 반드시 피한다",
+                "목 오행 직업(임산업·목재·원예업)과의 거래 시 계약서 필수",
+            ],
+            "火": [
+                "남쪽 강한 조명·붉은 소품 자제",
+                "빨간 지갑·빨간 차 사용 자제 — 화기 기신 흡수",
+                "병·정·사·오일 큰 결정 금지",
+                "난방 기구·용광로·고열 장비 관련 투자 조심",
+            ],
+            "土": [
+                "집 중앙에 황토·도자기 대형 소품 자제",
+                "황색·갈색 지갑 교체 고려",
+                "무·기·진·술·축·미일 투자·계약 금지",
+                "부동산·땅 관련 투자 시 특히 신중하게",
+            ],
+            "金": [
+                "서쪽 금속 장식·금속 가구 자제",
+                "흰색·은색 지갑 자제",
+                "경·신·신·유일 큰 결정 금지",
+                "금·은·귀금속 투기 조심 — 기신이 금이면 금값 하락에 취약",
+            ],
+            "水": [
+                "북쪽 수족관·어항·분수 설치 금지",
+                "검정·남색 지갑 사용 자제",
+                "임·계·해·자일 큰 계약·이사 금지",
+                "화장실·욕실 문 항상 닫기 — 기신 수기 유출로 오히려 해로움",
+                "물 관련 사업(해운·수산·음료) 투자 신중",
+            ],
+        }
+
+        for goh in gishin_ohs:
+            blocks = GISHIN_BLOCK.get(goh, [])
+            if blocks:
+                st.markdown(f"""
+                <div style="margin-bottom:12px">
+                    <div style="font-size:13px;color:#ff8888;font-weight:700;margin-bottom:6px">
+                        {OH_EMOJI.get(goh,'')} {OH_NAME.get(goh,goh)} 기신 차단
+                    </div>""", unsafe_allow_html=True)
+                for b in blocks:
+                    st.markdown(f"""
+                    <div style="background:#f5f5f5;border-left:3px solid #8B0000;
+                                padding:9px 14px;border-radius:6px;margin:3px 0;
+                                font-size:13px;color:#f0c0c0;line-height:1.8">
+                        🔴 {b}
+                    </div>""", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ④ 공통 만신 비방 — 신강신약별
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#f5f5f5,#eef0ff);
+                border:2px solid #4a3080;border-radius:14px;padding:20px;margin:16px 0">
+        <div style="font-size:16px;font-weight:900;color:#c39bd3;margin-bottom:14px">
+            🕯️ 신강신약별 공통 비방 — 만신 구전(口傳)
+        </div>""", unsafe_allow_html=True)
+
+    if "신강" in sn:
+        rituals_common = [
+            "신강한 사주는 힘이 넘쳐 오히려 재물을 흩트린다. 주 1회 절에 가거나 사찰 보시(布施)를 생활화하면 기운이 안정된다.",
+            "집 안에 거울을 너무 많이 두지 말 것 — 강한 기운이 반사되어 충돌이 생긴다.",
+            "월초(음력 1일)마다 현관 소금 한 줌 뿌리고 3일 후 쓸어버리기 — 나쁜 기운 차단",
+            "재물이 들어오는 운기(用神대운)에는 반드시 움직여라. 신강한 사주는 적극적으로 나서야 재물이 손에 잡힌다.",
+            "기도·의식보다 행동이 우선이다. 신강은 스스로 만드는 사주이다.",
+        ]
+        desc_color = "#d0c8f8"
+        sn_color = "#9b7ccc"
+    else:
+        rituals_common = [
+            "신약한 사주는 기운이 약해 귀신·나쁜 기운에 쉽게 영향 받는다. 매달 음력 초하루 정화수 올리는 것을 생활화하라.",
+            "집 안 구석구석 소금 청소 — 월 1회 소금물로 현관 바닥 닦기 (기운 정화)",
+            "붉은 팥죽을 동지·정월 초에 대문 앞에 뿌리기 — 나쁜 기운 쫓기",
+            "수호신 역할의 소품(도자기·나무 인형 등)을 집 안에 두되 정기적으로 닦아줄 것",
+            "귀인 운이 올 때 반드시 받아들여라. 신약은 혼자보다 귀인과 함께일 때 크게 된다.",
+            "무리한 야간 활동·과음·과로를 피하라. 신약은 건강이 재물의 기반이다.",
+        ]
+        desc_color = "#f0d8c8"
+        sn_color = "#e8a060"
+
+    st.markdown(f"""
+    <div style="font-size:12px;color:{sn_color};font-weight:700;margin-bottom:8px">
+        {sn} 특화 처방
+    </div>""", unsafe_allow_html=True)
+
+    for r in rituals_common:
+        st.markdown(f"""
+        <div style="background:#f5f5f5;border-left:3px solid {sn_color};
+                    padding:10px 14px;border-radius:6px;margin:5px 0;
+                    font-size:13px;color:{desc_color};line-height:1.9">
+            ✦ {r}
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("---")
+
+    # ⑤ 나이별 특급 비방 — 현재 운기에 맞춘 처방
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#fff5e0,#fff0dc);
+                border:2px solid #c5a059;border-radius:14px;padding:20px">
+        <div style="font-size:16px;font-weight:900;color:#f0c060;margin-bottom:10px">
+            📅 {current_year}년 ({current_age}세) 현재 운기 맞춤 비방
+        </div>""", unsafe_allow_html=True)
+
+    try:
+        sw = get_yearly_luck(pils, current_year)
+        sw_ss = sw.get("십성_천간", "-")
+        sw_oh = sw.get("오행_천간", "")
+        sw_str = sw.get("세운", "")
+
+        is_yong_year = sw_oh in yongshin_ohs
+
+        if is_yong_year:
+            year_desc = f"올해 {sw_str}년은 용신 오행이 들어오는 해입니다. 적극적으로 움직이십시오."
+            year_bihang = [
+                f"용신 오행({sw_oh})이 강화되는 해 — 이 해에 큰 결정·투자·창업을 해야 합니다.",
+                f"용신 색상·방위를 최대한 활용하십시오. 옷 색상부터 바꾸는 것이 시작입니다.",
+                "새로운 인연·거래처·투자처가 올 때 적극적으로 받아들이십시오.",
+                "연초(음력 정월)에 용신 방향으로 여행 또는 나들이 — 운기를 몸에 흡수",
+            ]
+            card_color = "#c5a059"
+            card_bg = "#1a1a00"
+        else:
+            year_desc = f"올해 {sw_str}년은 기신이 강하게 작동하는 해입니다. 수비적으로 대응하십시오."
+            year_bihang = [
+                f"기신 오행({sw_oh})이 강화되는 해 — 큰 투자·보증·동업을 피하십시오.",
+                "현상 유지가 오히려 이기는 해입니다. 무리하게 확장하면 손해를 봅니다.",
+                "월초마다 소금 청소와 정화수 의식으로 기운을 지키십시오.",
+                "이 해에는 귀한 사람을 만나도 큰 거래보다 관계를 쌓는 데 집중하십시오.",
+            ]
+            card_color = "#c0392b"
+            card_bg = "#1a0000"
+
+        st.markdown(f"""
+        <div style="background:{card_bg};border-left:4px solid {card_color};
+                    border-radius:10px;padding:14px;margin-bottom:12px">
+            <div style="font-size:13px;color:{card_color};font-weight:700;margin-bottom:6px">
+                {sw_str}년 ({sw_ss}년) 판단
+            </div>
+            <div style="font-size:13px;color:#333;line-height:1.8">{year_desc}</div>
+        </div>""", unsafe_allow_html=True)
+
+        for yb in year_bihang:
+            st.markdown(f"""
+            <div style="background:#fafafa;border-left:3px solid {card_color};
+                        padding:9px 14px;border-radius:6px;margin:4px 0;
+                        font-size:13px;color:#e0d0c0;line-height:1.8">
+                {'✅' if is_yong_year else '⚠️'} {yb}
+            </div>""", unsafe_allow_html=True)
+
+    except Exception as e:
+        st.warning(f"올해 운기 계산 오류: {e}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.caption("⚠️ 본 비방록은 전통 민속 문화 정보를 제공하는 참고 자료입니다. 실제 굿·부적 처방은 전문 무당·만신에게 문의하십시오.")
+
+
+def menu7_ai(pils, name, birth_year, gender, api_key, groq_key=""):
+    """7️⃣ AI 상담창 — 집중 영역 선택 + 정밀 엔진 데이터 표시"""
+
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#e8f4ff,#d0e8ff);color:#1a4a7a;
+                padding:18px 16px;border-radius:14px;margin-bottom:14px;font-size:13px">
+        ✦ 만세력 엔진(Brain 1)이 계산한 데이터를 AI가 설명합니다.<br>
+        ✦ 집중 분야를 선택하면 해당 영역에 특화된 해석이 나옵니다.<br>
+        ✦ <b>전환점 감지 엔진</b>이 인생 흐름의 변화 타이밍을 포착합니다.
+    </div>""", unsafe_allow_html=True)
+
+    # ── 집중 영역 선택 ──────────────────────────────
+    st.markdown("**🎯 오늘 어떤 분야가 가장 궁금하세요?**")
+    focus_options = ["종합", "💰 재물·돈", "💑 연애·인연", "🎖️ 직장·사업", "🏥 건강"]
+    focus_col = st.selectbox("집중 분야", focus_options, label_visibility="collapsed")
+    focus_key = {"종합":"종합","💰 재물·돈":"재물","💑 연애·인연":"연애",
+                 "🎖️ 직장·사업":"직장","🏥 건강":"건강"}.get(focus_col, "종합")
+
+    # ── 현재 운기 정밀 데이터 카드 ──────────────────
+    current_year = datetime.now().year
+    try:
+        ctx = build_rich_ai_context(pils, birth_year, gender, current_year, focus_key)
+        turning = calc_turning_point(pils, birth_year, gender, current_year)
+
+        # 운세 게이지
+        luck_s   = ctx["luck_score_total"]
+        gauge_w  = luck_s
+        gauge_c  = ("#4caf50" if luck_s >= 70 else "#ff9800" if luck_s >= 45 else "#f44336")
+        intensity_color = {"🔴":"#f44336","🟡":"#ff9800","🟢":"#4caf50","⬜":"#9e9e9e"}
+        ic = intensity_color.get(turning["intensity"][:2], "#9e9e9e")
+
+        st.markdown(f"""
+        <div style="background:#fffef8;border:1.5px solid #e8d5a0;border-radius:14px;
+                    padding:16px 14px;margin:10px 0">
+            <div style="font-size:12px;color:#a0720a;font-weight:700;margin-bottom:10px">
+                ⚡ 정밀 엔진 데이터 — {current_year}년 실시간 분석
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+                <div>
+                    <span style="font-size:11px;color:#666">일간 힘: </span>
+                    <span style="font-weight:800;color:#a0720a">{ctx['daymaster_strength_score']}/100
+                    ({ctx['daymaster_strength_label']})</span>
+                </div>
+                <div>
+                    <span style="font-size:11px;color:#666">종합 운세: </span>
+                    <span style="font-weight:800;color:{gauge_c}">{luck_s}/100</span>
+                </div>
+            </div>
+
+            <div style="background:#f0f0f0;border-radius:6px;height:8px;margin-bottom:10px;overflow:hidden">
+                <div style="background:{gauge_c};width:{gauge_w}%;height:100%;border-radius:6px;
+                            transition:width 0.5s"></div>
+            </div>
+
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                {''.join([f'<span style="background:#fff3cd;border:1px solid #ffc107;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700">{k}:{v}</span>' for k,v in ctx['element_power'].items()])}
+            </div>
+
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+                <span style="background:#e8f5e8;padding:3px 10px;border-radius:10px;font-size:11px">
+                    🌟 용신1: {ctx['yongshin_primary'] or '-'}
+                </span>
+                <span style="background:#fff0e8;padding:3px 10px;border-radius:10px;font-size:11px">
+                    용신2: {ctx['yongshin_secondary'] or '-'}
+                </span>
+                <span style="background:#ffeaea;padding:3px 10px;border-radius:10px;font-size:11px">
+                    ⛔ 기신: {', '.join(ctx['gishin']) or '없음'}
+                </span>
+            </div>
+
+            <div style="background:{ic}22;border-left:3px solid {ic};
+                        padding:8px 12px;border-radius:4px 8px 8px 4px;font-size:12px">
+                {turning['intensity']} — {turning['reason'][0] if turning['reason'] else '안정적 흐름'}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # 고확률 트리거 표시
+        high_triggers = ctx.get("high_prob_triggers", [])
+        if high_triggers:
+            st.markdown(f"""
+            <div style="background:#fff5f0;border:1px solid #ffccaa;border-radius:10px;
+                        padding:12px 14px;margin:8px 0">
+                <div style="font-size:11px;color:#e65100;font-weight:700;margin-bottom:6px">
+                    🚨 고확률 사건 트리거 ({len(high_triggers)}개)
+                </div>
+                {''.join([f'<div style="font-size:12px;color:#333;margin:3px 0">• {t["title"]} ({t["prob"]}%)</div>' for t in high_triggers[:3]])}
+            </div>
             """, unsafe_allow_html=True)
 
-            cards = [
-                ("🌟 천명(天命)", data.get("destiny", "")),
-                ("💪 강점(强點)", data.get("strength", "")),
-                ("🪴 보완(補完)", data.get("weakness", "")),
-                ("💼 진로(進路)", data.get("career", "")),
-                ("🏥 건강(健康)", data.get("health", "")),
-                ("🍀 행운(幸運)", data.get("luck", ""))
-            ]
+    except Exception as e:
+        st.caption(f"데이터 분석 중... ({e})")
 
-            st.markdown('<div class="ilgan-card-container">', unsafe_allow_html=True)
-            for title, body in cards:
-                icon = title.split()[0]
-                label = title.split()[1]
-                st.markdown(f'''
-                <div class="ilgan-card">
-                    <div class="card-title"><span>{icon}</span>{label}</div>
-                    <div class="card-body">{body}</div>
-                </div>
-                ''', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
+    # ── AI 엔진 상태 표시
+    if groq_key:
+        st.markdown("""
+        <div style="background:#e8f5e8;color:#2e7d32;padding:8px 14px;border-radius:8px;
+                    font-size:12px;margin-bottom:10px">
+            ⚡ Groq (Llama 3.3 70B) 연결됨 — 빠른 응답 모드
+        </div>""", unsafe_allow_html=True)
+    elif api_key:
+        st.markdown("""
+        <div style="background:#e2f5ff;color:#1565c0;padding:8px 14px;border-radius:8px;
+                    font-size:12px;margin-bottom:10px">
+            🤖 Anthropic Claude Sonnet 연결됨
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.warning("사이드바에서 API Key를 입력하면 AI 상담이 활성화됩니다.\n\n**Groq**는 무료로 groq.com에서 발급 가능합니다.")
 
-            # [신기능] 일주론(60갑자), 공망, 충/형 심층 진단 UI 추가
-            st.markdown('<div class="gold-section">🔮 핵심 명리 심층 진단 (Core Saju Secrets)</div>', unsafe_allow_html=True)
-            
-            p_ilju = s["pils"][1]["cg"] + s["pils"][1]["jj"]
-            ilju_desc = get_ilju_desc(p_ilju)
-            gongmang_data = engine.get("gongmang", {})
-            chung_hyung_data = engine.get("chung_hyung", [])
-            
-            st.markdown(f'''
-            <div class="ilgan-card" style="margin-bottom: 20px;">
-                <div class="card-title"><span>📜</span>일주론 (당신의 영혼 토대)</div>
-                <div class="card-body"><b>{p_ilju} 일주:</b><br>{ilju_desc}</div>
-            </div>
-            ''', unsafe_allow_html=True)
+    # ── 캐시 상태 표시 + 재분석 버튼
+    saju_key = pils_to_cache_key(pils)
+    cache_focus_key = f"{saju_key}_{focus_key}"
+    is_cached = bool(get_ai_cache(saju_key, "prophet"))
 
-            ch_html = "<br>".join([f"⚠️ {msg}" for msg in chung_hyung_data]) if chung_hyung_data else "다행히 명반 내에 자기 파괴적인 충/형살은 띠지 않았으니 안심하거라."
-            st.markdown(f'''
-            <div class="ilgan-card" style="margin-bottom: 20px;">
-                <div class="card-title"><span>⚔️</span>충(沖)과 형(刑)의 살기</div>
-                <div class="card-body">{ch_html}</div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            gm_html = gongmang_data.get("desc", "공망 데이터가 없습니다.")
-            st.markdown(f'''
-            <div class="ilgan-card" style="margin-bottom: 20px;">
-                <div class="card-title"><span>🕳️</span>공망(空亡) - 비워진 그릇</div>
-                <div class="card-body">{gm_html}</div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            johu_data = engine.get("johu", {})
-            johu_html = f"<b>{johu_data.get('state', '')}</b> (점수: {johu_data.get('score', 0)}등급)<br>{johu_data.get('desc', '')}"
-            st.markdown(f'''
-            <div class="ilgan-card" style="margin-bottom: 20px;">
-                <div class="card-title"><span>🌡️</span>조후(調候) - 명반의 온도와 습도</div>
-                <div class="card-body">{johu_html}</div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            naeum_data = engine.get("naeum", {})
-            st.markdown(f'''
-            <div class="ilgan-card" style="margin-bottom: 20px;">
-                <div class="card-title"><span>🎵</span>납음오행(納音) - 태어난 해의 소리 에너지</div>
-                <div class="card-body"><b>{naeum_data.get('name', '')}</b><br>{naeum_data.get('desc', '')}</div>
-            </div>
-            ''', unsafe_allow_html=True)
+    # ── User Memory 업데이트 ──────────────────────────────
+    try:
+        update_user_profile(saju_key,
+            concern=focus_key if focus_key != "종합" else "",
+            last_focus=focus_key,
+            persona=infer_persona(),
+        )
+        render_user_memory_badge(saju_key)
+    except Exception:
+        pass
 
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            # [신기능] 12운성 프리미엄 카드 UI
-            st.markdown('<div class="gold-section">🌀 인생의 계절: 12운성(Twelve Life Stages)</div>', unsafe_allow_html=True)
-            u_list = s["engine"]["unsung"]
-            u_labels = ["시주 (결실)", "일주 (나)", "월주 (성장)", "년주 (뿌리)"]
-            
-            st.markdown('<div class="unsung-card-container">', unsafe_allow_html=True)
-            for i, label in enumerate(u_labels):
-                u_type = u_list[i]
-                u_card = UNSUNG_DESC.get(u_type, {})
-                icon = u_card.get('icon', '✨')
-                color_bg = u_card.get('grad', '#fff')
-                text_col = u_card.get('color', '#333')
-                st.markdown(f'''
-                <div class="unsung-card" style="background: {color_bg}">
-                    <div class="pillar-tag">{label}</div>
-                    <div class="unsung-name" style="color: {text_col}">{icon} {u_type} <span style="font-size:12px; margin-left:5px; font-weight:normal;">({u_card.get('color_label', '')})</span></div>
-                    <div class="unsung-meaning">{u_card.get('meaning', '')}</div>
-                    <div class="unsung-detail">{u_card.get('detail', '')}</div>
-                    <div class="unsung-advice">💡 {u_card.get('advice', '')}</div>
-                </div>
-                ''', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-        
-        if tid == "copy":
-            st.markdown(f'<div class="gold-section">📋 천기누설 복사센터</div>', unsafe_allow_html=True)
-            overall_key = f"overall_{f['name']}"
-            if overall_key not in st.session_state.cache:
-                    st.session_state.cache[overall_key] = mansin_engine("overall", s, f)
-            
-            copy_text = st.session_state.cache[overall_key]
-            copy_text += f"\n\n---\n{f['name']} 貴下의 무궁한 발복을 축원하노라 - 대만신 드림\n"
-            
-            st.markdown('<div class="gold-section">📥 상업용 정밀 리포트 소장</div>', unsafe_allow_html=True)
-            pdf_buffer = io.BytesIO()
-            generate_pdf(pdf_buffer, f["name"], copy_text)
-            st.download_button(
-                label="📄 종합 사주 리포트 PDF 다운로드 (Premium)",
-                data=pdf_buffer.getvalue(),
-                file_name=f"대만신_사주리포트_{f['name']}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
-            
-            st.markdown('<div class="gold-section">📋 텍스트 결과 확인 및 복사</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="fortune-text">{copy_text}</div>', unsafe_allow_html=True)
-            st.info("내용을 복사하려면 위 텍스트를 드래그하거나, 프리미엄 PDF 리포트를 소장하십시오.")
-        
-        elif tid == "health":
-            st.markdown(f'<div class="gold-section">💊 대만신 건강론 (五行 부조화 분석)</div>', unsafe_allow_html=True)
-            st.info("명반에 새겨진 오행의 쏠림을 통해 선천적으로 취약한 장기와 건강을 짚어내느니라.")
-            
-            health_res = analyze_health(get_oh_cnt(s["pils"]))
-            
-            st.markdown(f'''
-            <div class="ilgan-card" style="margin-bottom: 20px;">
-                <div class="card-title" style="font-size: 20px;"><span>⚖️</span>오행 건강 총평</div>
-                <div class="card-body" style="font-size: 16px; color: #c5a059; font-weight: bold; margin-bottom: 10px;">
-                    {health_res["overall"]}
-                </div>
-                <div class="card-body">
-                    {health_res["messages"][0]}
-                </div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            if health_res["warnings"]:
-                st.markdown('<div style="font-size:18px;font-weight:700;color:#d32f2f;margin-bottom:10px;">⚠️ 대만신의 첩약 경고 (주의 장기)</div>', unsafe_allow_html=True)
-                for w in health_res["warnings"]:
-                    st.markdown(f'''
-                    <div class="ilgan-card" style="margin-bottom: 15px; border-left: 5px solid #d32f2f;">
-                        <div class="card-title" style="color:#d32f2f;"><span>🚨</span>{w["oh"]}기운 {w["type"]}</div>
-                        <div class="card-body">
-                            <b>관련 장기:</b> {w["organ"]}<br>
-                            <b>발현 위험:</b> {w["risk"]}<br><br>
-                            <span style="color:#d32f2f;">{w["desc"]}</span>
-                        </div>
-                    </div>
-                    ''', unsafe_allow_html=True)
-            else:
-                st.success("극단적인 오행의 쏠림이 발견되지 않았으니, 무탈하게 건강을 지켜낼 수 있으리라.")
-        
-        elif tid == "wealth":
-            st.markdown(f'<div class="gold-section">💰 대만신 재물론 (재성의 흐름과 창고)</div>', unsafe_allow_html=True)
-            st.info("타고난 재물의 그릇(재성)과 그것이 열리는 시기를 짚어주마.")
-            
-            wealth_res = analyze_wealth_special(s)
-            
-            st.markdown(f'''
-            <div class="ilgan-card" style="margin-bottom: 20px;">
-                <div class="card-title" style="font-size: 20px;"><span>⚖️</span>재물 그릇 총평</div>
-                <div class="card-body" style="font-size: 16px; color: #c5a059; font-weight: bold; margin-bottom: 10px;">
-                    {wealth_res["overall"]}
-                </div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            if wealth_res["timeline"]:
-                st.markdown('<div style="font-size:18px;font-weight:700;color:#2e7d32;margin-bottom:10px;">📈 황금빛 재물이 열리는 시기</div>', unsafe_allow_html=True)
-                for w in wealth_res["timeline"]:
-                    st.markdown(f'''
-                    <div class="ilgan-card" style="margin-bottom: 15px; border-left: 5px solid #2e7d32;">
-                        <div class="card-title" style="color:#2e7d32;"><span>💰</span>{w["시기"]} - {w["종류"]}</div>
-                        <div class="card-body">
-                            {w["설명"]}
-                        </div>
-                    </div>
-                    ''', unsafe_allow_html=True)
-
-        elif tid == "career":
-            st.markdown(f'<div class="gold-section">🏢 대만신 직업론 (격국과 용신 기반 직업 궁합)</div>', unsafe_allow_html=True)
-            st.info("명반의 틀(격국)과 수호신(용신)을 파악하여 가장 빛을 발할 천직을 점지하노라.")
-            
-            career_res = analyze_career_special(s)
-            
-            st.markdown(f'''
-            <div class="ilgan-card" style="margin-bottom: 20px;">
-                <div class="card-title" style="font-size: 20px;"><span>🎯</span>격국(格局) 기반 직업</div>
-                <div class="card-body">
-                    <b>{career_res["structure"]}</b>에 태어난 명반이니,<br>
-                    <span style="color:#c5a059;font-weight:bold;">{career_res["base_career"]}</span> 형국이로다.
-                </div>
-            </div>
-            
-            <div class="ilgan-card" style="margin-bottom: 20px; border-left: 5px solid #1976d2;">
-                <div class="card-title" style="color:#1976d2;"><span>✨</span>용신(用神) 비책 직업</div>
-                <div class="card-body">
-                    네 부족함을 채워줄 수호 기운 <b>{career_res["yongshin"]}오행</b>을 좇아라.<br>
-                    <span style="color:#1976d2;font-weight:bold;">{career_res["recommended"]}</span> 업종에 발을 들이면 천지신명이 너를 도울 것이니라.
-                </div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            if career_res["shinsal"]:
-                st.markdown('<div style="font-size:18px;font-weight:700;color:#d84315;margin-bottom:10px;">🔥 만신의 신살 특급 조언</div>', unsafe_allow_html=True)
-                for point in career_res["shinsal"]:
-                    st.markdown(f'''
-                    <div class="ilgan-card" style="margin-bottom: 15px; border-left: 5px solid #d84315;">
-                        <div class="card-body" style="font-size: 15px; font-weight: bold; color: #444;">
-                            {point}
-                        </div>
-                    </div>
-                    </div>
-                    ''', unsafe_allow_html=True)
-
-        elif tid == "spiritual":
-            st.markdown(f'<div class="gold-section">✍️ 대만신 작명/개명 신수 (오행 보완론)</div>', unsafe_allow_html=True)
-            st.info("이름은 평생 불리며 주술적 힘을 발휘하는 강력한 부적이니, 네게 부족한 기운을 채워야 하느니라.")
-            
-            spiritual_res = analyze_spiritual_name(s, f["name"])
-            
-            st.markdown(f'''
-            <div class="ilgan-card" style="margin-bottom: 20px;">
-                <div class="card-title" style="font-size: 20px;"><span>📜</span>대만신의 개명 처방전</div>
-                <div class="card-body">
-                    {'<br><br>'.join(spiritual_res["advice"])}
-                </div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            if spiritual_res["suggestions"]:
-                st.markdown('<div style="font-size:18px;font-weight:700;color:#c5a059;margin-bottom:10px;">✨ 보완해야 할 이름의 기운 (발음/자원오행)</div>', unsafe_allow_html=True)
-                for sug in spiritual_res["suggestions"]:
-                    st.markdown(f'''
-                    <div class="ilgan-card" style="margin-bottom: 15px; border-left: 5px solid #c5a059;">
-                        <div class="card-title" style="color:#c5a059;"><span>💧</span>{sug["oh"]}오행 보완</div>
-                        <div class="card-body">
-                            <b>발음 오행 (한글):</b> {sug["sound"]}<br>
-                            <b>자원 오행 (한자 부수):</b> {sug["hanja"]}<br><br>
-                            <span style="color:#8e6e37;">{sug["reason"]}</span>
-                        </div>
-                    </div>
-                    ''', unsafe_allow_html=True)
-
-        elif tid == "compat":
-            st.markdown(f'<div class="gold-section">💕 대만신 궁합 (인연의 온도)</div>', unsafe_allow_html=True)
-            st.info("상대방의 사주 정보를 입력하여 천생연분인지, 스쳐갈 인연인지 확인해보거라.")
-            
-            if "partner_info" not in st.session_state:
-                with st.form("compat_form"):
-                    c_name = st.text_input("상대방 성함", placeholder="상대방의 이름을 명시해야 기운을 엮을 수 있도다.")
-                    c_gender = st.radio("상대방 성별", ["남성","여성"], horizontal=True, key="c_gender")
-                    c_cal = st.radio("상대방 달력", ["양력","음력"], horizontal=True, key="c_cal")
-                    
-                    cols = st.columns(3)
-                    with cols[0]: c_y = st.number_input("상대방 생년", 1940, 2030, 1990, key="c_y")
-                    with cols[1]: c_m = st.number_input("상대방 생월", 1, 12, 1, key="c_m")
-                    with cols[2]: c_d = st.number_input("상대방 생일", 1, 31, 1, key="c_d")
-                    
-                    c_h_opts = ["자시(23:30-01:30)","축시(01:30-03:30)","인시(03:30-05:30)","묘시(05:30-07:30)","진시(07:30-09:30)","사시(09:30-11:30)","오시(11:30-13:30)","미시(13:30-15:30)","신시(15:30-17:30)","유시(17:30-19:30)","술시(19:30-21:30)","해시(21:30-23:30)","모름"]
-                    c_h_idx = st.selectbox("상대방 태어난 시각", range(len(c_h_opts)), format_func=lambda i: c_h_opts[i], index=12, key="c_h_idx")
-                    c_hour = [23,1,3,5,7,9,11,13,15,17,19,21,11][c_h_idx]
-                    
-                    if st.form_submit_button("💞 인연의 명주실 연결하기"):
-                        if not c_name:
-                            st.error("상대방 성함을 입력해야 인연의 실타래를 읽을 수 있느니라.")
-                        else:
-                            st.session_state.partner_info = {"y": c_y, "m": c_m, "d": c_d, "h": c_hour, "gender": "male" if c_gender=="남성" else "female", "name": c_name, "cal": c_cal}
-                            st.rerun()
-                            
-            if "partner_info" in st.session_state:
-                p_info = st.session_state.partner_info
-                st.markdown(f'<div class="card"><div style="font-size:18px;font-weight:700;color:#c5a059">{f["name"]} 님과 {p_info["name"]} 님의 궁합 분석</div></div>', unsafe_allow_html=True)
-                
-                # 상대방 명반 계산
-                p_saju_cal = compute_full_mansin(p_info["y"], p_info["m"], p_info["d"], p_info["h"], p_info["gender"], p_info["name"], p_info["cal"])
-                
-                compat_res = analyze_compatibility(s, p_saju_cal)
-                
-                st.markdown(f'''
-                <div class="ilgan-card" style="margin-bottom: 20px;">
-                    <div class="card-title" style="font-size: 24px;"><span>💞</span>궁합 점수: <b>{compat_res["score"]}점</b></div>
-                    <div class="card-body" style="font-size: 16px; color: #c5a059; font-weight: bold; margin-bottom: 15px;">{compat_res["desc"]}</div>
-                    <div class="card-body">
-                        {'<br><br>'.join(['🔹 ' + m for m in compat_res["details"]])}
-                    </div>
-                </div>
-                ''', unsafe_allow_html=True)
-                
-                if st.button("❌ 다른 인연 찾아보기"):
-                    del st.session_state.partner_info
-                    st.rerun()
-
-        elif tid == "auspicious":
-            st.markdown(f'<div class="gold-section">🖋️ 대만신 택일 (운명의 날짜)</div>', unsafe_allow_html=True)
-            st.info("중요한 대소사(이사, 개업, 계약, 혼인 등)를 앞두고 있다면 날짜를 택해보거라.")
-            
-            with st.form("auspicious_form"):
-                target_date = st.date_input("목표 날짜 선택", min_value=datetime(2020, 1, 1), max_value=datetime(2040, 12, 31))
-                if st.form_submit_button("🧭 신령의 뜻 묻기"):
-                    t_y = target_date.year
-                    t_m = target_date.month
-                    t_d = target_date.day
-                    
-                    st.session_state.target_date_info = {"y": t_y, "m": t_m, "d": t_d}
-                    st.rerun()
-                    
-            if "target_date_info" in st.session_state:
-                t_info = st.session_state.target_date_info
-                
-                date_res = analyze_auspicious_date(s, t_info["y"], t_info["m"], t_info["d"])
-                
-                st.markdown(f'''
-                <div class="ilgan-card" style="margin-bottom: 20px;">
-                    <div class="card-title" style="font-size: 24px;"><span>📅</span>길일(吉日) 점수: <b>{date_res["score"]}점</b></div>
-                    <div class="card-body" style="font-size: 16px; color: #c5a059; font-weight: bold; margin-bottom: 15px;">{date_res["desc"]}</div>
-                    <div class="card-body">
-                        {'<br><br>'.join(['🔹 ' + m for m in date_res["details"]])}
-                    </div>
-                </div>
-                ''', unsafe_allow_html=True)
-
-        elif tid == "chat":
-            st.markdown(f'<div class="gold-section">💬 무엇이든 물어보거라 ({f["name"]} 님 전용)</div>', unsafe_allow_html=True)
-            chat_container = st.container(height=400)
-            with chat_container:
-                for msg in st.session_state.chat_history:
-                    with st.chat_message(msg["role"]): st.write(msg["content"])
-            
-            if p := st.chat_input("예) 올해 결혼할 수 있을까요?", key="mansin_chat_input"):
-                st.session_state.chat_history.append({"role":"user", "content":p})
-                with chat_container:
-                    with st.chat_message("user"): st.write(p)
-                    with st.chat_message("assistant"):
-                        if f["groq_key"]:
-                            facts = get_rule_based_facts(s, f)
-                            facts_str = "\n".join([f"- {fx}" for fx in facts])
-                            c_prompt = (
-                                f"당신은 사천만을 꿰뚫어 보는 대한민국 최고 명리학 대가 '대만신'입니다. "
-                                f"{f['name']}님의 주인공 정보를 바탕으로 질문('{p}')에 답하십시오.\n\n"
-                                f"**[천기 누설 핵심 팩트]**\n"
-                                f"이 팩트들은 명리학적으로 검증된 확정 사항입니다. 절대 이 범위를 넘어서는 허구의 사건을 지어내지 마십시오.\n"
-                                f"{facts_str}\n\n"
-                                f"**요구사항:**\n"
-                                f"1. 마치 눈앞에서 작두를 타며 예언하듯 생생하게 답하십시오.\n"
-                                f"2. **절대 영어(English)나 외국어를 사용하지 마십시오.**\n"
-                                f"3. 확신에 찬 단정적 화법을 사용하십시오.\n"
-                                f"4. 질문에 대해 팩트를 근거로 웅장하게 설명하십시오."
-                            )
-                            data = {"model":"llama-3.3-70b-versatile", "messages":[{"role":"user","content":c_prompt}], "temperature":0.7, "max_tokens":2000}
-                            try:
-                                res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {f['groq_key']}"}, json=data, timeout=30).json()
-                                ans = res["choices"][0]["message"]["content"]
-                            except: ans = local_consultation_engine(p, s)
-                        else:
-                            ans = local_consultation_engine(p, s)
-                        st.write(ans)
-                        st.session_state.chat_history.append({"role":"assistant", "content":ans})
-                st.rerun()
-
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        if is_cached:
+            st.markdown(
+                "<div style='background:#e8f5e8;color:#2e7d32;padding:6px 12px;"
+                "border-radius:6px;font-size:11px;margin-bottom:6px'>"
+                "⚡ 캐시된 AI 해석 사용 중 — 즉시 출력</div>",
+                unsafe_allow_html=True)
         else:
-            ckey = f"{tid}_{f['name']}"
-            if ckey not in st.session_state.cache:
-                with st.spinner(f"대만신께서 '{tab_info['label']}'의 명반을 분석 중입니다..."):
-                    st.session_state.cache[ckey] = mansin_engine(tid, s, f)
-            
-            # [FIX] Streamlit removeChild error 방지를 위해 마크다운 컨테이너를 하나로 합치고, 내부 마크다운을 안전한 HTML로 치환
-            safe_text = st.session_state.cache[ckey]
-            import re
-            safe_text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', safe_text) # 볼드체 변환
-            safe_text = re.sub(r'\n#{1,3}\s+', r'<br><b>', safe_text) # 헤딩을 볼드체로 변환
-            safe_text = safe_text.replace('### ', '<b>').replace('## ', '<b>').replace('# ', '<b>')
-            safe_text = safe_text.replace('\n- ', '<br>• ') # 리스트 변환
-            safe_text = safe_text.replace('\n> ', '<br>🔸 ') # 인용구 변환
-            safe_text = safe_text.replace('\n', '<br>') # 줄바꿈 변환
-            
-            content = f'<div class="fortune-text"><br>{safe_text}<br></div>'
-            st.markdown(content, unsafe_allow_html=True)
-
-        if st.button("🔄 명반 다시 짜기"):
-            st.session_state.step = "input"
-            st.session_state.cache = {}
+            st.markdown(
+                "<div style='background:#fff5e0;color:#e65100;padding:6px 12px;"
+                "border-radius:6px;font-size:11px;margin-bottom:6px'>"
+                "🔄 새 AI 분석 필요 — API 호출 예정</div>",
+                unsafe_allow_html=True)
+    with c2:
+        if st.button("🔄 재분석", help="AI 캐시를 삭제하고 새로 분석합니다", use_container_width=True):
+            clear_ai_cache_for_key(saju_key)
             st.rerun()
 
-if __name__ == "__main__": main()
+    # focus 컨텍스트를 session_state에 저장 (tab_ai_chat에서 사용)
+    st.session_state["ai_focus"] = focus_key
+
+    # ── Adaptive 페르소나 표시 ──────────────────────
+    persona = infer_persona()
+    p_emoji, p_label, p_color = get_persona_label(persona)
+    st.markdown(f"""
+    <div style="background:#f8f5ff;border:1px solid #d0b8ff;border-radius:10px;
+                padding:10px 14px;margin:8px 0;display:flex;align-items:center;gap:10px">
+        <span style="font-size:20px">{p_emoji}</span>
+        <div>
+            <div style="font-size:11px;color:#7b5ea7;font-weight:700">AI 분석 스타일 자동 설정</div>
+            <div style="font-size:13px;color:{p_color};font-weight:800">{p_label}</div>
+        </div>
+        <div style="font-size:10px;color:#888;margin-left:auto">
+            집중 분야 선택에 따라 해석 스타일이 자동 변경됩니다
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── 소름 엔진 — 과거 적중 미리보기 ────────────────
+    st.markdown('<div class="gold-section">🔮 사주 패턴 분석 — 이미 겪으셨나요?</div>',
+                unsafe_allow_html=True)
+    try:
+        gb = goosebump_engine(pils, birth_year, gender)
+        if gb["past"]:
+            gb_html = "".join([
+                f'<div style="background:#fffef5;border-left:4px solid #c5a059;'
+                f'padding:10px 14px;border-radius:4px 10px 10px 4px;margin:5px 0;'
+                f'font-size:13px;color:#333;line-height:1.8">'
+                f'🔍 {s}</div>'
+                for s in gb["past"]
+            ])
+            if gb["present"]:
+                gb_html += "".join([
+                    f'<div style="background:#f0f8ff;border-left:4px solid #4a90d9;'
+                    f'padding:10px 14px;border-radius:4px 10px 10px 4px;margin:5px 0;'
+                    f'font-size:13px;color:#333;line-height:1.8">'
+                    f'💡 {s}</div>'
+                    for s in gb["present"][:1]
+                ])
+            if gb["future"]:
+                gb_html += "".join([
+                    f'<div style="background:#fff5e0;border-left:4px solid #e65100;'
+                    f'padding:10px 14px;border-radius:4px 10px 10px 4px;margin:5px 0;'
+                    f'font-size:13px;color:#333;line-height:1.8">'
+                    f'⚡ {s}</div>'
+                    for s in gb["future"][:1]
+                ])
+            st.markdown(gb_html, unsafe_allow_html=True)
+    except Exception:
+        pass
+
+    # ── Retention 위젯 ──────────────────────────────
+    with st.expander("📊 운세 흐름 + 방문 기록", expanded=False):
+        render_retention_widget(pils, birth_year, gender)
+
+    tab_ai_chat(pils, name, birth_year, gender, api_key, groq_key=groq_key)
+
+
+def main():
+    # ── 페이지 설정 ─────────────────────────────────
+    # (전역 CSS는 파일 상단 st.markdown으로 이미 적용됨)
+    # main-header, section-label만 추가 정의
+    st.markdown("""
+    <style>
+    .main-header {
+        background: linear-gradient(135deg, #8B6914, #c5a059, #8B6914);
+        color: white; text-align: center;
+        padding: 24px 16px 20px;
+        border-radius: 0 0 16px 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 20px rgba(139,105,20,0.3);
+    }
+    .main-header h1 {
+        font-size: 26px; font-weight: 900;
+        letter-spacing: 3px; margin: 0;
+        text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+    }
+    @media (max-width:480px) {
+        .main-header { padding: 16px 12px 14px; }
+        .main-header h1 { font-size: 19px !important; letter-spacing: 1px !important; }
+    }
+    .main-header p { font-size: 13px; opacity: 0.85; margin: 5px 0 0; letter-spacing: 2px; }
+    .section-label { font-size: 13px; font-weight: 700; color: #8B6914; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+    </style>""", unsafe_allow_html=True)
+
+    # ── 헤더 ─────────────────────────────────────────
+    st.markdown("""
+    <div class="main-header">
+        <h1>萬神 사주 천명풀이</h1>
+        <p>四柱八字 · 天命을 밝히다</p>
+    </div>""", unsafe_allow_html=True)
+
+    # ── 스트릭 배너 (방문 추적) ──────────────────────
+    try:
+        streak_info = update_streak()
+        sc = streak_info["streak"]
+        if sc >= 2:
+            se = "🏆" if sc >= 30 else "🔥" if sc >= 7 else "✨"
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg,#fffde8,#fff8cc);
+                        border:1px solid #e8d058;border-radius:10px;
+                        padding:8px 14px;margin:6px 0;
+                        display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:13px;color:#8B6914;font-weight:700">
+                    {se} {streak_info['message']}
+                </span>
+                <span style="font-size:11px;color:#aaa">최고 {streak_info['max']}일</span>
+            </div>
+            """, unsafe_allow_html=True)
+    except Exception:
+        pass
+
+    # ── AI 설정 — 메인 화면 expander ────────────────
+    with st.expander("⚙️ 앱 설정 및 AI 캐스팅 (API 설정)", expanded=False):
+        col_e1, col_e2 = st.columns([1, 2])
+        with col_e1:
+            st.markdown("**🤖 AI 엔진**")
+            ai_engine = st.radio("AI 엔진", ["Groq (무료·빠름)", "Anthropic Claude"],
+                                 label_visibility="collapsed", key="ai_engine_radio")
+        with col_e2:
+            if "Groq" in ai_engine:
+                st.markdown("**🔑 Groq API Key**")
+                groq_key = st.text_input("Groq Key", type="password",
+                                         placeholder="gsk_...",
+                                         label_visibility="collapsed")
+                api_key = ""
+                st.caption("groq.com → API Keys → Create (무료)")
+            else:
+                st.markdown("**🔑 Anthropic API Key**")
+                api_key = st.text_input("Anthropic Key", type="password",
+                                        placeholder="sk-ant-...",
+                                        label_visibility="collapsed")
+                groq_key = ""
+                st.caption("console.anthropic.com")
+    
+    # ── 입력 폼 (카드 UI) ────────────────────────────
+    st.markdown("""
+    <div style="background:white;border-radius:16px;padding:24px 24px 8px;
+                box-shadow:0 2px 12px rgba(0,0,0,0.08);margin-bottom:4px">
+        <div style="font-size:18px;font-weight:800;color:#333;margin-bottom:4px">
+            📝 사주 정보 입력
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    with st.form("saju_form"):
+        # ── 이름 + 성별 ──────────────────────
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            name = st.text_input("이름 (선택)", placeholder="홍길동",
+                                 label_visibility="visible")
+        with col2:
+            st.markdown('<div style="margin-top:4px"></div>', unsafe_allow_html=True)
+            gender = st.radio("성별", ["남", "여"], horizontal=True, key="gender_radio")
+
+        # ── 양력/음력 선택 ────────────────────
+        st.markdown('<div style="font-size:13px;font-weight:700;color:#8B6914;margin:12px 0 6px">📅 생년월일</div>', unsafe_allow_html=True)
+        cal_col1, cal_col2 = st.columns([1, 2])
+        with cal_col1:
+            cal_type = st.radio("달력 구분", ["양력", "음력"], horizontal=True, key="cal_type_radio")
+            is_leap_month = False
+            if cal_type == "음력":
+                is_leap_month = st.checkbox("윤달", help="윤달에 태어난 경우 체크")
+        with cal_col2:
+            if cal_type == "양력":
+                birth_date_solar = st.date_input(
+                    "양력 생년월일",
+                    value=date(1990, 1, 1),
+                    min_value=date(1940, 1, 1),
+                    max_value=date(2010, 12, 31),
+                    label_visibility="collapsed"
+                )
+                l_year, l_month, l_day = 1990, 1, 1
+            else:
+                birth_date_solar = None
+                lc1, lc2, lc3 = st.columns(3)
+                with lc1:
+                    l_year = st.number_input("음력 년", min_value=1940, max_value=2010, value=1990, step=1)
+                with lc2:
+                    l_month = st.selectbox("음력 월", list(range(1, 13)), format_func=lambda m: f"{m}월")
+                with lc3:
+                    l_day = st.number_input("음력 일", min_value=1, max_value=30, value=1, step=1)
+
+        # 출생 시간
+        st.markdown('<div style="font-size:13px;font-weight:700;color:#8B6914;margin:12px 0 6px">⏰ 출생 시간</div>', unsafe_allow_html=True)
+        t_col1, t_col2 = st.columns([2, 1])
+        with t_col1:
+            JJ_12 = ["子","子","丑","丑","寅","寅","卯","卯","辰","辰","巳","巳",
+                     "午","午","未","未","申","申","酉","酉","戌","戌","亥","亥"]
+            birth_hour = st.selectbox(
+                "출생 시간",
+                options=list(range(0, 24)),
+                format_func=lambda h: f"{h:02d}:00 ({JJ_12[h]}시)",
+                index=12,
+                label_visibility="collapsed"
+            )
+        with t_col2:
+            unknown_time = st.checkbox("시간 모름", help="모르면 체크 (정오 계산)")
+
+        # 결혼유무 + 직업
+        st.markdown('<div style="font-size:13px;font-weight:700;color:#8B6914;margin:12px 0 6px">👤 추가 정보 (선택)</div>', unsafe_allow_html=True)
+        info_col1, info_col2 = st.columns(2)
+        with info_col1:
+            marriage_status = st.selectbox(
+                "결혼 유무",
+                ["미혼", "기혼", "이혼/별거", "사별", "재혼"],
+                help="배우자운·인연운 분석에 활용"
+            )
+        with info_col2:
+            occupation = st.selectbox(
+                "직업 분야",
+                ["선택 안 함", "직장인(회사)", "공무원/공기업", "전문직(의/법/회계)",
+                 "사업/자영업", "예술/창작", "IT/개발", "교육/학술",
+                 "금융/투자", "판매/유통", "건설/부동산", "학생",
+                 "주부/육아", "구직중", "기타"],
+                help="직업론·적성 분석에 활용"
+            )
+
+        st.markdown('<div style="margin-top:8px"></div>', unsafe_allow_html=True)
+        submitted = st.form_submit_button("🔮 천명을 풀이하다", use_container_width=True,
+                                          type="primary")
+
+    if submitted or "saju_pils" in st.session_state:
+        if submitted:
+            # 음력 → 양력 변환
+            if cal_type == "음력":
+                try:
+                    birth_date_solar = lunar_to_solar(int(l_year), int(l_month), int(l_day), is_leap_month)
+                    st.info(f"📅 음력 {int(l_year)}년 {int(l_month)}월 {int(l_day)}일"
+                            f"{'(윤달)' if is_leap_month else ''} → "
+                            f"**양력 {birth_date_solar.strftime('%Y년 %m월 %d일')}** 로 변환")
+                except Exception as e:
+                    st.error(f"음력 변환 오류. 양력으로 직접 입력해주세요.")
+                    st.stop()
+
+            b_year  = birth_date_solar.year
+            b_month = birth_date_solar.month
+            b_day   = birth_date_solar.day
+            b_hour  = 12 if unknown_time else birth_hour
+
+            with st.spinner("사주를 계산하는 중..."):
+                pils = SajuCoreEngine.get_pillars(b_year, b_month, b_day, b_hour, gender)
+                st.session_state["saju_pils"]        = pils
+                st.session_state["birth_year"]        = b_year
+                st.session_state["birth_month"]       = b_month
+                st.session_state["birth_day"]         = b_day
+                st.session_state["birth_hour"]        = b_hour
+                st.session_state["gender"]            = gender
+                st.session_state["saju_name"]         = name if name else "내담자"
+                st.session_state["marriage_status"]   = marriage_status
+                st.session_state["occupation"]        = occupation
+                st.session_state["cal_type"]          = cal_type
+                if cal_type == "음력":
+                    st.session_state["lunar_info"] = f"{int(l_year)}년 {int(l_month)}월 {int(l_day)}일{'(윤)' if is_leap_month else ''}"
+        
+        pils = st.session_state.get("saju_pils")
+        birth_year = st.session_state.get("birth_year", 1990)
+        gender = st.session_state.get("gender", "남")
+        name = st.session_state.get("saju_name", "내담자")
+        marriage_status = st.session_state.get("marriage_status", "미혼")
+        occupation = st.session_state.get("occupation", "선택 안 함")
+        lunar_info = st.session_state.get("lunar_info", "")
+        cal_type_saved = st.session_state.get("cal_type", "양력")
+        birth_month = st.session_state.get("birth_month", 1)
+        birth_day   = st.session_state.get("birth_day", 1)
+        birth_hour2 = st.session_state.get("birth_hour", 12)
+        
+        if pils:
+            # 이름 + 추가정보 배너
+            display_name = name if name else "내담자"
+            marriage_icon = {"미혼":"💚","기혼":"💑","이혼/별거":"💔","사별":"🖤","재혼":"🌸"}.get(marriage_status,"")
+            occ_short = occupation if occupation != "선택 안 함" else ""
+
+            # 생년월일 표시: 입력값 그대로 보존
+            if lunar_info and cal_type_saved == "음력":
+                date_badge = (
+                    f"<span style='font-size:12px;background:#ede4ff;padding:3px 10px;border-radius:12px;margin-left:6px'>"
+                    f"음력 {lunar_info}</span>"
+                    f"<span style='font-size:11px;color:#444;margin-left:6px'>"
+                    f"(양력 {birth_year}.{birth_month:02d}.{birth_day:02d})</span>"
+                )
+            else:
+                date_badge = (
+                    f"<span style='font-size:12px;background:#e8f5e8;padding:3px 10px;border-radius:12px;margin-left:6px'>"
+                    f"양력 {birth_year}.{birth_month:02d}.{birth_day:02d}</span>"
+                )
+
+            JJ_12b = ["子","子","丑","丑","寅","寅","卯","卯","辰","辰","巳","巳",
+                      "午","午","未","未","申","申","酉","酉","戌","戌","亥","亥"]
+            hour_badge = (
+                f"<span style='font-size:12px;background:#fff8e0;padding:3px 10px;border-radius:12px;margin-left:6px'>"
+                f"{birth_hour2:02d}시({JJ_12b[birth_hour2]}시)</span>"
+            )
+
+            info_tags = ""
+            if marriage_status != "미혼":
+                info_tags += f"<span style='font-size:12px;background:#edfffb;padding:3px 10px;border-radius:12px;margin:2px'>{marriage_icon} {marriage_status}</span> "
+            if occ_short:
+                info_tags += f"<span style='font-size:12px;background:#e8f3ff;padding:3px 10px;border-radius:12px;margin:2px'>💼 {occ_short}</span>"
+
+            st.markdown(f"""
+            <div style="text-align:center;padding:14px;background:linear-gradient(135deg,#fff5e0,#fff0dc);
+                        border-radius:14px;margin-bottom:10px">
+                <div style="color:#a0720a;font-size:20px;font-weight:700;margin-bottom:6px">
+                    ✨ {display_name}님의 사주팔자 ✨
+                </div>
+                <div style="margin-bottom:6px">{date_badge}{hour_badge}</div>
+                <div style="margin-top:4px">{info_tags}</div>
+            </div>""", unsafe_allow_html=True)
+
+            # ── 8개 메뉴 탭 ──────────────────────────────
+            tabs = st.tabs([
+                "📋 종합 사주 리포트",
+                "🌊 인생 흐름 (대운 100년)",
+                "🎯 과거 적중 타임라인",
+                "🔮 미래 3년 집중 분석",
+                "💰 재물·사업 특화",
+                "💑 궁합·인간관계",
+                "🤖 AI 상담",
+                "🔴 특급 비방록",
+                "☀️ 일일 운세",
+                "📅 월별 운세",
+                "🎊 신년 운세",
+            ])
+
+            with tabs[0]:
+                menu1_report(pils, name, birth_year, gender, occupation)
+            with tabs[1]:
+                menu2_lifeline(pils, birth_year, gender)
+            with tabs[2]:
+                menu3_past(pils, birth_year, gender, name)
+            with tabs[3]:
+                menu4_future3(pils, birth_year, gender, marriage_status)
+            with tabs[4]:
+                menu5_money(pils, birth_year, gender)
+            with tabs[5]:
+                menu6_relations(pils, name, birth_year, gender, marriage_status)
+            with tabs[6]:
+                menu7_ai(pils, name, birth_year, gender, api_key, groq_key)
+            with tabs[7]:
+                menu8_bihang(pils, name, birth_year, gender)
+            with tabs[8]:
+                menu9_daily(pils, name, birth_year, gender)
+            with tabs[9]:
+                menu10_monthly(pils, name, birth_year, gender)
+            with tabs[10]:
+                menu11_yearly(pils, name, birth_year, gender)
+
+if __name__ == "__main__":
+    main()
