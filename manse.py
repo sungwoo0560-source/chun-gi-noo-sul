@@ -5,9 +5,21 @@ from datetime import date, datetime, timedelta
 import random
 import io
 import re
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
+try:
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
+
+# 3단계 A: korean-lunar-calendar 라이브러리 (정밀 절기 계산)
+try:
+    from korean_lunar_calendar import KoreanLunarCalendar as _KLC
+    LUNAR_LIB_AVAILABLE = True
+except ImportError:
+    _KLC = None
+    LUNAR_LIB_AVAILABLE = False  # → 기존 내장 테이블로 자동 fallback
 
 # ══════════════════════════════════════════════════════════
 #  음력 ↔ 양력 변환 (내장 테이블 방식)
@@ -176,6 +188,468 @@ def solar_to_lunar(solar_date):
 from reportlab.lib.units import inch
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
+
+
+# ══════════════════════════════════════════════════════════
+#  🧠 사주 AI 기억 시스템 (SajuMemory) - 4계층 구조
+#  정보 저장 ❌ / 맥락 저장 ⭕
+# ══════════════════════════════════════════════════════════
+
+class SajuMemory:
+    """
+    4계층 기억 시스템:
+    ① Identity   - 변하지 않는 정체 (일간 특징, 핵심 성향)
+    ② Interest   - 관심 영역 비율 (반복 조회 주제)
+    ③ Flow       - 현재 인생 흐름 단계 (전환기·준비기 등)
+    ④ Conversation - 최근 상담 맥락 (질문·감정·조언)
+    """
+
+    INTEREST_TOPICS = ["직업", "재물", "연애", "건강", "인간관계", "이사", "사업"]
+    FLOW_STAGES     = ["상승기", "전환기", "준비기", "정체기", "확장기", "안정기"]
+    MAX_CONV_HISTORY = 5  # 상담 기억 최대 보관 수
+
+    @staticmethod
+    def _get() -> dict:
+        """세션에서 기억 불러오기 (없으면 초기화)"""
+        if "saju_memory" not in st.session_state:
+            st.session_state["saju_memory"] = {
+                # ① 정체 기억
+                "identity": {
+                    "ilgan": "",          # 일간 (甲, 乙 ...)
+                    "gyeokguk": "",       # 격국명
+                    "core_trait": "",     # 핵심 성향 1줄
+                    "yongshin": [],       # 용신 오행
+                },
+                # ② 관심 기억: {주제: 조회 횟수}
+                "interest": {t: 0 for t in SajuMemory.INTEREST_TOPICS},
+                # ③ 흐름 기억
+                "flow": {
+                    "stage": "",          # 예: "전환기"
+                    "period": "",         # 예: "2025~2027"
+                    "daewoon": "",        # 현재 대운
+                    "updated_at": "",     # 마지막 업데이트
+                },
+                # ④ 상담 기억: 최근 N개
+                "conversation": [],      # [{topic, emotion_kw, advice, ts}, ...]
+            }
+        return st.session_state["saju_memory"]
+
+    # ── ① 정체 기억 업데이트 ──────────────────────────────
+    @staticmethod
+    def update_identity(ilgan: str, gyeokguk: str, core_trait: str, yongshin: list):
+        mem = SajuMemory._get()
+        mem["identity"].update({
+            "ilgan": ilgan,
+            "gyeokguk": gyeokguk,
+            "core_trait": core_trait,
+            "yongshin": yongshin,
+        })
+
+    # ── ② 관심 기억 업데이트 (트리거: 주제 클릭/조회) ───────
+    @staticmethod
+    def record_interest(topic: str):
+        """주제를 조회할 때 호출. 3회 이상이면 '주관심사' 강화."""
+        if topic not in SajuMemory.INTEREST_TOPICS:
+            return
+        mem = SajuMemory._get()
+        mem["interest"][topic] = mem["interest"].get(topic, 0) + 1
+
+    @staticmethod
+    def get_interest_summary() -> str:
+        """관심 영역 비율 요약 문자열 반환."""
+        mem = SajuMemory._get()
+        counts = mem["interest"]
+        total = sum(counts.values()) or 1
+        ranked = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+        top3 = [(t, round(c / total * 100)) for t, c in ranked if c > 0][:3]
+        if not top3:
+            return ""
+        return " / ".join(f"{t} {p}%" for t, p in top3)
+
+    # ── ③ 흐름 기억 업데이트 ────────────────────────────────
+    @staticmethod
+    def update_flow(stage: str, period: str = "", daewoon: str = ""):
+        from datetime import datetime
+        mem = SajuMemory._get()
+        mem["flow"].update({
+            "stage": stage,
+            "period": period,
+            "daewoon": daewoon,
+            "updated_at": datetime.now().strftime("%Y-%m-%d"),
+        })
+
+    # ── ④ 상담 기억 업데이트 ────────────────────────────────
+    @staticmethod
+    def add_conversation(topic: str, advice_summary: str, emotion_kw: str = ""):
+        from datetime import datetime
+        mem = SajuMemory._get()
+        entry = {
+            "topic": topic,
+            "emotion_kw": emotion_kw,
+            "advice": advice_summary,
+            "ts": datetime.now().strftime("%Y-%m-%d"),
+        }
+        mem["conversation"].append(entry)
+        # 최대 N개만 보관 (오래된 것 삭제)
+        if len(mem["conversation"]) > SajuMemory.MAX_CONV_HISTORY:
+            mem["conversation"] = mem["conversation"][-SajuMemory.MAX_CONV_HISTORY:]
+
+    # ── AI 프롬프트용 맥락 문자열 생성 ───────────────────────
+    @staticmethod
+    def build_context_prompt() -> str:
+        """AI에게 전달할 기억 맥락 문자열을 생성한다."""
+        mem = SajuMemory._get()
+        lines = []
+
+        # ① 정체
+        idt = mem["identity"]
+        if idt.get("core_trait"):
+            lines.append(f"[사용자 성향] {idt['core_trait']}")
+        if idt.get("gyeokguk"):
+            lines.append(f"[격국] {idt['gyeokguk']} / [일간] {idt.get('ilgan','')}")
+
+        # ② 관심
+        interest_str = SajuMemory.get_interest_summary()
+        if interest_str:
+            lines.append(f"[주요 관심사] {interest_str}")
+            top_topic = max(mem["interest"].items(), key=lambda x: x[1], default=("", 0))
+            if top_topic[1] >= 3:
+                lines.append(f"→ 최근 '{top_topic[0]}'에 관심이 집중되어 있습니다.")
+
+        # ③ 흐름
+        flow = mem["flow"]
+        if flow.get("stage"):
+            period_str = f" ({flow['period']})" if flow.get("period") else ""
+            lines.append(f"[현재 인생 흐름] {flow['stage']}{period_str}")
+            if flow.get("daewoon"):
+                lines.append(f"[현재 대운] {flow['daewoon']}")
+
+        # ④ 상담 기억
+        if mem["conversation"]:
+            last = mem["conversation"][-1]
+            lines.append(f"[최근 상담] 주제: {last['topic']} / 조언: {last['advice']}")
+
+        if not lines:
+            return ""
+        return "\n".join(["=== 사용자 기억 맥락 ==="] + lines + ["========================"])
+
+    # ── 기억 기반 개인화 인사말 생성 ────────────────────────
+    @staticmethod
+    def get_personalized_intro() -> str:
+        """탭 진입 시 개인화된 한 줄 멘트 반환."""
+        mem = SajuMemory._get()
+        flow = mem["flow"]
+        conv = mem["conversation"]
+        interest_str = SajuMemory.get_interest_summary()
+
+        if conv:
+            last = conv[-1]
+            return f"지난번 '{last['topic']}' 고민 이후 흐름을 이어서 살펴보겠습니다."
+        if flow.get("stage"):
+            return f"현재 {flow['stage']} 흐름 안에서 오늘 운세를 확인합니다."
+        if interest_str:
+            top = interest_str.split("/")[0].strip().split(" ")[0]
+            return f"최근 '{top}' 흐름을 자주 확인하고 계시네요."
+        return ""
+
+
+# ══════════════════════════════════════════════════════════
+#  ⚖️ 사주 AI 판단 규칙 12개 (Hallucination 방지 시스템)
+#  질문 → 사주 분석 → [판단 규칙 검사] → 출력
+# ══════════════════════════════════════════════════════════
+
+class SajuJudgmentRules:
+    """
+    AI 출력이 생성되기 전/후 적용되는 12개 판단 규칙.
+    - 프롬프트 빌드 시 규칙을 주입 (사전 제어)
+    - 출력 텍스트 검증/수정 (사후 제어)
+    """
+
+    # ① 단정 금지 - 대체 표현 맵
+    _ASSERTION_MAP = {
+        "반드시 성공": "흐름상 유리한 방향으로 흐를 가능성이 높습니다",
+        "100% 결혼": "인연의 흐름이 모이는 시기입니다",
+        "반드시 합격": "준비가 빛을 발할 가능성이 있는 시기입니다",
+        "확실히 좋아": "흐름이 긍정적으로 형성되는 편입니다",
+        "절대": "일반적으로",
+        "틀림없이": "가능성이 높게",
+        "반드시": "흐름상",
+        "100% ": "높은 가능성으로 ",
+        "무조건": "대체로",
+    }
+
+    # 부정 감정 키워드 → 불안 감지용
+    _ANXIETY_KEYWORDS = ["걱정", "불안", "두렵", "무서", "망할", "망한", "실패할", "이혼", "죽"]
+
+    # 과도한 긍정 표현
+    _OVERPOSITIVE = ["완벽한 사주", "타고난 재물복", "최고의 운", "황금 사주", "최강 대운"]
+
+    # AI 보고서 톤 (제거 대상)
+    _REPORT_TONE = ["분석 결과:", "데이터에 의하면", "통계적으로", "다음과 같습니다:", "1번 항목"]
+
+    # ── 규칙 1: 단정 표현 완화 ──────────────────────────
+    @staticmethod
+    def rule01_soften_assertions(text: str) -> str:
+        """① 단정 금지 규칙 — '반드시' → '흐름상' 치환"""
+        for bad, good in SajuJudgmentRules._ASSERTION_MAP.items():
+            text = text.replace(bad, good)
+        return text
+
+    # ── 규칙 5: 부정 균형 — 위험 + 대응 세트 확인 ────────
+    @staticmethod
+    def rule05_check_negative_balance(text: str) -> str:
+        """⑤ 나쁜 운 설명 시 대응 방법이 없으면 자동 추가 힌트 삽입"""
+        negative_phrases = ["어려운 시기", "힘든 운", "충(沖)", "주의가 필요", "조심해야"]
+        has_response     = ["준비", "대응", "방법", "기회", "전략", "조언"]
+        for phrase in negative_phrases:
+            if phrase in text:
+                if not any(r in text for r in has_response):
+                    text += "\n\n※ 힘든 흐름도 준비하면 기회가 됩니다. 지금 할 수 있는 한 가지 행동에 집중해 보세요."
+                break
+        return text
+
+    # ── 규칙 7: 감정 보호 — 불안 질문 탐지 ───────────────
+    @staticmethod
+    def rule07_detect_anxiety(user_input: str) -> bool:
+        """⑦ 사용자 입력에 불안 키워드 포함 여부 반환"""
+        return any(kw in user_input for kw in SajuJudgmentRules._ANXIETY_KEYWORDS)
+
+    # ── 규칙 9: 기억 충돌 검사 ────────────────────────────
+    @staticmethod
+    def rule09_check_memory_conflict(text: str) -> str:
+        """⑨ 현재 출력 vs 저장된 흐름 기억 충돌 시 경고 보정"""
+        flow_stage = SajuMemory._get()["flow"].get("stage", "")
+        if not flow_stage:
+            return text
+        # 안정기인데 '격변' 또는 '위기' 언급 시 완화
+        if "안정기" in flow_stage:
+            for conflict_word in ["격변", "대위기", "모든 것이 바뀝니다"]:
+                if conflict_word in text:
+                    text = text.replace(
+                        conflict_word,
+                        "변화의 씨앗이 싹트는 시기"
+                    )
+        return text
+
+    # ── 규칙 11: 과도한 긍정 완화 ────────────────────────
+    @staticmethod
+    def rule11_limit_overpositive(text: str) -> str:
+        """⑪ 과도한 긍정 표현 → 현실적 표현으로 치환"""
+        for phrase in SajuJudgmentRules._OVERPOSITIVE:
+            text = text.replace(phrase, "좋은 흐름이 있는 사주")
+        return text
+
+    # ── 규칙 12: 보고서 톤 제거 ──────────────────────────
+    @staticmethod
+    def rule12_remove_report_tone(text: str) -> str:
+        """⑫ 분석 보고서 말투 제거 → 상담가 어투 유지"""
+        for phrase in SajuJudgmentRules._REPORT_TONE:
+            text = text.replace(phrase, "")
+        return text
+
+    # ── 전체 사후 필터 (출력 텍스트에 한 번에 적용) ─────────
+    @staticmethod
+    def apply_all(text: str) -> str:
+        """생성된 AI 텍스트에 전체 판단 규칙 순서대로 적용"""
+        text = SajuJudgmentRules.rule01_soften_assertions(text)
+        text = SajuJudgmentRules.rule05_check_negative_balance(text)
+        text = SajuJudgmentRules.rule09_check_memory_conflict(text)
+        text = SajuJudgmentRules.rule11_limit_overpositive(text)
+        text = SajuJudgmentRules.rule12_remove_report_tone(text)
+        return text.strip()
+
+    # ── AI 프롬프트용 규칙 주입 문자열 (사전 제어) ──────────
+    @staticmethod
+    def build_rules_prompt(user_input: str = "") -> str:
+        """AI 시스템 프롬프트에 추가할 판단 규칙 지시문 생성"""
+        is_anxious = SajuJudgmentRules.rule07_detect_anxiety(user_input)
+        mem_ctx    = SajuMemory.build_context_prompt()
+
+        rules = """
+[사주 AI 판단 규칙 - 반드시 준수]
+① 단정 금지: "반드시", "100%" 대신 "흐름상", "가능성이 높습니다" 사용
+② 순서 유지: 현재 운세 → 성향 → 행동 조언 순
+③ 데이터 준수: 사주 원국에 없는 정보(특정 날짜·직업명 단정) 생성 금지
+④ 시간 제한: 단기(1년)·중기(3년)·장기(10년) 이상 예측 금지
+⑤ 부정 균형: 위험 요소 언급 시 반드시 대응 방법 함께 제시
+⑥ 일관성: 동일 질문에 방향이 달라지면 안 됨
+⑧ 언어: 한자/격국 전문용어 남발 금지. 일반인 언어로 설명
+⑩ 행동 조언: 모든 풀이 끝에 "지금 할 수 있는 행동 1가지" 제시
+⑪ 긍정 과잉 금지: 긍정 60 / 현실 경고 40 비율 유지
+⑫ 상담가 말투: "분석 결과:" "다음과 같습니다" 같은 보고서체 금지
+"""
+        if is_anxious:
+            rules += "\n⑦ 주의: 사용자가 불안 상태입니다. 공포 강화 금지. 이해 → 안정 → 방향 순으로 답변."
+
+        if mem_ctx:
+            rules += f"\n\n{mem_ctx}"
+
+        return rules.strip()
+
+
+# ══════════════════════════════════════════════════════════
+#  🧠 Intent 엔진 — 질문 한 줄 → 인생 주제 자동 판별
+#  감정 > 상황 > 키워드 우선순위로 판단
+# ══════════════════════════════════════════════════════════
+
+class IntentEngine:
+    """
+    5단계 파이프라인:
+    ① 감정 감지 → ② 키워드 추출 → ③ 상황 패턴 매칭
+    → ④ 인생 주제 결정 → ⑤ 상담 방향 설정
+    """
+
+    # ① 감정 5분류 키워드
+    _EMOTION_MAP = {
+        "불안": ["걱정", "불안", "두렵", "무서", "어떡해", "될까", "맞을까", "해도 될까"],
+        "혼란": ["답답", "모르겠", "뭘 해야", "어떻게", "헷갈", "방향", "막막", "의미를 모"],
+        "기대": ["설레", "잘 될", "기대", "시작하고 싶", "해보고 싶", "될 것 같", "좋은 시기"],
+        "후회": ["후회", "잘못", "그때", "돌아가고", "실수", "아쉽"],
+        "결심": ["하기로", "결심", "바꾸고", "시작", "도전", "이제는", "새로운 시작"],
+        "피로": ["지쳐", "힘들어", "지겨", "쉬고 싶", "포기", "소진"],
+    }
+
+    # ② 키워드 → 주제 그룹
+    _KEYWORD_GROUPS = {
+        "CAREER": ["회사", "이직", "직장", "취업", "그만", "퇴사", "진로", "일", "커리어",
+                   "승진", "사직", "업무", "직업", "전직", "아르바이트", "프리랜서"],
+        "WEALTH": ["돈", "투자", "수입", "사업", "재물", "재정", "빚", "월급", "부동산",
+                   "주식", "창업", "경제", "수익", "손해", "금전"],
+        "LOVE":   ["연애", "남자친", "여자친", "좋아하는 사람", "헤어", "이별", "만남", "결혼",
+                   "소개팅", "짝사랑", "썸", "데이트", "사귀", "다시 만날", "인연"],
+        "RELATION":["친구 관계", "인간관계", "가족", "부모", "형제", "동료", "상사",
+                    "갈등", "다툼", "배신", "화해", "외로", "상처를 많이"],
+        "TIMING": ["언제", "시기", "때", "올해", "내년", "몇 년", "좋은 시기",
+                   "기다려야", "서둘러야", "운세", "흐름", "나아질", "좋아질"],
+    }
+
+    # ③ 상황 패턴 → 주제 (키워드 없어도 감지)
+    _SITUATION_PATTERNS = {
+        "제자리 같":    "SELF",
+        "계속 안 풀려": "TIMING",
+        "노력해도 안":  "TIMING",
+        "선택을 못":    "SELF",
+        "변화가 올 것": "TIMING",
+        "뭔가 바뀔":    "TIMING",
+        "새로운 시작":  "SELF",
+        "의미를 모르":  "SELF",
+        "왜 사나":      "SELF",
+        "인생이 뭔지":  "SELF",
+        "나는 왜":      "SELF",
+        "왜 항상":      "SELF",
+        "관계가 지쳐":  "RELATION",
+        "사람이 지쳐":  "RELATION",
+        "상처를 많이":  "RELATION",
+        "돈이 계속 나": "WEALTH",
+        "돈이 안":      "WEALTH",
+        "미래가 불안":  "TIMING",
+        "좋아하는 사람이 있": "LOVE",
+        "다시 만날":    "LOVE",
+        "좋은 시기인가": "TIMING",
+    }
+
+    # 동점 시 우선순위 (구체적 주제 > 범용 주제)
+    _TIEBREAK_PRIORITY = ["LOVE", "RELATION", "CAREER", "WEALTH", "TIMING", "SELF"]
+
+    # ⑤ 주제별 AI 상담 방향
+    _TOPIC_DIRECTION = {
+        "CAREER":   "직업운과 대운 흐름을 중심으로, 변화 시기와 구체적 행동 조언을 포함해 상담하세요.",
+        "WEALTH":   "재물운과 현재 기운 흐름을 분석하여, 금전 판단과 시기 조언을 중심으로 상담하세요.",
+        "LOVE":     "감정·인연 흐름을 먼저 공감하고, 관계 패턴과 만남 시기를 중심으로 상담하세요.",
+        "RELATION": "관계 피로도를 먼저 인정하고, 인간관계 패턴과 거리두기 조언을 포함해 상담하세요.",
+        "SELF":     "인생 방향성과 자아 흐름을 중심으로, 현재 시기의 의미와 앞으로의 방향을 상담하세요.",
+        "TIMING":   "현재 운세 흐름(대운·세운)을 먼저 설명하고, 행동 타이밍과 준비 방법을 조언하세요.",
+    }
+    _TOPIC_KR = {
+        "CAREER": "직업/진로", "WEALTH": "재물/사업", "LOVE": "연애/결혼",
+        "RELATION": "인간관계", "SELF": "자아/방향성", "TIMING": "운세 흐름",
+    }
+
+    @staticmethod
+    def analyze(user_input: str) -> dict:
+        """
+        사용자 입력 분석 → 의도 딕셔너리 반환
+        {emotion, topic, confidence, direction, topic_kr}
+        감정 > 상황 패턴 > 키워드 우선순위
+        """
+        text = user_input.strip()
+
+        # ① 감정 감지
+        detected_emotion = "혼란"  # default
+        for emotion, keywords in IntentEngine._EMOTION_MAP.items():
+            if any(kw in text for kw in keywords):
+                detected_emotion = emotion
+                break
+
+        # ② 키워드 점수 계산 (긴 키워드 가중치 2배)
+        scores = {topic: 0 for topic in IntentEngine._KEYWORD_GROUPS}
+        for topic, keywords in IntentEngine._KEYWORD_GROUPS.items():
+            for kw in keywords:
+                if kw in text:
+                    scores[topic] += (2 if len(kw) >= 4 else 1)
+
+        # ③ 상황 패턴 매칭 (가장 강한 신호 +5)
+        for pattern, topic in IntentEngine._SITUATION_PATTERNS.items():
+            if pattern in text:
+                scores[topic] = scores.get(topic, 0) + 5
+                break
+
+        # ④ 주제 결정 — 동점 시 우선순위 적용
+        max_score = max(scores.values())
+        if max_score == 0:
+            chosen_topic = "SELF"
+            confidence = 60
+        else:
+            top_topics = [t for t in IntentEngine._TIEBREAK_PRIORITY
+                          if scores.get(t, 0) == max_score]
+            chosen_topic = top_topics[0] if top_topics else "SELF"
+            total = sum(scores.values()) or 1
+            raw_conf = round(scores[chosen_topic] / total * 100)
+            confidence = 65 if raw_conf == 50 else raw_conf
+
+        # 관심 기억 업데이트 (트리거 규칙)
+        try:
+            topic_kr = IntentEngine._TOPIC_KR.get(chosen_topic, "")
+            for interest_topic in SajuMemory.INTEREST_TOPICS:
+                if interest_topic in topic_kr:
+                    SajuMemory.record_interest(interest_topic)
+        except Exception:
+            pass
+
+        return {
+            "emotion":    detected_emotion,
+            "topic":      chosen_topic,
+            "topic_kr":   IntentEngine._TOPIC_KR.get(chosen_topic, chosen_topic),
+            "confidence": confidence,
+            "direction":  IntentEngine._TOPIC_DIRECTION.get(chosen_topic, ""),
+            "scores":     scores,
+        }
+
+    @staticmethod
+    def build_intent_prompt(user_input: str) -> str:
+        """분석 결과를 AI 프롬프트에 주입할 문자열로 변환"""
+        result = IntentEngine.analyze(user_input)
+        return (
+            f"[Intent 분석]\n"
+            f"- 감정 상태: {result['emotion']}\n"
+            f"- 인생 주제: {result['topic_kr']} (확신도 {result['confidence']}%)\n"
+            f"- 상담 방향: {result['direction']}\n"
+        )
+
+    @staticmethod
+    def get_topic_badge(user_input: str) -> str:
+        """UI에 표시할 주제 배지 HTML 반환"""
+        result = IntentEngine.analyze(user_input)
+        emotion_icon = {
+            "불안": "😰", "혼란": "🤔", "기대": "✨",
+            "후회": "😔", "결심": "💪", "피로": "😮‍💨",
+        }.get(result["emotion"], "💬")
+        return (
+            f"<span style='background:#000;color:#fff;padding:3px 10px;"
+            f"border-radius:12px;font-size:11px;font-weight:700'>"
+            f"{emotion_icon} {result['topic_kr']}</span>"
+        )
+
 
 st.set_page_config(
     page_title="🪐 만신(萬神) 사주 천명풀이",
@@ -1299,7 +1773,8 @@ EXTRA_SINSAL_DATA = {
     "화개": {"map":{"寅午戌":"戌","申子辰":"辰","巳酉丑":"丑","亥卯未":"未"},"name":"화개살(華蓋殺)","icon":"🎭","desc":"고독하지만 빛나는 별의 기운. 예술·종교·철학 분야에서 독보적 경지. 고독 속에서 탁월한 창의력이 발현됩니다.","remedy":"처방: 고독을 두려워하지 말고 내공을 쌓으십시오. 전문가·예술가·종교인의 상징!"},
 }
 
-def get_extra_sinsal(pils):
+def _get_extra_sinsal_v1(pils):
+    """기본 신살 감지 (원진/귀문/백호/양인/화개) - 내부용. 전체버전은 get_extra_sinsal() 사용"""
     ilgan = pils[1]["cg"]
     jjs = [p["jj"] for p in pils]
     jj_set = set(jjs)
@@ -1331,6 +1806,157 @@ def get_extra_sinsal(pils):
             result.append({"name":f"{d['name']} [{hg_jj}]","icon":d["icon"],"desc":d["desc"],"remedy":d["remedy"],"found":hg_jj})
             break
     return result
+
+
+# ══════════════════════════════════════════════════
+#  🗓️ 만세력 엔진 (ManseCalendarEngine)
+#  일진 · 절기 · 길일흉일 계산
+# ══════════════════════════════════════════════════
+
+# 24절기 기본 날짜 (연도별 미세 차이는 A단계 라이브러리로 정밀화)
+_JEOLGI_BASE = [
+    (1,  6,  "소한(小寒)"),  (1, 20, "대한(大寒)"),
+    (2,  4,  "입춘(立春)"),  (2, 19, "우수(雨水)"),
+    (3,  6,  "경칩(驚蟄)"),  (3, 21, "춘분(春分)"),
+    (4,  5,  "청명(淸明)"),  (4, 20, "곡우(穀雨)"),
+    (5,  6,  "입하(立夏)"),  (5, 21, "소만(小滿)"),
+    (6,  6,  "망종(芒種)"),  (6, 21, "하지(夏至)"),
+    (7,  7,  "소서(小暑)"),  (7, 23, "대서(大暑)"),
+    (8,  8,  "입추(立秋)"),  (8, 23, "처서(處暑)"),
+    (9,  8,  "백로(白露)"),  (9, 23, "추분(秋分)"),
+    (10, 8,  "한로(寒露)"),  (10,23, "상강(霜降)"),
+    (11, 7,  "입동(立冬)"),  (11,22, "소설(小雪)"),
+    (12, 7,  "대설(大雪)"),  (12,22, "동지(冬至)"),
+]
+
+# 길일/흉일 기준 — 일진의 천간 기준 간단 판별
+_GIL_CG  = {"甲","丙","戊","庚","壬"}          # 양간 = 기본 길일
+_HYUNG_JJ = {"丑","刑","巳","申","寅"}          # 삼형살 지지
+_GIL_JJ  = {"子","卯","午","酉","亥","寅"}      # 귀인 지지 포함
+
+class ManseCalendarEngine:
+    """
+    만세력 부가 기능 엔진
+    - 일진(日辰) 계산
+    - 24절기 달력
+    - 길일/흉일 판별
+    """
+
+    # ── 일진 계산 ─────────────────────────────────────
+    @staticmethod
+    def get_iljin(year: int, month: int, day: int) -> dict:
+        """특정 날짜의 일진(日辰) 반환 {cg, jj, str, oh}"""
+        from datetime import date as _date
+        base = _date(2000, 1, 1)   # 甲子일 기준점 (2000-01-01 = 甲辰년 庚戌월 甲子일)
+        target = _date(year, month, day)
+        diff = (target - base).days
+        # 2000-01-01은 甲子일 — 60갑자 인덱스 0
+        idx = (diff + 0) % 60
+        cg = CG[idx % 10]
+        jj = JJ[idx % 12]
+        oh = OH.get(cg, "")
+        return {"cg": cg, "jj": jj, "str": cg + jj, "oh": oh, "idx": idx}
+
+    @staticmethod
+    def get_today_iljin() -> dict:
+        """오늘 일진 반환"""
+        today = datetime.now()
+        return ManseCalendarEngine.get_iljin(today.year, today.month, today.day)
+
+    # ── 24절기 달력 ────────────────────────────────────
+    @staticmethod
+    def get_jeolgi_calendar(year: int) -> list:
+        """
+        해당 연도의 24절기 목록 반환
+        [{month, day, name, date_str}, ...]
+        A단계 라이브러리 있으면 정밀 시각 포함
+        """
+        result = []
+        for (m, d, name) in _JEOLGI_BASE:
+            # 연도별 절기 날짜는 1~2일 오차 있음 (A단계에서 정밀화)
+            try:
+                dt = datetime(year, m, d)
+                result.append({
+                    "month": m,
+                    "day":   d,
+                    "name":  name,
+                    "date_str": f"{year}.{m:02d}.{d:02d}",
+                    "dt": dt,
+                })
+            except ValueError:
+                pass
+        # 날짜순 정렬
+        result.sort(key=lambda x: (x["month"], x["day"]))
+        return result
+
+    @staticmethod
+    def get_month_jeolgi(year: int, month: int) -> list:
+        """특정 월의 절기만 반환"""
+        return [j for j in ManseCalendarEngine.get_jeolgi_calendar(year)
+                if j["month"] == month]
+
+    # ── 길흉 판별 ──────────────────────────────────────
+    @staticmethod
+    def get_gil_hyung(year: int, month: int, day: int) -> dict:
+        """
+        날짜의 길흉 판별
+        {grade: '길일'/'보통'/'주의', reason: str, color: '#...'}
+        """
+        iljin = ManseCalendarEngine.get_iljin(year, month, day)
+        cg, jj = iljin["cg"], iljin["jj"]
+
+        score = 0
+        reasons = []
+
+        if cg in _GIL_CG:
+            score += 1
+        if jj in _GIL_JJ:
+            score += 1
+            reasons.append("귀인운")
+        if jj in _HYUNG_JJ:
+            score -= 2
+            reasons.append("삼형주의")
+
+        # 일진별 특수 길일
+        special_gil = {"甲子", "甲午", "丙子", "庚子", "壬子",
+                        "甲申", "丙寅", "庚午", "壬申"}
+        if iljin["str"] in special_gil:
+            score += 2
+            reasons.append("천을귀인")
+
+        if score >= 2:
+            return {"grade": "길일 ⭐", "reason": " · ".join(reasons) or "양기 충만",
+                    "color": "#1a7a1a", "bg": "#f0fff0"}
+        elif score <= -1:
+            return {"grade": "주의", "reason": " · ".join(reasons) or "삼형 주의",
+                    "color": "#cc0000", "bg": "#fff0f0"}
+        else:
+            return {"grade": "보통", "reason": "무난한 하루",
+                    "color": "#444444", "bg": "#ffffff"}
+
+    # ── 월별 달력 데이터 생성 ──────────────────────────
+    @staticmethod
+    def get_month_calendar(year: int, month: int) -> list:
+        """
+        해당 월의 전체 날짜별 데이터 반환
+        [{date, iljin, gil_hyung, jeolgi_name or None}, ...]
+        """
+        import calendar as _cal
+        _, days_in_month = _cal.monthrange(year, month)
+        jeolgi_this_month = {j["day"]: j["name"]
+                             for j in ManseCalendarEngine.get_month_jeolgi(year, month)}
+        result = []
+        for day in range(1, days_in_month + 1):
+            iljin    = ManseCalendarEngine.get_iljin(year, month, day)
+            gil      = ManseCalendarEngine.get_gil_hyung(year, month, day)
+            jeolgi   = jeolgi_this_month.get(day)
+            result.append({
+                "day":      day,
+                "iljin":    iljin,
+                "gil":      gil,
+                "jeolgi":   jeolgi,
+            })
+        return result
 
 
 # ══════════════════════════════════════════════════
@@ -2159,6 +2785,15 @@ _AI_SANDBOX_HEADER = """
 [허용 행동]
 - 제공된 DATA를 바탕으로 해석·서술·조언만 수행
 
+[답변 길이 & 톤 고정 규칙] ← 반드시 준수
+- 길이: 250~400자 (한국어 기준). 너무 짧거나 너무 길면 안 됨
+- 구조: 3단락만 허용
+  ① 공감 문장 (1~2줄) — "지금 이 시기에…"
+  ② 사주 분석 핵심 (2~3줄) — 운세 흐름 + 원인
+  ③ 행동 조언 (1줄) — "지금 할 수 있는 한 가지"
+- 문체: 상담가 말투. 존댓말. 마침표로 끝내기
+- 금지: 번호 목록, 불릿(•), 헤더(##), 표, 코드블록
+
 위 규칙을 위반하면 시스템이 해당 내용을 자동 차단합니다.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -2171,8 +2806,10 @@ def get_ai_interpretation(prompt_text, api_key="", system="당신은 40년 경�
     """
     import requests
 
-    # Sandbox 헤더를 시스템 프롬프트에 강제 주입
-    sandboxed_system = _AI_SANDBOX_HEADER + system
+    # Sandbox 헤더 + Intent 엔진 + 판단 규칙 12개를 시스템 프롬프트에 강제 주입
+    intent_prompt = IntentEngine.build_intent_prompt(prompt_text)
+    rules_prompt  = SajuJudgmentRules.build_rules_prompt(prompt_text)
+    sandboxed_system = _AI_SANDBOX_HEADER + system + "\n\n" + intent_prompt + "\n\n" + rules_prompt
 
     # 메시지 구성
     messages = [{"role": "system", "content": sandboxed_system}]
@@ -2199,7 +2836,8 @@ def get_ai_interpretation(prompt_text, api_key="", system="당신은 40년 경�
                                      headers=headers, json=data, timeout=60)
                 if resp.status_code == 200:
                     raw = resp.json()["choices"][0]["message"]["content"]
-                    return validate_ai_output(raw)
+                    # 사후 필터: 계산 침범 제거 + 판단 규칙 12개 적용
+                    return SajuJudgmentRules.apply_all(validate_ai_output(raw))
                 else:
                     return f"[Groq 오류 {resp.status_code}]: {resp.text[:200]}"
             else:
@@ -6099,15 +6737,7 @@ def render_lucky_kit(yong_oh):
     """, unsafe_allow_html=True)
 
 
-def b3_track_behavior(action):
-    """Brain 3: 사용자 행동 패턴 추적 및 사주 맞춤형 고도화 데이터 수집"""
-    if "user_behavior" not in st.session_state:
-        st.session_state["user_behavior"] = []
-    st.session_state["user_behavior"].append({
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "action": action
-    })
-
+# [중복 제거] b3_track_behavior 전체 구현은 아래 Brain3 섹션에 있음
 
 def apply_mansin_filter(text):
     """만신 AI 환각 방지 및 말투 보정 필터"""
@@ -9108,8 +9738,8 @@ o 보통 달: 꾸준히 계획대로 진행하십시오
         return f"Error in narrative generation: {e}"
 
 
-def tab_ai_chat(pils, name, birth_year=1990, gender="남", api_key="", groq_key=""):
-    """ AI 채팅 인터페이스 (Master Version) """
+def tab_ai_chat_prophet(pils, name, birth_year=1990, gender="남", api_key="", groq_key=""):
+    """ AI 채팅 인터페이스 - Prophet Mode (예언자 6단계 판독 특화 버전) """
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
 
@@ -11635,6 +12265,161 @@ def menu7_ai(pils, name, birth_year, gender, api_key, groq_key=""):
     tab_ai_chat(pils, name, birth_year, gender, api_key, groq_key=groq_key)
 
 
+def menu12_manse(pils=None, birth_year=1990, gender="남"):
+    """📅 만세력 탭 —— 일진·절기·길일달력 통합 UI"""
+    today = datetime.now()
+
+    st.markdown("""
+    <div style='background:#000;color:#fff;border-radius:12px;
+                padding:16px 20px;margin-bottom:14px'>
+        <div style='font-size:20px;font-weight:900;letter-spacing:2px'>
+            📅 만세력 · 일진 · 절기 달력
+        </div>
+        <div style='font-size:12px;opacity:0.7;margin-top:4px'>
+            일진(日辰) · 24절기 · 길일/흥일 자동 표시
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # 오늘 일진 헤더
+    today_iljin = ManseCalendarEngine.get_today_iljin()
+    today_gil   = ManseCalendarEngine.get_gil_hyung(today.year, today.month, today.day)
+    st.markdown(f"""
+    <div style='background:{today_gil["bg"]};border:2px solid {today_gil["color"]};
+                border-radius:12px;padding:14px 20px;margin-bottom:14px;
+                display:flex;justify-content:space-between;align-items:center'>
+      <div>
+        <div style='font-size:13px;color:#888;font-weight:700'>TODAY 일진</div>
+        <div style='font-size:28px;font-weight:900;color:#000;letter-spacing:3px'>
+            {today_iljin["str"]}
+        </div>
+        <div style='font-size:12px;color:#555'>{today_iljin["oh"]} 일</div>
+      </div>
+      <div style='text-align:right'>
+        <div style='font-size:18px;font-weight:800;color:{today_gil["color"]}'>
+            {today_gil["grade"]}
+        </div>
+        <div style='font-size:12px;color:#777'>{today_gil["reason"]}</div>
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    # 월 선택
+    col_y, col_m, _ = st.columns([1, 1, 2])
+    with col_y:
+        sel_year  = st.selectbox("연도", list(range(2020, 2031)),
+                                  index=today.year - 2020, label_visibility="collapsed")
+    with col_m:
+        sel_month = st.selectbox("월", list(range(1, 13)),
+                                  index=today.month - 1, label_visibility="collapsed",
+                                  format_func=lambda m: f"{m}월")
+
+    # 절기 배지
+    jeolgi_this = ManseCalendarEngine.get_month_jeolgi(sel_year, sel_month)
+    if jeolgi_this:
+        jeolgi_html = " &nbsp;".join(
+            f"<span style='background:#000;color:#fff;padding:2px 8px;"
+            f"border-radius:10px;font-size:11px;font-weight:700'>"
+            f"{j['day']}일 {j['name']}</span>"
+            for j in jeolgi_this
+        )
+        st.markdown(f"<div style='margin:6px 0 10px'>이달 절기: {jeolgi_html}</div>",
+                    unsafe_allow_html=True)
+
+    # 달력 그리드
+    import calendar as _cal
+    cal_data = ManseCalendarEngine.get_month_calendar(sel_year, sel_month)
+    weekdays = ["月","火","水","木","金","土","日"]
+    first_wd, _ = _cal.monthrange(sel_year, sel_month)
+
+    # 헤더 행
+    hdr = "".join(
+        f"<td style='text-align:center;font-weight:800;font-size:12px;"
+        f"color:{'#cc0000' if i==6 else '#0033cc' if i==5 else '#000'}'>{w}</td>"
+        for i, w in enumerate(weekdays)
+    )
+    rows = f"<tr>{hdr}</tr><tr>"
+
+    # 빈 셀 (1일 이전)
+    for _ in range(first_wd):
+        rows += "<td></td>"
+
+    for entry in cal_data:
+        d   = entry["day"]
+        ilj = entry["iljin"]
+        gil = entry["gil"]
+        jeo = entry["jeolgi"]
+        wd  = (first_wd + d - 1) % 7
+
+        day_color = "#cc0000" if wd == 6 else "#0033cc" if wd == 5 else "#000"
+        bg = gil["bg"]
+        border = f"2px solid {gil['color']}" if gil["grade"] != "보통" else "1px solid #ddd"
+        is_today = (d == today.day and sel_month == today.month and sel_year == today.year)
+        if is_today:
+            bg = "#fffde7"
+            border = "2px solid #f9a825"
+
+        jeolgi_label = f"<div style='font-size:8px;color:#7b1fa2;font-weight:700'>{jeo.split('(')[0]}</div>" if jeo else ""
+        rows += (
+            f"<td style='text-align:center;padding:4px 2px;border:{border};"
+            f"background:{bg};border-radius:6px;vertical-align:top;min-width:38px'>"
+            f"<div style='font-size:12px;font-weight:700;color:{day_color}'>{d}</div>"
+            f"<div style='font-size:11px;font-weight:800;color:#000'>{ilj['str']}</div>"
+            f"{jeolgi_label}"
+            f"</td>"
+        )
+        if wd == 6 and d != cal_data[-1]["day"]:
+            rows += "</tr><tr>"
+
+    rows += "</tr>"
+    st.markdown(
+        f"<table style='width:100%;border-collapse:separate;border-spacing:3px'>{rows}</table>",
+        unsafe_allow_html=True
+    )
+
+    # 길일/주의일 요약 바
+    gil_days  = [e["day"] for e in cal_data if e["gil"]["grade"].startswith("길일")]
+    warn_days = [e["day"] for e in cal_data if e["gil"]["grade"] == "주의"]
+    st.markdown(f"""
+    <div style='margin-top:12px;padding:10px 14px;background:#f8f8f8;
+                border-radius:8px;font-size:12px'>
+        <span style='color:#1a7a1a;font-weight:700'>⭐ 길일:</span>
+        {', '.join(str(d)+'일' for d in gil_days) or '없음'} &nbsp;&nbsp;
+        <span style='color:#cc0000;font-weight:700'>⚠️ 주의:</span>
+        {', '.join(str(d)+'일' for d in warn_days) or '없음'}
+    </div>""", unsafe_allow_html=True)
+
+    # 날짜 선택 사주 분석
+    st.markdown("---")
+    st.markdown("**🔮 특정 날짜 사주 분석**", unsafe_allow_html=False)
+    sel_day = st.number_input("날짜 선택",
+                               min_value=1, max_value=len(cal_data),
+                               value=today.day if sel_month == today.month and sel_year == today.year
+                                     else 1,
+                               step=1, label_visibility="visible")
+    if st.button("🔮 이 날짜의 일진 사주 분석", use_container_width=True):
+        iljin_sel = ManseCalendarEngine.get_iljin(sel_year, sel_month, int(sel_day))
+        gil_sel   = ManseCalendarEngine.get_gil_hyung(sel_year, sel_month, int(sel_day))
+        pils_day  = SajuCoreEngine.get_pillars(sel_year, sel_month, int(sel_day), 12, gender)
+        yp = pils_day[0]["str"]; mp = pils_day[2]["str"]
+        dp = pils_day[1]["str"]
+        st.markdown(f"""
+        <div style='background:#fff;border:2px solid #000;border-radius:12px;
+                    padding:16px;margin-top:10px'>
+            <div style='font-size:16px;font-weight:900;margin-bottom:8px'>
+                {sel_year}년 {sel_month}월 {int(sel_day)}일 — {iljin_sel["str"]}일
+                &nbsp;<span style='color:{gil_sel["color"]}'>{gil_sel["grade"]}</span>
+            </div>
+            <div style='display:flex;gap:12px;flex-wrap:wrap'>
+                <div style='background:#f5f5f5;padding:8px 16px;border-radius:8px;
+                            font-size:14px;font-weight:700'>年 {yp}</div>
+                <div style='background:#f5f5f5;padding:8px 16px;border-radius:8px;
+                            font-size:14px;font-weight:700'>月 {mp}</div>
+                <div style='background:#000;color:#fff;padding:8px 16px;border-radius:8px;
+                            font-size:14px;font-weight:700'>日 {dp}</div>
+            </div>
+            <div style='font-size:12px;color:#777;margin-top:8px'>{gil_sel["reason"]}</div>
+        </div>""", unsafe_allow_html=True)
+
+
 def main():
     # ── 페이지 설정 ─────────────────────────────────
     # (전역 CSS는 파일 상단 st.markdown으로 이미 적용됨)
@@ -11844,6 +12629,47 @@ def main():
         birth_hour2 = st.session_state.get("birth_hour", 12)
         
         if pils:
+            # ── 🧠 기억 시스템 자동 업데이트 ─────────────────
+            try:
+                # ① 정체 기억 업데이트 (사주 분석 시점에 1회)
+                ilgan_char  = pils[1]["cg"] if pils and len(pils) > 1 else ""
+                gyeok_data  = get_gyeokguk(pils)
+                gyeok_name  = gyeok_data.get("격국명", "") if gyeok_data else ""
+                str_info    = get_strength_info(pils)
+                sn_val      = str_info.get("신강신약", "") if str_info else ""
+                ys_data     = calc_yongshin(pils, birth_year, gender)
+                ys_list     = ys_data.get("종합_용신", []) if ys_data else []
+                core_trait  = f"{ilgan_char} 일간 / {sn_val} / {gyeok_name}"
+                SajuMemory.update_identity(ilgan_char, gyeok_name, core_trait, ys_list)
+
+                # ③ 흐름 기억 업데이트 (현재 대운 기반)
+                dw_list = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
+                cur_year = datetime.now().year
+                cur_dw = next(
+                    (d for d in dw_list if d.get("시작연도", 0) <= cur_year <= d.get("종료연도", 9999)),
+                    None
+                )
+                if cur_dw:
+                    turning = calc_turning_point(pils, birth_year, gender, cur_year)
+                    stage = turning.get("intensity", "안정기") if turning and turning.get("is_turning") else "안정기"
+                    period = f"{cur_dw.get('시작연도', '')}~{cur_dw.get('종료연도', '')}"
+                    SajuMemory.update_flow(stage, period, cur_dw.get("str", ""))
+            except Exception:
+                pass  # 기억 업데이트 실패해도 앱은 계속 실행
+
+            # ── 🗣 기억 기반 개인화 인사말 ──────────────────
+            try:
+                intro_msg = SajuMemory.get_personalized_intro()
+                if intro_msg:
+                    st.markdown(f"""
+                    <div style="background:#f0f7ff;border-left:5px solid #000000;
+                                border-radius:8px;padding:10px 16px;margin:8px 0;
+                                font-size:13px;color:#000000;font-weight:600">
+                        🧠 {intro_msg}
+                    </div>""", unsafe_allow_html=True)
+            except Exception:
+                pass
+
             # 이름 + 추가정보 배너
             display_name = name if name else "내담자"
             marriage_icon = {"미혼":"💚","기혼":"💑","이혼/별거":"💔","사별":"🖤","재혼":"🌸"}.get(marriage_status,"")
@@ -11899,6 +12725,7 @@ def main():
                 "☀️ 일일 운세",
                 "📅 월별 운세",
                 "🎊 신년 운세",
+                "🗓️ 만세력",
             ])
 
             with tabs[0]:
@@ -11923,6 +12750,8 @@ def main():
                 menu10_monthly(pils, name, birth_year, gender)
             with tabs[10]:
                 menu11_yearly(pils, name, birth_year, gender)
+            with tabs[11]:
+                menu12_manse(pils, birth_year, gender)
 
 if __name__ == "__main__":
     main()
