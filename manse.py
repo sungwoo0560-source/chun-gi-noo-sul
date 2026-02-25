@@ -185,9 +185,12 @@ def solar_to_lunar(solar_date):
     return (solar_date.year, solar_date.month, solar_date.day, False)
 
 
-from reportlab.lib.units import inch
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
+try:
+    from reportlab.lib.units import inch
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.pdfbase import pdfmetrics
+except ImportError:
+    pass  # reportlab 없으면 PDF 기능 비활성화 (REPORTLAB_AVAILABLE로 이미 제어됨)
 
 
 # ══════════════════════════════════════════════════════════
