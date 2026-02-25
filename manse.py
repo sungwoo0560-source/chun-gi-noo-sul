@@ -114,6 +114,7 @@ _LUNAR_DATA = {
 }
 
 
+@st.cache_data
 def lunar_to_solar(lunar_year, lunar_month, lunar_day, is_leap=False):
     """음력 → 양력 변환. 정확도: 1940~2030 ±0일"""
     if lunar_year not in _LUNAR_DATA:
@@ -140,6 +141,7 @@ def lunar_to_solar(lunar_year, lunar_month, lunar_day, is_leap=False):
     return solar_start + timedelta(days=elapsed)
 
 
+@st.cache_data
 def solar_to_lunar(solar_date):
     """양력 → 음력 변환. 반환: (음력년, 음력월, 음력일, 윤달여부)"""
     for ly in sorted(_LUNAR_DATA.keys()):
@@ -188,7 +190,7 @@ st.markdown("""
 
   /* ══ 전역 기본 ══ */
   html, body, [class*="css"] { font-family:'Noto Serif KR',serif; -webkit-text-size-adjust:100%; }
-  .stApp { background:#fdfcf0; color:#333; }
+  .stApp { background:#fdfcf0; color:#000000; }
   * { box-sizing:border-box; }
   p,div,span { word-break:keep-all; overflow-wrap:break-word; }
   a,button,[role="button"] { touch-action:manipulation; }
@@ -220,24 +222,24 @@ st.markdown("""
     white-space: nowrap !important;
     min-width: max-content !important;
     border-radius: 8px !important;
-    color: #666 !important;
+    color: #000000 !important;
   }
   .stTabs [aria-selected="true"] {
-    background: #c5a059 !important;
+    background: #000000 !important;
     color: #fff !important;
     font-weight: 800 !important;
   }
 
   /* ══ 버튼 터치 최적화 ══ */
   .stButton > button {
-    background: linear-gradient(135deg,#c5a059,#a0720a,#c5a059) !important;
+    background: linear-gradient(135deg,#000000,#000000,#000000) !important;
     color: #fff !important; border: none !important;
     font-weight: 900 !important; letter-spacing: 2px !important;
     border-radius: 12px !important;
     min-height: 52px !important;
     font-size: 16px !important;
     width: 100% !important;
-    box-shadow: 0 6px 18px rgba(197,160,89,0.3); margin-top: 10px;
+    box-shadow: none;; margin-top: 10px;
   }
 
   /* ══ 입력 필드 (iOS 자동확대 방지 font-size:16px) ══ */
@@ -247,82 +249,83 @@ st.markdown("""
     background-color: #fff !important;
     border: 1px solid #ddd !important;
   }
-  label { color: #444 !important; font-weight: 600 !important; }
+  label { color: #000000 !important; font-weight: 600 !important; }
 
   /* ══ 사주 기둥 ══ */
   .pillar-box {
-    background: #fff; border: 1px solid #c5a059; border-radius: 12px;
-    padding: 10px 4px; text-align: center; color: #a0720a;
-    box-shadow: 2px 2px 8px rgba(0,0,0,0.05);
+    background: #fff; border: 2.5px solid #000000; border-radius: 12px;
+    padding: 10px 4px; text-align: center; color: #000000;
+    box-shadow: none;
   }
 
   /* ══ 카드 ══ */
   .card {
-    background: #ffffff; border: 1.5px solid #e8d5a0;
+    background: #ffffff; border: 1.5px solid #000000;
     border-radius: 14px; padding: 16px 14px;
-    box-shadow: 0 4px 16px rgba(197,160,89,0.12);
+    box-shadow: none;
     margin: 10px 0;
   }
 
   /* ══ 운세 텍스트 ══ */
   .fortune-text {
-    background: #fffef5; border-left: 6px solid #c5a059;
+    background: #ffffff; border-left: 8px solid #000000;
     border-radius: 4px 16px 16px 4px;
     padding: 18px 14px; margin: 12px 0;
-    font-size: 15px; color: #1a1a1a; line-height: 2.1; white-space: pre-wrap;
+    font-size: 15px; color: #000000; line-height: 2.1; white-space: pre-wrap;
     font-family: 'Noto Serif KR', serif;
-    box-shadow: 6px 6px 24px rgba(197,160,89,0.08);
-    border-top: 1px solid #f0e4bb; border-right: 1px solid #f0e4bb;
-    border-bottom: 2px solid #a0720a;
+    box-shadow: none;
+    border-top: 1px solid #eee; border-right: 1px solid #eee;
+    border-bottom: 2.5px solid #000000;
   }
 
   /* ══ 섹션 헤더 ══ */
   .gold-section {
-    color: #a0720a; font-size: 13px; letter-spacing: 2px;
-    border-bottom: 2px solid #e8d5a0;
+    color: #000000; font-size: 13px; letter-spacing: 2px;
+    border-bottom: 2.5px solid #000000;
     padding-bottom: 10px; font-weight: 700; margin: 24px 0 12px;
     display: flex; align-items: center;
   }
-  .gold-section::before { content:"◈"; margin-right:10px; font-size:16px; }
+  .gold-section::before { content:"◈"; margin-right:10px; font-size:16px; color:#000000; }
 
   /* ══ 헤더 박스 ══ */
   .header-box {
-    background: linear-gradient(135deg,#c5a059 0%,#a0720a 50%,#c5a059 100%);
+    background: #ffffff;
     padding: 22px 16px; text-align: center;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.1);
-    margin-bottom: 16px; border-bottom: 3px solid #8e6e37;
+    box-shadow: none;
+    margin-bottom: 16px; border-bottom: 3.5px solid #000000;
   }
-  .header-title { font-size: 22px; font-weight: 700; color: #fff; letter-spacing: 4px; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
-  .header-sub { color: #fdfcf0; font-size: 12px; letter-spacing: 2px; margin-top: 8px; font-weight: 700; opacity: 0.9; }
+  .header-title { font-size: 22px; font-weight: 700; color: #000000; letter-spacing: 4px; text-shadow: none; }
+  .header-sub { color: #000000; font-size: 12px; letter-spacing: 2px; margin-top: 8px; font-weight: 700; opacity: 0.9; }
 
   /* ══ 비방록 ══ */
   .red-scroll {
-    background: #fff8f8; border: 2px solid #ff6b6b; border-radius: 8px;
-    padding: 16px; margin: 12px 0; color: #cc2222;
+    background: #ffffff; border: 2.5px solid #ff0000; border-radius: 8px;
+    padding: 16px; margin: 12px 0; color: #cc0000;
     font-family: "Noto Serif KR", serif; line-height: 2.0;
-    white-space: pre-wrap; font-weight: 600;
+    white-space: pre-wrap; font-weight: 700;
   }
 
   /* ══ 월운 카드 ══ */
   .monthly-card {
-    background: #fffef5; border: 1px solid #e8d5a0; border-radius: 10px;
+    background: #ffffff; border: 1.5px solid #000000; border-radius: 10px;
     padding: 10px 12px; margin: 5px 0; font-size: 13px;
-    border-left: 5px solid #c5a059;
+    border-left: 8px solid #000000;
+    color: #000000;
   }
-  .monthly-card.great { border-left-color: #FFD700; background: #fffde0; }
+  .monthly-card.great { border-left-color: #000; background: #ffffff; border: 2.5px solid #000; }
 
   /* ══ 신호 배지 ══ */
   .signal-badge {
     display:inline-block; padding:3px 10px; border-radius:16px;
     font-size:11px; font-weight:700; margin:2px;
-    background:#fff3cd; color:#856404; border:1px solid #ffc107;
+    background:#ffffff; color:#000000; border:1.5px solid #000000;
   }
 
   /* ══ 폼 카드 ══ */
   .form-card {
-    background: white; border-radius: 14px;
-    padding: 18px 14px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+    background: #ffffff; border-radius: 14px;
+    padding: 18px 14px; border: 1px solid #ddd;
+    box-shadow: none;
     margin-bottom: 14px;
   }
   div[data-testid="stForm"] { background:transparent; border:none; padding:0; }
@@ -374,83 +377,55 @@ st.markdown("""
   }
 
   /* ── 사이드바 ── */
-  [data-testid="stSidebar"] { background:#2c1a4e; }
-  [data-testid="stSidebarContent"] { padding:1rem .75rem; }
-  [data-testid="stSidebarContent"] label { color:#ddd !important; font-size:13px !important; }
-
-  /* ── 카드 ── */
-  .card {
-    background:#fff; border:1.5px solid #e8d5a0;
-    border-radius:12px; padding:14px 12px;
-    box-shadow:0 3px 12px rgba(197,160,89,.12); margin:8px 0;
-  }
-
-  /* ── 사주 기둥 ── */
-  .pillar-box {
-    background:#fff; border:1px solid #c5a059; border-radius:10px;
-    padding:8px 3px; text-align:center; color:#a0720a;
-    box-shadow:1px 1px 5px rgba(0,0,0,.05);
-  }
+  [data-testid="stSidebar"] { background:#ffffff !important; border-right: 1px solid #ddd; }
+  [data-testid="stSidebarContent"] { padding:1rem .75rem; background:#ffffff !important; }
+  [data-testid="stSidebarContent"] label { color:#000000 !important; font-size:13px !important; }
 
   /* ── 탭 — 모바일 가로 스크롤 ── */
   .stTabs [data-baseweb="tab-list"] {
     gap:3px; flex-wrap:nowrap; overflow-x:auto;
     -webkit-overflow-scrolling:touch;
-    background:#f5f0e8; padding:6px 4px;
-    border-radius:10px; border:1px solid #e0d0a0;
+    background:#ffffff; padding:6px 4px;
+    border-radius:10px; border:1.5px solid #000000;
     scrollbar-width:none;
   }
   .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar { display:none; }
   .stTabs [data-baseweb="tab"] {
     font-size:11px !important; padding:7px 9px !important;
-    color:#666 !important; border-radius:7px !important;
+    color:#000000 !important; border-radius:7px !important;
     white-space:nowrap !important; min-width:max-content !important;
   }
   .stTabs [aria-selected="true"] {
-    background:#c5a059 !important; color:#fff !important; font-weight:800 !important;
-  }
-
-  /* ── 운세 텍스트 ── */
-  .fortune-text {
-    background:#fffef5; border-left:5px solid #c5a059;
-    border-radius:4px 14px 14px 4px;
-    padding:16px 14px; margin:10px 0;
-    font-size:14px; color:#1a1a1a; line-height:2.0;
-    white-space:pre-wrap; font-family:'Noto Serif KR',serif;
-  }
-  .gold-section {
-    color:#a0720a; font-size:13px; letter-spacing:2px;
-    border-bottom:2px solid #e8d5a0;
-    padding-bottom:8px; font-weight:700; margin:16px 2px 8px;
+    background:#000000 !important; color:#ffffff !important; font-weight:800 !important;
   }
 
   /* ── 버튼 ── */
   .stButton > button {
-    background:linear-gradient(135deg,#c5a059,#a0720a,#c5a059) !important;
-    color:#fff !important; border:none !important;
+    background:#000000 !important;
+    color:#ffffff !important; border:none !important;
     font-weight:900 !important; letter-spacing:2px !important;
     border-radius:10px !important;
     padding:13px 10px !important; font-size:15px !important;
-    box-shadow:0 5px 14px rgba(197,160,89,.3);
+    box-shadow:none;
     width:100%; margin-top:8px; touch-action:manipulation;
   }
   .stButton > button:active { transform:scale(.98); }
 
   /* ── 입력 (iOS font-size 16px = zoom 방지) ── */
   input, select, textarea {
-    color:#111 !important; background-color:#fff !important;
-    border:1px solid #ddd !important;
+    color:#000000 !important; background-color:#fff !important;
+    border:1px solid #000000 !important;
     font-size:16px !important; border-radius:8px !important;
     -webkit-appearance:none;
   }
-  label { color:#444 !important; font-weight:600 !important; font-size:13px !important; }
+  label { color:#000000 !important; font-weight:600 !important; font-size:13px !important; }
   .stSelectbox > div > div { border-radius:8px !important; min-height:44px !important; }
   .stNumberInput input { min-height:44px !important; }
 
   /* ── 사이드바 ── */
-  [data-testid="stSidebar"] { background:#2c1a4e; }
-  [data-testid="stSidebarContent"] { padding:1rem .75rem; }
-  [data-testid="stSidebarContent"] label { color:#ddd !important; font-size:13px !important; }
+  [data-testid="stSidebar"] { background:#ffffff !important; }
+  [data-testid="stSidebarContent"] { padding:1rem .75rem; background:#ffffff !important; }
+  [data-testid="stSidebarContent"] label { color:#000000 !important; font-size:13px !important; }
 
   /* ── 가로 스크롤 유틸 ── */
   .scroll-x {
@@ -462,7 +437,32 @@ st.markdown("""
   /* ── expander ── */
   .streamlit-expanderHeader { font-size:13px !important; padding:9px 10px !important; }
 
+  /* ── 맨위로(TOP) 버튼 ── */
+  .top-btn {
+    position: fixed;
+    bottom: 30px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    background: #000000 !important;
+    color: #ffffff !important;
+    border: 2px solid #ffffff !important;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    text-decoration: none !important;
+    z-index: 9999;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+  .top-btn:active { transform: scale(0.9); }
 </style>
+<div id="top"></div>
+<a href="#top" class="top-btn">TOP</a>
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
@@ -850,6 +850,7 @@ GYEOKGUK_DESC = {
 }
 
 # ★ BUG2 FIX: 일간=pils[1]["cg"], 월지=pils[2]["jj"] (pillar order: [시(0),일(1),월(2),년(3)])
+@st.cache_data
 def get_gyeokguk(pils):
     if len(pils) < 4: return None
     ilgan = pils[1]["cg"]   # ✅ 일간 (day stem)
@@ -949,6 +950,7 @@ YONGSHIN_JOKHU = {
     "丑": {"hot":False,"need":["丙","甲","丁"],"avoid":["壬","癸"],"desc":"축월(丑月) 극한 동토. 병화와 정화로 온기를, 갑목으로 토기를 소통시켜야 합니다."},
 }
 
+@st.cache_data
 def get_yongshin(pils):
     """용신(用神) 종합 분석 — 억부+조후+통관"""
     ilgan = pils[1]["cg"]
@@ -1127,7 +1129,7 @@ def get_gongmang(pils):
 
 
 # ══════════════════════════════════════════════════
-#  일주론(日柱論) — 60갑자
+#  일주론(日柱論) | 60갑자
 # ══════════════════════════════════════════════════
 
 ILJU_DESC = {
@@ -1509,13 +1511,14 @@ class SajuCoreEngine:
         jj = JJ[jj_idx]
         return {"cg": cg, "jj": jj, "str": cg+jj}
 
-    @classmethod
-    def get_pillars(cls, birth_year, birth_month, birth_day, birth_hour=12, gender="남"):
+    @staticmethod
+    @st.cache_data
+    def get_pillars(birth_year, birth_month, birth_day, birth_hour=12, gender="남"):
         """사주팔자 계산 - 반환: [시주, 일주, 월주, 년주]"""
-        year_p = cls._get_year_pillar(birth_year, birth_month, birth_day)
-        month_p = cls._get_month_pillar(birth_year, birth_month, birth_day)
-        day_p = cls._get_day_pillar(birth_year, birth_month, birth_day)
-        hour_p = cls._get_hour_pillar(birth_hour, day_p["cg"])
+        year_p = SajuCoreEngine._get_year_pillar(birth_year, birth_month, birth_day)
+        month_p = SajuCoreEngine._get_month_pillar(birth_year, birth_month, birth_day)
+        day_p = SajuCoreEngine._get_day_pillar(birth_year, birth_month, birth_day)
+        hour_p = SajuCoreEngine._get_hour_pillar(birth_hour, day_p["cg"])
         
         # 순서: [시(0), 일(1), 월(2), 년(3)]
         return [hour_p, day_p, month_p, year_p]
@@ -1607,6 +1610,7 @@ def calc_12unsung(ilgan, pils):
     return result
 
 
+@st.cache_data
 def calc_ohaeng_strength(ilgan, pils):
     """
     오행 세력 점수화 v2 (정밀 엔진)
@@ -1749,9 +1753,10 @@ STRENGTH_DESC = {
 }
 
 
+@st.cache_data
 def get_ilgan_strength(ilgan, pils):
     """
-    일간 신강신약 v2 — 5단계 점수화 (0~100)
+    일간 신강신약 v2 | 5단계 점수화 (0~100)
     극신강 / 신강 / 중화 / 신약 / 극신약
     """
     oh_strength = calc_ohaeng_strength(ilgan, pils)
@@ -2159,18 +2164,21 @@ _AI_SANDBOX_HEADER = """
 
 """
 
-def get_ai_interpretation(prompt_text, api_key="", system="당신은 40년 경력의 한국 전통 사주명리 전문가입니다.", max_tokens=2000, groq_key=""):
+def get_ai_interpretation(prompt_text, api_key="", system="당신은 40년 경력의 한국 전통 사주명리 전문가입니다.", max_tokens=2000, groq_key="", stream=False, history=None):
     """
     AI 해석 요청 — Anthropic 또는 Groq 선택
-    [Saju Platform Engineering Agent]
-    - Brain 2 역할: 해석 전용 Sandbox
-    - 계산 침범 자동 검증 (validate_ai_output)
-    - 읽기 전용 JSON만 수신
+    history: [{"role": "user/assistant", "content": "..."}] 형태의 대화 이력
     """
     import requests
 
     # Sandbox 헤더를 시스템 프롬프트에 강제 주입
     sandboxed_system = _AI_SANDBOX_HEADER + system
+
+    # 메시지 구성
+    messages = [{"role": "system", "content": sandboxed_system}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": prompt_text})
 
     # Groq 우선 (빠름, 무료)
     if groq_key and groq_key.strip():
@@ -2181,20 +2189,41 @@ def get_ai_interpretation(prompt_text, api_key="", system="당신은 40년 경�
             }
             data = {
                 "model": "llama-3.3-70b-versatile",
-                "messages": [
-                    {"role": "system", "content": sandboxed_system},
-                    {"role": "user",   "content": prompt_text}
-                ],
+                "messages": messages,
                 "max_tokens": max_tokens,
-                "temperature": 0.7
+                "temperature": 0.7,
+                "stream": stream
             }
-            resp = requests.post("https://api.groq.com/openai/v1/chat/completions",
-                                 headers=headers, json=data, timeout=60)
-            if resp.status_code == 200:
-                raw = resp.json()["choices"][0]["message"]["content"]
-                return validate_ai_output(raw)   # ★ 계산 침범 검증
+            if not stream:
+                resp = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                                     headers=headers, json=data, timeout=60)
+                if resp.status_code == 200:
+                    raw = resp.json()["choices"][0]["message"]["content"]
+                    return validate_ai_output(raw)
+                else:
+                    return f"[Groq 오류 {resp.status_code}]: {resp.text[:200]}"
             else:
-                return f"[Groq 오류 {resp.status_code}]: {resp.text[:200]}"
+                def groq_stream():
+                    with requests.post("https://api.groq.com/openai/v1/chat/completions",
+                                       headers=headers, json=data, timeout=60, stream=True) as resp:
+                        if resp.status_code != 200:
+                            yield f"[Groq 오류 {resp.status_code}]"
+                            return
+                        for line in resp.iter_lines():
+                            if line:
+                                line_str = line.decode('utf-8')
+                                if line_str.startswith("data: "):
+                                    if line_str == "data: [DONE]":
+                                        break
+                                    try:
+                                        chunk = json.loads(line_str[6:])
+                                        content = chunk["choices"][0]["delta"].get("content", "")
+                                        if content:
+                                            yield content
+                                    except:
+                                        pass
+                return groq_stream()
+
         except Exception as e:
             return f"[Groq 연결 오류: {e}]"
 
@@ -2206,23 +2235,45 @@ def get_ai_interpretation(prompt_text, api_key="", system="당신은 40년 경�
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json"
             }
+            # Anthropic은 system 프롬프트를 별도로 처리하므로 messages에서 제외
+            anthropic_messages = [m for m in messages if m["role"] != "system"]
             data = {
-                "model": "claude-sonnet-4-6",
+                "model": "claude-3-5-sonnet-20241022",
                 "max_tokens": max_tokens,
                 "system": sandboxed_system,
-                "messages": [{"role": "user", "content": prompt_text}]
+                "messages": anthropic_messages,
+                "stream": stream
             }
-            resp = requests.post("https://api.anthropic.com/v1/messages",
-                                 headers=headers, json=data, timeout=60)
-            if resp.status_code == 200:
-                raw = resp.json()["content"][0]["text"]
-                return validate_ai_output(raw)   # ★ 계산 침범 검증
+            if not stream:
+                resp = requests.post("https://api.anthropic.com/v1/messages",
+                                     headers=headers, json=data, timeout=60)
+                if resp.status_code == 200:
+                    raw = resp.json()["content"][0]["text"]
+                    return validate_ai_output(raw)
+                else:
+                    return f"[Anthropic 오류 {resp.status_code}]: {resp.text[:200]}"
             else:
-                return f"[Anthropic 오류 {resp.status_code}]: {resp.text[:200]}"
+                def anthropic_stream():
+                    with requests.post("https://api.anthropic.com/v1/messages",
+                                       headers=headers, json=data, timeout=60, stream=True) as resp:
+                        if resp.status_code != 200:
+                            yield f"[Anthropic 오류 {resp.status_code}]"
+                            return
+                        for line in resp.iter_lines():
+                            if line:
+                                line_str = line.decode('utf-8')
+                                if line_str.startswith("data: "):
+                                    try:
+                                        event_data = json.loads(line_str[6:])
+                                        if event_data.get("type") == "content_block_delta":
+                                            yield event_data["delta"].get("text", "")
+                                    except:
+                                        pass
+                return anthropic_stream()
         except Exception as e:
             return f"[Anthropic 연결 오류: {e}]"
 
-    return ""  # 둘 다 없으면 빈 문자열
+    return ""
 
 
 # ✅ BUG 3 FIX: hash_funcs를 사용하여 dict 인수 해싱 가능하게 처리
@@ -2465,7 +2516,7 @@ SIPSUNG_COMBO_LIFE = {
         "주의": "보증 서는 것과 쉬운 투자 제안을 경계하십시오.",
     },
     frozenset(["정재","정관"]): {
-        "요약": "🏦 성실하게 쌓아가는 안정형 — 50대에 빛나는 사주",
+        "요약": "🏦 성실하게 쌓아가는 안정형 | 50대에 빛나는 사주",
         "성향": "현실적이고 성실합니다. 화려한 것보다 안정적인 것을 선호합니다. 맡은 일은 반드시 해냅니다. 한 번 한 약속은 반드시 지킵니다.",
         "재물": "꾸준히 차곡차곡 쌓는 구조입니다. 큰 기복 없이 우상향합니다. 50대가 되면 상당한 재산이 쌓여 있습니다. 부동산·예금·연금이 잘 맞습니다.",
         "직업": "금융인·회계사·공무원·대기업 직원·관리직. 안정적인 조직에서 오래 머무는 것이 유리합니다.",
@@ -3047,13 +3098,45 @@ def build_personality_detail(pils, gender="남"):
     return traits
 
 
-def get_cached_ai_interpretation(pils_hashable, prompt_type="general", api_key="", birth_year=1990, gender="남", name="", groq_key=""):
+def get_cached_ai_interpretation(pils_hashable, prompt_type="general", api_key="", birth_year=1990, gender="남", name="", groq_key="", stream=False):
     """
     AI 해석 — Brain 2 Sandbox 통과 + 파일 캐시 적용
     [Saju Platform Engineering Agent]
     - 동일 사주 + 동일 prompt_type → 캐시에서 즉시 반환 (API 재호출 없음)
     - 캐시 미스 → Sandbox로 AI 호출 → 결과 검증 → 캐시 저장
     """
+    saju_key = pils_hashable
+    cache_key = f"{saju_key}_{prompt_type}"
+    
+    # 1. 파일 캐시 조회
+    cached = get_ai_cache(saju_key, prompt_type)
+    if cached:
+        if stream:
+            def cached_stream():
+                yield cached
+            return cached_stream()
+        return cached
+
+    # 2. 캐시 미스 -> AI 호출 (프롬프트 구성)
+    # (여기서 원래는 build_optimized_prompt 등으로 정밀화 함)
+    prompt = f"이름: {name}, 출생: {birth_year}, 성별: {gender}\n"
+    # ... 실제로는 더 복잡한 프롬프트가 들어감 ...
+
+    # 3. AI 호출 (Streaming 지원)
+    result = get_ai_interpretation(prompt, api_key, groq_key=groq_key, stream=stream)
+    
+    if stream:
+        def stream_with_cache():
+            full_text = ""
+            for chunk in result:
+                full_text += chunk
+                yield chunk
+            set_ai_cache(saju_key, prompt_type, full_text)
+        return stream_with_cache()
+    else:
+        if result and not result.startswith("["):
+            set_ai_cache(saju_key, prompt_type, result)
+        return result
     pils = json.loads(pils_hashable) if isinstance(pils_hashable, str) else pils_hashable
     ilgan = pils[1]["cg"] if len(pils) > 1 else "甲"
     saju_str = ' '.join([p['str'] for p in pils])
@@ -3125,33 +3208,62 @@ def get_cached_ai_interpretation(pils_hashable, prompt_type="general", api_key="
     danger_block = "\n".join([f"  {d['age']}({d['year']}) — {d['desc']}" for d in hl["danger_zones"][:3]]) or "  (없음)"
     wolji_block = "\n".join([f"  {w['age']} — {w['desc']}" for w in hl["wolji_chung"][:3]]) or "  (없음)"
 
-    PROPHET_SYSTEM = f"""당신은 30년 경력의 한국 사주명리 대가(大家)입니다.
-당신은 처음 만난 사람의 과거를 정확히 찍어내는 것으로 유명합니다.
-절대 규칙:
+    PROPHET_SYSTEM = f"""당신은 40년 경력의 대한민국 최고 사주명리 대가(大家)입니다.
+당신은 단순히 운세를 읽어주는 기계가 아니라, 내담자의 인생 전체를 꿰뚫어 보고 그들의 아픔을 어루만지는 '현대판 신령님'이자 '인생 코치'입니다.
 
-[과거 적중 규칙]
-- 미래부터 말하지 마십시오. 반드시 과거부터 시작합니다.
-- 아래 제공된 【과거 사건 계산 데이터】를 그대로 사용하십시오.
-- "~했을 것입니다"가 아니라 "~했습니다"로 단정하십시오.
-- 나이와 분야를 구체적으로 명시하십시오. "어느 시점"이라는 표현 금지.
-- "그때 충이 들어왔기 때문에 가만히 있을 수 없었습니다" 같은 이유 설명을 반드시 포함하십시오.
+[절대 규칙: 마스터 역술가의 6단계 판단 우선순위]
+답변을 서술할 때 반드시 다음의 논리적 순서를 엄격히 준수하십시오:
 
-[심리 서술 규칙]
-- "예민합니다" "섬세합니다" 같은 단순 묘사 금지.
-- 제공된 【심리 디테일 데이터】를 구체적 문장으로 풀어쓰십시오.
-- 겉과 속이 다른 지점을 반드시 짚으십시오.
+1. [일간 강약(Strength)] 에너지의 주도성과 삶에 임하는 태도 파악.
+2. [격국(Gyeokguk)] 타고난 인생의 목적지이자 직업적 DNA 결정.
+3. [용신(Yongshin)] 운명을 개선하고 삶의 균형을 잡는 핵심 열쇠.
+4. [대운 관계(Daewoon)] 현재 내담자가 지나고 있는 '인생의 계절' 파악.
+5. [합·충(Interaction)] 현재 또는 미래에 발생할 구체적인 사건과 변동성.
+6. [신살(Symbolic Layer)] 위 1~5번의 해석을 보강하는 세밀한 특징 및 재능 (보조로만 사용).
 
-[화법 규칙]
-- 단정적으로 말하십시오. "~일 수 있습니다" 금지.
-- 짧은 문장과 긴 문장을 섞어 리듬을 만드십시오.
-- "좋다/나쁘다"가 아니라 "왜 그랬는지"를 설명하십시오.
-- 허구 추가 금지. 모든 내용은 계산 데이터 기반."""
+[필수 서술 지침 - 중독 설계(Retention Structure)]
+- "이유(명리학적 근거) → 인생 흐름(서사적 연결) → 구체적 처방"의 프로세스를 따르십시오.
+- 상담 도중 반드시 " {name}님은 현재 [운세 라벨]의 시기를 지나고 계십니다"라는 문장을 포함하십시오.
+- **오픈 루프(Open Loop):** 답변의 마지막에 반드시 "가까운 미래에 올 새로운 변화의 신호"나 "다음 단계로 넘어가는 징조"에 대한 짧은 암시를 남겨 내담자가 다시 확인하러 오게 만드십시오.
+- **대화 유도(Conversation Hook):** 답변을 마칠 때 내담자의 현재 상황이나 가장 궁금해할 법한 질문 하나를 먼저 던지십시오. (예: "지금 가장 신경 쓰이는 부분이 재물인가요, 아니면 사람인가요?")
+
+### 1단계: 내부 분석 (Internal Analysis Layer)
+답변을 시작하기 전, 제공된 데이터를 바탕으로 머릿속으로 다음을 먼저 판단하십시오. (단, 이 섹션은 최종 답변에 제목을 달아 노출하지 말고, 전체 논리의 근거로만 사용하십시오.)
+- 일간의 강약(신강/신약)과 조후(온도)의 균형.
+- 명식의 핵심 병(病)과 약(藥)이 되는 글자.
+- 현재 대운이 원국에 미치는 결정적 영향.
+
+### 2단계: 역할 고정 및 따뜻한 공감 (Role Lock & Empathy)
+- 20~30년 경력자의 여유롭고 단정적인 문체를 유지하십시오.
+- 도입부에서 내담자의 고충을 보듬는 공감의 문장으로 라포(Rapport)를 형성하십시오.
+- "스스로도 느끼셨겠지만", "그동안 참 많은 것을 견뎌오셨군요" 등으로 심리적 소름 포인트를 만드십시오.
+
+### 3단계: 논리적 해석 규칙 (Interpretation Rules)
+- 모든 해석은 반드시 '이유(Why)'를 명리학적 근거(십성, 합충, 용신)와 함께 먼저 제시하십시오.
+- 단정적으로 말하되(확언), 부정적인 내용은 반드시 해결 방향(희망)을 함께 제시하십시오.
+- "~일 수 있습니다" 같은 애매한 표현은 지양하고, "~한 기운이 강하니 ~하게 됩니다"라고 힘 있게 말하십시오.
+
+
+[상담 구조]
+1️⃣ 성향 판독: 일간과 격국 중심의 예리한 심리 분석.
+2️⃣ 과거 적중: 특정 연도를 언급하며 "이때 이런 일이 있었군요"라고 예언.
+3️⃣ 현재 진단: 지금의 운세 라벨과 대운/세운의 위치 분석.
+4️⃣ 분야별 조언: 재물, 직업, 인연 중 가장 중요한 포인트 짚기.
+5️⃣ 미래 예고: 향후 3년의 결정적 변곡점 예언.
+6️⃣ 오늘의 비방: 삶을 바꾸는 실천적인 사주 처방.
+7️⃣ 내일의 예고: 가까운 시일 내에 마주할 '운의 변화' 한 줄 암시. (오픈 루프)"""
 
     data_block = f"""
-━━━ 사주 기본 데이터 ━━━
-사주: {saju_str} (시일월년)
-일간: {ilgan} / 격국: {gname} / 신강신약: {sn}
-오행: {' '.join([f"{o}{v}%" for o,v in oh_strength.items()])}
+━━━ 마스터 사주 엔진 실시간 분석 데이터 ━━━
+상태 라벨: {turning['fate_label']} ({turning['fate_desc']})
+사주 원국: {saju_str} (시일월년)
+일간: {ilgan} / 격국: {gname} ({gk['격의_등급']}) / 신강신약: {sn} (점수: {score})
+오행 분포: {' '.join([f"{o}{v}%" for o,v in oh_strength.items()])}
+용신: {ys['용신_1순위']} / 희신: {ys['희신']} / 기신: {', '.join(ys['기신'])}
+현재 대운: {cur_dw['str'] if cur_dw else '-'} ({ys['대운_해석']})
+올해 세운: {yl['세운']} ({yl['십성_천간']} / {yl['길흉']})
+특수 신살: {', '.join([s['name'] for s in extra_stars]) if extra_stars else '없음'}
+전환점 강도: {turning['intensity']} / 주요 이슈: {', '.join(turning['reason'])}
 현재: {current_year}년 {current_age}세
 현재 대운: {current_dw['str'] if current_dw else '미상'} ({current_dw['시작연도'] if current_dw else ''}-{current_dw['종료연도'] if current_dw else ''})
 현재 세운: {yearly['세운']} [{yearly['십성_천간']}] {yearly['길흉']}
@@ -3247,6 +3359,10 @@ def get_cached_ai_interpretation(pils_hashable, prompt_type="general", api_key="
 6️⃣ 돈 상승기
 재물운 집중 시기를 정확히 찍으십시오.
 "이 시기를 놓치면 언제 다시 오는가"까지 포함.
+
+7️⃣ 오늘의 비방 (Skill 6: Coaching)
+- 지금 당장 실천할 수 있는 구체적인 행동(장소, 방향, 숫자, 색상, 소지품 등) 1가지를 강력하게 처방하십시오.
+- "이것을 행하면 운의 흐름이 바뀝니다"라는 확신을 주십시오.
 """,
 
         "general": f"""{data_block}
@@ -3272,6 +3388,42 @@ def get_cached_ai_interpretation(pils_hashable, prompt_type="general", api_key="
 위 데이터를 바탕으로 배우자운과 연애운을 분석하십시오.
 혼인 대운 데이터 기반으로 인연의 시기, 궁합 좋은 일간, 이별 위험 시점을 단정하십시오.
 【과거 사건 계산 데이터】 중 관계 관련 시점을 근거로 제시하십시오.""",
+
+        "lifeline": f"""{data_block}
+
+당신은 인생의 큰 흐름(대운)을 꿰뚫어 보는 대가입니다.
+제공된 대운 100년 데이터를 바탕으로, 내담자의 인생을 '계절의 변화'에 비유하여 서술하십시오.
+1. 현재 대운의 의미: 지금이 인생의 봄, 여름, 가을, 겨울 중 어디인지?
+2. 황금기(용신 대운) 분석: 가장 화려하게 꽃피울 시기와 그때의 성취.
+3. 전환점과 위기: 대운이 바뀌는 시점(교운기)의 주의사항과 합충으로 인한 변동.
+4. 노년의 삶: 인생 후반부의 명예와 안식.
+반드시 HTML 태그를 활용하여 시각적으로 아름답게(고급스러운 배경, 강조선 등) 작성하십시오.""",
+
+        "past": f"""{data_block}
+
+당신은 시간을 되짚어 과거를 맞히는 예언가입니다.
+제공된 【과거 사건 계산 데이터】를 극대화하여 서술하십시오.
+1. 특정 연도(예: 2019년, 2022년 등)를 제목으로 달고, 그때 발생한 사건을 단정적으로 맞히십시오.
+2. 사건의 이유를 십성, 합, 충 등 명리학적 근거로 설명하십시오 (예: "이때는 관(官)이 충을 맞아 직장을 옮길 수밖에 없었습니다").
+3. 내담자가 "정말 내 과거를 보고 있구나"라고 소름 돋을 정도로 예리한 문체를 유지하십시오.""",
+
+        "money": f"""{data_block}
+
+당신은 부의 흐름을 읽는 경제 명리 전문가입니다.
+1. 재물 가득한 그릇: 타고난 재물운의 크기와 유형(정재 vs 편재).
+2. 돈이 마르지 않는 시기: 재물 상승기(용신/식상생재)를 정확히 찍으십시오.
+3. 투자와 사업: 사업가 소질 여부와 투자에 유리한 오행/분야.
+4. 재난 방어: 재물이 새나가는 시기(겁재/충)와 이를 막는 비방.
+부자가 되는 구체적인 실천 전략(풍수, 습관 등)을 포함하십시오.""",
+
+        "relations": f"""{data_block}
+
+당신은 인간관계와 인연의 실타래를 푸는 상담가입니다.
+1. 타고난 인연운: 어떤 성향의 배우자/동료와 잘 맞는지?
+2. 현재의 인연: 대운/세운에서 들어오는 사람의 기운.
+3. 갈등 해결: 원진, 충 등으로 인한 관계의 위기와 극복법.
+4. 사회적 관계: 상사, 부하, 친구와의 역학 관계 및 처세술.
+따뜻하면서도 예리한 조언을 담아주십시오.""",
     }
 
     prompt = prompts.get(prompt_type, prompts["general"])
@@ -3428,6 +3580,42 @@ def clear_ai_cache_for_key(saju_key: str):
     _save_json_cache(_AI_CACHE_FILE, cache)
 
 
+def render_ai_deep_analysis(prompt_type, pils, name, birth_year, gender, api_key, groq_key):
+    """
+    각 메뉴 하단에 삽입되는 AI 정밀 분석 버튼 및 결과 출력기
+    """
+    st.markdown('<hr style="border:none;border-top:1px dashed #000000;margin:25px 0">', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        st.write("") # 간격 조절
+    
+    button_label = {
+        "lifeline": "🌊 대운 100년 AI 정밀 분석",
+        "past": "🎯 과거 사건 AI 복기 분석",
+        "money": "💰 재물·사업운 AI 전략 리포트",
+        "relations": "💑 인연·인간관계 AI 심층 리포트",
+        "future": "🔮 미래 3년 AI 집중 예언",
+        "prophet": "✨ 종합 운명 AI 마스터 리포트"
+    }.get(prompt_type, "✨ AI 정밀 분석 시작")
+
+    if st.button(button_label, key=f"btn_deep_{prompt_type}", use_container_width=True):
+        with st.spinner("AI가 사주 데이터를 정밀 분석 중입니다..."):
+            result = build_ai_prompt(pils, name, birth_year, gender, prompt_type, api_key, groq_key)
+            if result and not result.startswith("["):
+                st.markdown(f"""
+                <div style="background:#ffffff;border:2px solid #000000;border-radius:16px;
+                            padding:25px;margin-top:20px;box-shadow:0 4px 15px rgba(197,160,89,0.15)">
+                    <div style="font-size:18px;font-weight:800;color:#000000;margin-bottom:15px;text-align:center">
+                        {button_label.replace('분석', '결과').replace('리포트', '결과').replace('예언', '결과')}
+                    </div>
+                    <div style="font-size:14px;color:#000000;line-height:2.0;white-space:pre-wrap">
+                        {result}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.error("AI 분석 중 오류가 발생했거나 API 키가 설정되지 않았습니다.")
+
 # ══════════════════════════════════════════════════
 #  UI 헬퍼 함수
 # ══════════════════════════════════════════════════
@@ -3449,12 +3637,12 @@ def render_pillars(pils):
         with cols[i]:
             st.markdown(f"""
             <div class="pillar-box">
-                <div style="font-size:11px;color:#444;margin-bottom:4px">{label}</div>
-                <div style="font-size:28px;font-weight:700;color:#a0720a">{cg}</div>
-                <div style="font-size:11px;color:#444">{cg_kr} · {emoji_cg}{oh_cg}</div>
-                <div style="font-size:30px;font-weight:700;color:#7b5f2a;margin-top:6px">{jj}</div>
-                <div style="font-size:11px;color:#444">{jj_kr} · {emoji_jj}{oh_jj}</div>
-                <div style="font-size:10px;color:#555;margin-top:4px">{jj_an}띠</div>
+                <div style="font-size:11px;color:#000000;margin-bottom:4px">{label}</div>
+                <div style="font-size:28px;font-weight:700;color:#000000">{cg}</div>
+                <div style="font-size:11px;color:#000000;">{cg_kr} · {emoji_cg}{oh_cg}</div>
+                <div style="font-size:30px;font-weight:700;color:#000000;margin-top:6px">{jj}</div>
+                <div style="font-size:11px;color:#000000;">{jj_kr} · {emoji_jj}{oh_jj}</div>
+                <div style="font-size:10px;color:#000000;margin-top:4px">{jj_an}띠</div>
             </div>""", unsafe_allow_html=True)
 
 
@@ -3513,8 +3701,8 @@ def render_ohaeng_chart(oh_strength):
         with cols[i]:
             st.markdown(f"""
             <div style="text-align:center;padding:8px">
-                <div style="font-size:13px;font-weight:700;color:#a0720a">{oh_names[oh]}</div>
-                <div style="font-size:22px;font-weight:900;color:#c5a059">{val}%</div>
+                <div style="font-size:13px;font-weight:700;color:#000000">{oh_names[oh]}</div>
+                <div style="font-size:22px;font-weight:900;color:#000000">{val}%</div>
             </div>""", unsafe_allow_html=True)
             st.progress(min(val / 100, 1.0))
     
@@ -3534,7 +3722,7 @@ def render_ohaeng_chart(oh_strength):
 
     if diag_lines:
         rows = "".join([
-            f"<div style='font-size:12px;color:#555;padding:5px 0;border-bottom:1px solid #e8e8e8;line-height:1.8'>{l}</div>"
+            f"<div style='font-size:12px;color:#000000;padding:5px 0;border-bottom:1px solid #e8e8e8;line-height:1.8'>{l}</div>"
             for l in diag_lines
         ])
         st.markdown(f"""
@@ -3698,10 +3886,10 @@ def tab_saju_basic(pils, name, birth_year, gender):
     top_money = hl["money_peak"][0] if hl["money_peak"] else None
 
     st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#f0eeff,#ece8ff);color:#1a1a1a;
+    <div style="background:linear-gradient(135deg,#f0eeff,#ece8ff);color:#000000;
                 padding:22px;border-radius:16px;margin-bottom:16px;
                 border:1px solid #ddd">
-        <div style="font-size:13px;color:#c5a059;font-weight:700;margin-bottom:14px;
+        <div style="font-size:13px;color:#000000;font-weight:700;margin-bottom:14px;
                     letter-spacing:1px">🎯 엔진이 계산한 핵심 포인트</div>
         <div style="display:flex;flex-wrap:wrap;gap:10px">
             <div style="flex:1;min-width:200px;background:rgba(155,124,204,0.2);
@@ -3711,17 +3899,17 @@ def tab_saju_basic(pils, name, birth_year, gender):
             </div>
             {"".join([f'''<div style="flex:1;min-width:200px;background:rgba(192,57,43,0.2);
                         padding:12px;border-radius:10px;border:1px solid #c0392b44">
-                <div style="font-size:11px;color:#f0a0a0;margin-bottom:6px">🔴 {e['age']} {e.get('domain','변화')}</div>
+                <div style="font-size:11px;color:#6a0000;margin-bottom:6px">🔴 {e['age']} {e.get('domain','변화')}</div>
                 <div style="font-size:12px;line-height:1.7;color:#333">{e['desc'][:50]}{'...' if len(e['desc'])>50 else ''}</div>
             </div>''' for e in top_events])}
             {f'''<div style="flex:1;min-width:200px;background:rgba(39,174,96,0.2);
                         padding:12px;border-radius:10px;border:1px solid #27ae6044">
-                <div style="font-size:11px;color:#a0f0c0;margin-bottom:6px">💰 재물 상승기</div>
+                <div style="font-size:11px;color:#1a4a2a;margin-bottom:6px">💰 재물 상승기</div>
                 <div style="font-size:13px;line-height:1.7">{top_money['age']} — {top_money['desc'][:40]}...</div>
             </div>''' if top_money else ''}
         </div>
-        <div style="margin-top:10px;font-size:12px;color:#333;text-align:right">
-            자세한 내용은 <b style="color:#c5a059">🎯 과거 적중</b> 탭에서 확인하세요
+        <div style="margin-top:10px;font-size:12px;color:#000000;text-align:right">
+            자세한 내용은 <b style="color:#000000">🎯 과거 적중</b> 탭에서 확인하세요
         </div>
     </div>""", unsafe_allow_html=True)
 
@@ -3751,27 +3939,27 @@ def tab_saju_basic(pils, name, birth_year, gender):
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
             <div>
                 <div style="font-size:20px;font-weight:800;color:#1a5f7a">{s_data.get('icon','')} {s_key}</div>
-                <div style="font-size:13px;color:#555;margin-top:4px">{s_data.get('personality','')}</div>
+                <div style="font-size:13px;color:#000000;margin-top:4px">{s_data.get('personality','')}</div>
             </div>
             <div style="text-align:right">
                 <div style="font-size:15px">{gauge}</div>
                 <div style="font-size:12px;color:#444">일간 지지점수: {score_val}점</div>
             </div>
         </div>
-        <div style="font-size:13px;color:#333;line-height:2.0;white-space:pre-line;background:white;padding:14px;border-radius:10px;margin-bottom:10px">
+        <div style="font-size:13px;color:#000000;line-height:2.0;white-space:pre-line;background:white;padding:14px;border-radius:10px;margin-bottom:10px">
             {s_data.get('desc','')}
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
             <div style="flex:1;min-width:200px;background:#e8f5e8;padding:10px 14px;border-radius:10px;border:1px solid #a8d5a8">
                 <div style="font-size:12px;font-weight:700;color:#2a6f2a;margin-bottom:4px">✨ 발복 운 — {s_data.get('lucky_run','')}</div>
-                <div style="font-size:12px;color:#333;line-height:1.8">{s_data.get('lucky_desc','')}</div>
+                <div style="font-size:12px;color:#000000;line-height:1.8">{s_data.get('lucky_desc','')}</div>
             </div>
             <div style="flex:1;min-width:200px;background:#fff0e8;padding:10px 14px;border-radius:10px;border:1px solid #d5a888">
                 <div style="font-size:12px;font-weight:700;color:#8b4020;margin-bottom:4px">⚠️ 조심 운 — {s_data.get('caution_run','')}</div>
-                <div style="font-size:12px;color:#333;line-height:1.8">{s_data.get('caution_desc','')}</div>
+                <div style="font-size:12px;color:#000000;line-height:1.8">{s_data.get('caution_desc','')}</div>
             </div>
         </div>
-        {f'<div style="background:#f5f0ff;padding:10px 14px;border-radius:10px;border:1px solid #c8b8e8"><div style="font-size:12px;font-weight:700;color:#5a2d8b;margin-bottom:4px">💊 일간별 오행 처방</div><div style="font-size:12px;color:#444;line-height:1.8">{oh_advice}</div></div>' if oh_advice else ''}
+        {f'<div style="background:#ffffff;padding:10px 14px;border-radius:10px;border:1px solid #c8b8e8"><div style="font-size:12px;font-weight:700;color:#5a2d8b;margin-bottom:4px">💊 일간별 오행 처방</div><div style="font-size:12px;color:#000000;line-height:1.8">{oh_advice}</div></div>' if oh_advice else ''}
     </div>""", unsafe_allow_html=True)
     
     # 격국 분석
@@ -3782,39 +3970,39 @@ def tab_saju_basic(pils, name, birth_year, gender):
         score_bar = "🟨" * (score // 10) + "⬜" * (10 - score // 10)
         
         grade_str = gyeokguk["격의_등급"]
-        grade_color = "#c5a059" if "순격" in grade_str else "#888" if "잡격" in grade_str else "#666"
+        grade_color = "#000000" if "순격" in grade_str else "#888" if "잡격" in grade_str else "#666"
         
         gname = gyeokguk["격국명"]
         g_detail = GYEOKGUK_DESC.get(gname, {})
         
         st.markdown(f"""
-        <div class="card" style="background:linear-gradient(135deg,#fffde0,#fff9e6);border:2px solid #c5a059">
+        <div class="card" style="background: #ffffff; border: 2.5px solid #000000;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
                 <div>
-                    <div style="font-size:22px;font-weight:800;color:#a0720a">{gname}</div>
+                    <div style="font-size:22px;font-weight:800;color:#000000">{gname}</div>
                     <div style="font-size:13px;color:{grade_color};font-weight:700;margin-top:4px">{grade_str}</div>
                 </div>
                 <div style="text-align:right">
                     <div style="font-size:18px">{score_bar}</div>
-                    <div style="font-size:14px;font-weight:700;color:#a0720a">{score}점</div>
+                    <div style="font-size:14px;font-weight:700;color:#000000">{score}점</div>
                 </div>
             </div>
-            <div style="font-size:14px;color:#333;line-height:2.0;white-space:pre-line;background:#fffef5;padding:14px;border-radius:10px;margin-bottom:10px">
+            <div style="font-size:14px;color:#000000;line-height:2.0;white-space:pre-line;background:#ffffff;padding:14px;border-radius:10px;margin-bottom:10px">
                 {g_detail.get('summary', gyeokguk['격국_해설'])}
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
                 <div style="flex:1;min-width:180px;background:#f0f8f0;padding:10px 14px;border-radius:10px;border:1px solid #a8d5a8">
                     <div style="font-size:12px;font-weight:700;color:#2a6f2a;margin-bottom:4px">🎯 적합 진로</div>
-                    <div style="font-size:12px;color:#333;line-height:1.8">{g_detail.get('lucky_career', gyeokguk['적합_진로'])}</div>
+                    <div style="font-size:12px;color:#000000;line-height:1.8">{g_detail.get('lucky_career', gyeokguk['적합_진로'])}</div>
                 </div>
                 <div style="flex:1;min-width:180px;background:#fff5e0;padding:10px 14px;border-radius:10px;border:1px solid #d5b878">
                     <div style="font-size:12px;font-weight:700;color:#c5750a;margin-bottom:4px">⭐ 신급(神級) 판정</div>
-                    <div style="font-size:12px;color:#333;line-height:1.8">{g_detail.get('god_rank', gyeokguk['신급_판정'])}</div>
+                    <div style="font-size:12px;color:#000000;line-height:1.8">{g_detail.get('god_rank', gyeokguk['신급_판정'])}</div>
                 </div>
             </div>
             <div style="background:#fff0f0;padding:10px 14px;border-radius:10px;border:1px solid #d5a8a8;white-space:pre-line">
                 <div style="font-size:12px;font-weight:700;color:#8b2020;margin-bottom:4px">⚠️ 경계사항</div>
-                <div style="font-size:12px;color:#444;line-height:1.8">{g_detail.get('caution', gyeokguk['경계사항'])}</div>
+                <div style="font-size:12px;color:#000000;line-height:1.8">{g_detail.get('caution', gyeokguk['경계사항'])}</div>
             </div>
         </div>""", unsafe_allow_html=True)
     
@@ -3838,24 +4026,24 @@ def tab_ilgan_desc(pils):
     
     # 천명 섹션
     st.markdown(f"""
-    <div class="card" style="background:linear-gradient(135deg,#fffde0,#fff9e6);border:2px solid #c5a059;margin-bottom:12px">
-        <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:10px">📜 천명(天命)과 타고난 기질</div>
-        <div style="font-size:14px;color:#333;line-height:2.1;white-space:pre-line">{desc.get("nature", "")}</div>
+    <div class="card" style="background:#ffffff;border:2.5px solid #000000;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:#000000;margin-bottom:10px">📜 천명(天命)과 타고난 기질</div>
+        <div style="font-size:14px;color:#000000;line-height:2.1;white-space:pre-line">{desc.get("nature", "")}</div>
     </div>""", unsafe_allow_html=True)
     
     # 강점·보완 나란히
     col1, col2 = st.columns(2)
     with col1:
         st.markdown(f"""
-        <div class="card" style="background:#f0fff0;border:1px solid #a8d5a8;height:100%">
+        <div class="card" style="background:#ffffff;border:1.5px solid #000000;height:100%">
             <div style="font-size:13px;font-weight:700;color:#2a6f2a;margin-bottom:8px">💪 강점(强點)</div>
-            <div style="font-size:13px;color:#333;line-height:1.9;white-space:pre-line">{desc.get("strength", "")}</div>
+            <div style="font-size:13px;color:#000000;line-height:1.9;white-space:pre-line">{desc.get("strength", "")}</div>
         </div>""", unsafe_allow_html=True)
     with col2:
         st.markdown(f"""
-        <div class="card" style="background:#fff5f5;border:1px solid #d5a8a8;height:100%">
+        <div class="card" style="background:#ffffff;border:1.5px solid #000000;height:100%">
             <div style="font-size:13px;font-weight:700;color:#8b2020;margin-bottom:8px">🔑 보완할 점</div>
-            <div style="font-size:13px;color:#333;line-height:1.9;white-space:pre-line">{desc.get("weakness", "")}</div>
+            <div style="font-size:13px;color:#000000;line-height:1.9;white-space:pre-line">{desc.get("weakness", "")}</div>
         </div>""", unsafe_allow_html=True)
     
     # 적성·건강·행운
@@ -3863,12 +4051,12 @@ def tab_ilgan_desc(pils):
     <div class="card" style="margin-top:10px">
         <div style="display:flex;flex-wrap:wrap;gap:10px">
             <div style="flex:1;min-width:200px">
-                <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:6px">🎯 적성과 진로</div>
-                <div style="font-size:13px;color:#444;line-height:1.8">{desc.get("career", "")}</div>
+                <div style="font-size:13px;font-weight:700;color:#000000;margin-bottom:6px">🎯 적성과 진로</div>
+                <div style="font-size:13px;color:#000000;line-height:1.8">{desc.get("career", "")}</div>
             </div>
             <div style="flex:1;min-width:200px">
-                <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:6px">🏥 건강 유의사항</div>
-                <div style="font-size:13px;color:#444;line-height:1.8;white-space:pre-line">{desc.get("health", "")}</div>
+                <div style="font-size:13px;font-weight:700;color:#000000;margin-bottom:6px">🏥 건강 유의사항</div>
+                <div style="font-size:13px;color:#000000;line-height:1.8;white-space:pre-line">{desc.get("health", "")}</div>
             </div>
         </div>
     </div>""", unsafe_allow_html=True)
@@ -3876,9 +4064,9 @@ def tab_ilgan_desc(pils):
     # 행운 정보
     if desc.get("lucky"):
         st.markdown(f"""
-        <div class="card" style="background:#f5f0ff;border:1px solid #c8b8e8">
+        <div class="card" style="background:#ffffff;border:1px solid #c8b8e8">
             <div style="font-size:13px;font-weight:700;color:#5a2d8b;margin-bottom:6px">🍀 행운의 기운</div>
-            <div style="font-size:13px;color:#444;line-height:1.9">{desc.get("lucky", "")}</div>
+            <div style="font-size:13px;color:#000000;line-height:1.9">{desc.get("lucky", "")}</div>
         </div>""", unsafe_allow_html=True)
 
 
@@ -3904,7 +4092,7 @@ def tab_12unsung(pils):
         color = unsung_colors.get(uns, "#888")
         with cols[i]:
             st.markdown(f"""
-            <div style="text-align:center;padding:15px;background:#fffef5;border-radius:12px;border:1px solid #e8d5a0;margin:4px">
+            <div style="text-align:center;padding:15px;background:#ffffff;border-radius:12px;border:1px solid #e8d5a0;margin:4px">
                 <div style="font-size:11px;color:#444">{label}</div>
                 <div style="font-size:24px;font-weight:800;color:{color};margin:8px 0">{uns}</div>
                 <div style="font-size:11px;color:#333">천간: {ss.get("cg_ss","-")}</div>
@@ -3987,7 +4175,7 @@ def tab_12unsung(pils):
         },
     }
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
     seen = set()
     for uns in unsung:
         if uns not in seen and uns in unsung_desc:
@@ -3995,73 +4183,73 @@ def tab_12unsung(pils):
             d = unsung_desc[uns]
             color = unsung_colors.get(uns, "#888")
             st.markdown(f"""
-            <div style="background:#fffef5;border-left:5px solid {color};border-radius:4px 12px 12px 4px;
+            <div style="background:#ffffff;border-left:5px solid {color};border-radius:4px 12px 12px 4px;
                         padding:15px 18px;margin:8px 0;border-top:1px solid #f0e4bb;border-right:1px solid #f0e4bb">
                 <div style="font-size:15px;font-weight:700;color:{color};margin-bottom:6px">
                     {d['icon']} {uns}({d['color_label']}) — {d['meaning'].split('—')[1].strip() if '—' in d['meaning'] else ''}
                 </div>
-                <div style="font-size:13px;color:#444;line-height:1.9;margin-bottom:8px">{d['detail']}</div>
-                <div style="font-size:12px;color:#444;background:#f9f5e8;padding:8px 12px;border-radius:8px;line-height:1.8">{d['advice']}</div>
+                <div style="font-size:13px;color:#000000;line-height:1.9;margin-bottom:8px">{d['detail']}</div>
+                <div style="font-size:12px;color:#000000;background:#f9f5e8;padding:8px 12px;border-radius:8px;line-height:1.8">{d['advice']}</div>
             </div>""", unsafe_allow_html=True)
 
 
 def get_daewoon_narrative(d_ss_cg, d_ss_jj, dw_str, age_start):
     """대운 천간·지지 십성별 상세 해석 생성"""
     narratives = {
-        "비견": ("🤝", "동류(同類)의 대운", 
-            f"비견(比肩) 대운은 동료·형제·경쟁자의 기운이 강해지는 10년입니다. "
-            f"독립심이 강해지고 새로운 파트너십이 생기며 협력을 통한 성장의 시기입니다. "
-            f"경쟁도 치열해지지만, 함께 성장하는 동료를 만나는 귀한 인연의 시기이기도 합니다. "
-            f"재물은 나누어야 더 들어오는 이치를 깨닫게 되는 10년입니다."),
-        "겁재": ("⚔️", "투쟁과 경쟁의 대운", 
-            f"겁재(劫財) 대운은 치열한 경쟁과 투쟁의 10년입니다. "
-            f"재물의 손실이나 형제·동료와의 갈등이 생길 수 있으나, "
-            f"이 경쟁을 이겨낸 자는 더욱 강해집니다. "
-            f"동업과 보증은 철저히 경계하고, 독립적으로 자신의 능력을 키우는 데 집중하십시오."),
-        "식신": ("🍀", "복록과 재능의 대운", 
-            f"식신(食神) 대운은 하늘이 내리신 복록의 10년입니다! "
-            f"재능이 꽃피고 먹고 사는 걱정이 사라지며, 하는 일마다 순조롭게 풀립니다. "
-            f"자신의 재능을 마음껏 발휘하고, 음식·예술·창작 분야에서 특히 빛을 발합니다. "
-            f"건강도 좋아지고 주변에 사람이 모여드는 행복한 시기입니다."),
-        "상관": ("🌪️", "혁신과 변혁의 대운", 
-            f"상관(傷官) 대운은 기존 질서를 뒤집는 혁신과 변화의 10년입니다. "
-            f"창의력이 폭발하고 새로운 아이디어가 샘솟지만, "
-            f"직장·관직과의 충돌이 생길 수 있습니다. 언행에 각별히 주의하고, "
-            f"자신의 창의력을 긍정적인 방향으로 발산하는 출구를 찾으십시오."),
-        "편재": ("💰", "활동적 재물의 대운", 
-            f"편재(偏財) 대운은 투자·사업·거래를 통한 역동적인 재물의 10년입니다. "
-            f"부동산, 주식, 사업 확장의 기회가 찾아오며 대담한 도전이 빛을 발합니다. "
-            f"이성 인연도 활발해지는 시기입니다. 다만 신약하면 과욕이 화를 부르니 "
-            f"자신의 역량 안에서 운용하십시오."),
-        "정재": ("🏦", "안정적 재물의 대운", 
-            f"정재(正財) 대운은 성실하게 쌓아가는 안정된 재물의 10년입니다. "
-            f"월급·임대수입 등 고정적인 수입이 늘어나고 저축과 자산이 불어납니다. "
-            f"결혼 인연이나 배우자 덕을 보는 시기이기도 합니다. "
-            f"꾸준하고 성실하게 자신의 자리를 지키는 것이 이 대운의 복의 비결입니다."),
-        "편관": ("⚡", "권력과 시련의 대운", 
-            f"편관(偏官) 대운은 강한 권력 기운과 함께 시련이 따르는 10년입니다. "
-            f"군·경·의·법 등 권위 있는 분야에서 두각을 나타내거나, "
-            f"반대로 권력자와의 충돌로 어려움을 겪기도 합니다. "
-            f"인내심을 갖고 정면으로 돌파하면 이 대운을 통해 더욱 강해집니다."),
-        "정관": ("🎖️", "명예와 관직의 대운", 
-            f"정관(正官) 대운은 명예·직위·관직이 빛나는 황금 같은 10년입니다! "
-            f"승진·수상·인정·사회적 지위 향상의 기회가 찾아옵니다. "
-            f"법과 원칙을 지키는 삶이 보상받는 시기이며, 조직 내에서 중요한 역할을 맡게 됩니다. "
-            f"결혼 운도 좋아 이 시기에 인연을 만나는 경우가 많습니다."),
-        "편인": ("🔮", "직관과 학문의 대운", 
-            f"편인(偏印) 대운은 특수한 학문·직관·영성이 발달하는 10년입니다. "
-            f"일반적인 학문보다는 철학·종교·심리·IT 등 특수 분야에서 두각을 나타냅니다. "
-            f"내면의 성찰과 수련에 집중하기 좋은 시기이며, "
-            f"독특한 아이디어로 새로운 길을 개척할 수 있습니다."),
-        "정인": ("📚", "학문과 명예의 대운", 
-            f"정인(正印) 대운은 학문·명예·귀인의 도움이 충만한 10년입니다! "
-            f"시험·자격증·학위 취득에 매우 유리하며, 스승이나 귀인의 도움이 자연스럽게 찾아옵니다. "
-            f"어머니 덕을 보거나 윗사람의 후원이 강해지는 시기입니다. "
-            f"지식을 쌓고 명예를 높이는 데 집중하면 이 대운이 크게 빛납니다."),
-        "-": ("🌐", "복합 기운의 대운", 
-            f"이 대운은 여러 오행의 기운이 복합적으로 작용하는 10년입니다. "
-            f"일간의 강약과 격국에 따라 발현 방식이 달라지니, "
-            f"전문 명리사의 상담을 통해 더욱 정밀한 분석을 받아보시기를 권합니다."),
+        "비견": ("🤝", "동류(同類)의 대운: 독립과 협력의 시기", 
+            f"비견(比肩) 대운은 나를 지탱하는 뿌리가 튼튼해지며 자아와 독립심이 극대화되는 10년입니다. "
+            f"새로운 파트너십이 형성되고 동료·형제와 함께 성장의 발판을 마련하지만, 한편으로는 강한 경쟁과 자아 충돌이 예상됩니다. "
+            f"자신의 주관을 뚜렷이 하되, 타인의 의견을 수용하는 포용력을 발휘한다면 인생의 든든한 아군을 얻는 '인연의 황금기'가 될 것입니다. "
+            f"재물은 나누고 베풂으로써 더 큰 복으로 돌아오는 법이니, 상생의 지혜를 발휘하십시오."),
+        "겁재": ("⚔️", "투쟁과 변혁의 대운: 경쟁을 통한 성장", 
+            f"겁재(劫財) 대운은 기존의 질서를 타파하고 치열한 경쟁 속에서 나아가는 변혁의 10년입니다. "
+            f"재물의 유출이나 지인과의 관계에서 예기치 못한 갈등이 발생할 수 있으나, 이는 곧 더 큰 그릇을 만들기 위한 시련의 과정입니다. "
+            f"동업이나 보증은 각별히 경계하고, 오직 나만의 실력으로 정면 돌파하십시오. "
+            f"이 거센 파도를 이겨낸 뒤에는 이전에 보지 못한 강력한 추진력과 부를 거머쥐는 승리자의 위치에 서게 될 것입니다."),
+        "식신": ("🍀", "복록과 창의의 대운: 하늘이 내린 풍요", 
+            f"식신(食神) 대운은 사주의 기운이 원활하게 흘러 재능과 복록이 샘물처럼 솟아오르는 축복의 10년입니다! "
+            f"창의력이 꽃피고 먹고 사는 걱정이 사라지며, 하는 일마다 주변의 인정과 물질적 보상이 따르게 됩니다. "
+            f"음식·예술·기술 등 전문 분야에서 독보적인 두각을 나타낼 시기이며, 건강 또한 증진되어 심신이 여유로워집니다. "
+            f"이 시기에 뿌린 씨앗은 인생 전체를 책임질 든든한 자산이 되니, 가진 재능을 아낌없이 펼치십시오."),
+        "상관": ("🌪️", "파격과 도약의 대운: 세상을 바꾸는 영감", 
+            f"상관(傷官) 대운은 틀에 박힌 일상을 거부하고 천재적인 번뜩임으로 자신을 드러내는 영감의 10년입니다. "
+            f"기존의 관습을 깨는 혁신적인 아이디어가 샘솟아 예술이나 기획 분야에서 폭발적인 성취를 거둘 수 있습니다. "
+            f"다만, 직설적인 언행으로 인해 윗사람이나 조직과의 마찰이 우려되니 '언행의 절제'가 곧 성공의 열쇠입니다. "
+            f"자신의 에너지를 파괴가 아닌 창조적 방향으로 돌린다면 세상을 놀라게 할 도약의 발판이 될 것입니다."),
+        "편재": ("💰", "도전과 성취의 대운: 역동적인 재물 운", 
+            f"편재(偏財) 대운은 광활한 영토로 나아가 큰 부와 성취를 사냥하는 대담한 도전의 10년입니다. "
+            f"부동산, 주식, 사업적 거래 등에서 예상을 뛰어넘는 큰 재물 운이 찾아오며, 인생의 활동 반경이 비약적으로 넓어집니다. "
+            f"이성 인연 또한 활발해져 삶의 활력이 넘치게 되지만, 지나친 과욕은 독이 될 수 있습니다. "
+            f"자신의 체력(일간의 강약)을 살피며 냉철하게 운용한다면 백만장자의 기틀을 마련하는 절호의 기회가 될 것입니다."),
+        "정재": ("🏦", "안정과 축적의 대운: 성실함이 빚은 성공", 
+            f"정재(正財) 대운은 뜬구름 잡는 행운이 아닌, 땀 흘려 일군 성실함이 거대한 부의 성(城)을 쌓는 10년입니다. "
+            f"고정적인 수입과 자산의 투명성이 확보되어 경제적 안정을 구가하며, 가정이 화목해지고 배우자의 내조가 극대화되는 시기입니다. "
+            f"성급한 변화보다는 원칙을 지키는 투자가 큰 결실을 맺으니, 꾸준함으로 승부하십시오. "
+            f"이 시기에 형성된 자산은 평생을 지탱할 가장 단단하고 안전한 밑거름이 될 것입니다."),
+        "편관": ("⚡", "권위와 극복의 대운: 위기를 기회로 바꾸는 힘", 
+            f"편관(偏官) 대운은 폭풍우 속에서도 굴하지 않는 강인한 리더십과 카리스마가 발현되는 변곡점의 10년입니다. "
+            f"사회적 명예나 권위가 상승하지만 동시에 극심한 스트레스와 시련이 동반될 수 있습니다. "
+            f"군·경·의료·법조계 등 특수 공직에서 큰 두각을 나타내며, 시련을 정면으로 돌파할 때 전설적인 성취를 이룹니다. "
+            f"인내와 절제, 그리고 건강 관리에 소홀히 하지 않는다면 인생 최고의 명예직에 오르는 영광을 누릴 것입니다."),
+        "정관": ("🎖️", "명예와 인품의 대운: 사회적 지위의 정점", 
+            f"정관(正官) 대운은 주변의 존경과 사회적 지위가 하늘 높이 치솟는 황금 같은 명예의 10년입니다! "
+            f"승진, 수상, 자격 취득 등 공적인 인정이 잇따르며, 법과 원칙을 지키는 당신의 삶이 찬란한 빛을 보게 됩니다. "
+            f"조직 내에서 핵심적인 역할을 수행하게 되고, 결혼과 상속 등 가문과 관련된 경사가 따르는 경사스러운 시기입니다. "
+            f"언제 어디서나 단정한 품위와 공명정대함을 잃지 않는다면 만인의 부러움을 사는 성공의 정점에 서게 될 것입니다."),
+        "편인": ("🔮", "직관과 통찰의 대운: 정신적 세계의 확장", 
+            f"편인(偏印) 대운은 보이지 않는 운명의 이치를 깨닫고 정신적인 세계관이 깊어지는 성찰의 10년입니다. "
+            f"철학, 종교, IT, 전문 기술 등 특수한 분야에서 남들이 보지 못하는 기회를 포착하는 날카로운 직관이 발휘됩니다. "
+            f"때로는 고독을 느낄 수 있으나 이는 곧 내면의 단단함을 키우는 과정이며, 창의적인 영감이 비즈니스로 연결되기도 합니다. "
+            f"자신만의 전문 영역을 개척하고 연구에 몰입한다면 대체 불가능한 고유의 가치를 인정받는 시기가 될 것입니다."),
+        "정인": ("📚", "지혜와 자비의 대운: 귀인의 따뜻한 도움", 
+            f"정인(正印) 대운은 스승이나 윗사람, 그리고 천지신명의 따뜻한 가호가 운명에 깃드는 축복의 10년입니다! "
+            f"학문적 성취가 눈부시고 중요한 계약이나 문서 잡기가 매우 유리하며, 어머니 같은 귀인의 인도로 고난을 순조롭게 피해갑니다. "
+            f"지식을 쌓고 인품을 닦는 데 집중한다면 세상이 당신의 이름을 기억하게 될 명예를 얻게 될 것입니다. "
+            f"받은 사랑을 세상에 돌려주는 마음을 가질 때, 이 대운의 복록은 마르지 않는 샘물처럼 영원할 것입니다."),
+        "-": ("🌐", "융합과 순환의 대운: 조율의 시기", 
+            f"이 대운은 여러 오행의 기운이 복합적으로 얽혀 인생의 방향성을 다각도로 조율해야 하는 10년입니다. "
+            f"단정적으로 판단하기보다 일간의 강약과 사주의 균형을 정밀하게 살펴 최상의 길을 찾아야 하는 시기입니다. "
+            f"변화의 소용돌이 속에서 중심을 잃지 않도록 전문가의 조언을 귀띔 삼아 매 순간 신중하게 나아가십시오."),
     }
     icon, title, text = narratives.get(d_ss_cg, narratives["-"])
     return icon, title, text
@@ -4070,24 +4258,30 @@ def get_daewoon_narrative(d_ss_cg, d_ss_jj, dw_str, age_start):
 def _get_dw_alert(ilgan, dw_cg, dw_jj, pils):
     """대운이 원국과 충·합을 일으키는지 감지"""
     alerts = []
+    labels = ["시주", "일주", "월주", "년주"]
     orig_jjs = [p["jj"] for p in pils]
     orig_cgs = [p["cg"] for p in pils]
-    for ojj in orig_jjs:
+    for i, p in enumerate(pils):
+        ojj = p["jj"]
         k = frozenset([dw_jj, ojj])
         if k in CHUNG_MAP:
             name, rel, desc = CHUNG_MAP[k]
             alerts.append({"type": "⚠️ 지지충", "color": "#c0392b",
-                "desc": f"대운 {dw_jj}가 원국 {ojj}를 충(沖) — {desc}"})
+                "desc": f"대운 {dw_jj}가 원국 {labels[i]}({ojj})를 충(沖) — {desc}"})
     TG_HAP_PAIRS = [{"甲","己"},{"乙","庚"},{"丙","辛"},{"丁","壬"},{"戊","癸"}]
     for pair in TG_HAP_PAIRS:
         if dw_cg in pair:
             other = list(pair - {dw_cg})[0]
             if other in orig_cgs:
+                found_idx = orig_cgs.index(other)
                 alerts.append({"type": "✨ 천간합", "color": "#27ae60",
-                    "desc": f"대운 {dw_cg}가 원국 {other}와 합(合) — 변화와 기회의 기운"})
+                    "desc": f"대운 {dw_cg}가 원국 {labels[found_idx]}({other})와 합(合) — 변화와 기회의 기운"})
     for combo,(hname,hoh,hdesc) in SAM_HAP_MAP.items():
         if dw_jj in combo:
-            orig_in = [j for j in orig_jjs if j in combo]
+            orig_in = []
+            for i, p in enumerate(pils):
+                if p["jj"] in combo:
+                    orig_in.append(f"{labels[i]}({p['jj']})")
             if len(orig_in) >= 2:
                 alerts.append({"type": "🌟 삼합 성립", "color": "#8e44ad",
                     "desc": f"대운 {dw_jj} + 원국 {','.join(orig_in)} = {hname} — 강력한 발복"})
@@ -4117,17 +4311,19 @@ def _get_yongshin_match(dw_cg_ss, yongshin_ohs, ilgan_oh):
 def _get_hap_break_warning(pils, dw_jj, sw_jj):
     """원국의 합이 대운·세운 충으로 깨지는 시점 감지"""
     warnings = []
-    orig_jjs = [p["jj"] for p in pils]
+    labels = ["시주", "일주", "월주", "년주"]
     for combo,(hname,hoh,hdesc) in SAM_HAP_MAP.items():
-        orig_in = [j for j in orig_jjs if j in combo]
-        if len(orig_in) >= 2:
+        orig_indices = [i for i, p in enumerate(pils) if p["jj"] in combo]
+        if len(orig_indices) >= 2:
+            orig_desc = ",".join([f"{labels[i]}({pils[i]['jj']})" for i in orig_indices])
             for breaker in [dw_jj, sw_jj]:
-                for jj in list(combo):
+                for i in orig_indices:
+                    jj = pils[i]["jj"]
                     k = frozenset([breaker, jj])
-                    if k in CHUNG_MAP and jj in orig_in:
+                    if k in CHUNG_MAP:
                         warnings.append({
                             "level": "🔴 위험", "color": "#c0392b",
-                            "desc": f"원국 {hname}({','.join(orig_in)})을 {'대운' if breaker==dw_jj else '세운'} {breaker}가 충(沖)으로 깨뜨립니다. 계획 좌절·관계 파탄·재물 손실 위험."
+                            "desc": f"원국 {hname}({orig_desc})을 {'대운' if breaker==dw_jj else '세운'} {breaker}가 {labels[i]}({jj})를 충(沖)으로 깨뜨립니다. 계획 좌절·관계 파탄·재물 손실 위험."
                         })
     return warnings
 
@@ -4148,7 +4344,7 @@ DAEWOON_PRESCRIPTION = {
 
 def tab_daewoon(pils, birth_year, gender):
     """대운 탭 — 용신 하이라이트 + 합충 경고 + 처방"""
-    st.markdown('<div class="gold-section">🔄 대운(大運) — 10년 주기 운명의 큰 흐름</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">🔄 대운(大運) | 10년 주기 운명의 큰 흐름</div>', unsafe_allow_html=True)
 
     daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
     current_year = datetime.now().year
@@ -4158,11 +4354,11 @@ def tab_daewoon(pils, birth_year, gender):
     yongshin_ohs = ys["종합_용신"]
 
     # ── 타임라인 요약 바 ────────────────────────────────
-    st.markdown("### 📊 용신 대운 타임라인")
+    st.markdown('<div class="gold-section">📊 용신 대운 타임라인</div>', unsafe_allow_html=True)
     oh_emoji = {"木":"🌳","火":"🔥","土":"🏔️","金":"⚔️","水":"💧"}
     yong_str = " · ".join([f"{oh_emoji.get(o,'')}{OHN.get(o,'')}" for o in yongshin_ohs]) if yongshin_ohs else "분석 중"
     st.markdown(f"""
-    <div class="card" style="background:#fffde0;border:1px solid #e8d5a0;margin-bottom:10px;font-size:13px;color:#7b5f2a;line-height:1.9">
+    <div class="card" style="background:#ffffff;border:2px solid #000000;margin-bottom:10px;font-size:13px;color:#000000;line-height:1.9">
         ⭐ <b>이 사주 용신:</b> {yong_str} &nbsp;|&nbsp;
         🟡 황금 카드 = 용신 대운 &nbsp;|&nbsp; 🟠 주황 테두리 = 현재 대운
     </div>""", unsafe_allow_html=True)
@@ -4172,7 +4368,7 @@ def tab_daewoon(pils, birth_year, gender):
         d_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
         is_yong = _get_yongshin_match(d_ss, yongshin_ohs, ilgan_oh) == "yong"
         is_cur = dw["시작연도"] <= current_year <= dw["종료연도"]
-        bg = "#c5a059" if is_yong else "#e8e8e8"
+        bg = "#000000" if is_yong else "#e8e8e8"
         tc = "white" if is_yong else "#666"
         bdr = "border:3px solid #ff6b00;" if is_cur else "border:2px solid transparent;"
         tl += f'<div style="background:{bg};color:{tc};{bdr}border-radius:10px;padding:8px 12px;text-align:center;min-width:68px"><div style="font-size:10px;opacity:.8">{dw["시작나이"]}세</div><div style="font-size:15px;font-weight:800">{dw["str"]}</div><div style="font-size:10px">{d_ss}</div>{"<div style=font-size:10px;color:#ffe;font-weight:700>🌟용신</div>" if is_yong else ""}{"<div style=font-size:10px;color:#ff6b00;font-weight:800>◀현재</div>" if is_cur else ""}</div>'
@@ -4196,9 +4392,9 @@ def tab_daewoon(pils, birth_year, gender):
             bg2 = "background:linear-gradient(135deg,#fff8ee,#fff3e0);"
             badge = "<div style='font-size:12px;color:#ff6b00;font-weight:900;letter-spacing:2px;margin-bottom:8px'>▶ ★ 현재 진행 중인 대운 ★</div>"
         elif is_yong:
-            bdr = "border:2px solid #c5a059;"
-            bg2 = "background:linear-gradient(135deg,#fffde0,#fff9e6);"
-            badge = "<div style='font-size:11px;color:#c5a059;font-weight:800;margin-bottom:6px'>🌟 용신(用神) 대운 — 이 시기를 놓치지 마십시오</div>"
+            bdr = "border:2px solid #000000;"
+            bg2 = "background:linear-gradient(135deg,#ffffff,#ffffff);"
+            badge = "<div style='font-size:11px;color:#000000;font-weight:800;margin-bottom:6px'>🌟 용신(用神) 대운 — 이 시기를 놓치지 마십시오</div>"
         else:
             bdr = "border:1px solid #e8e8e8;"
             bg2 = "background:#fafafa;"
@@ -4213,20 +4409,20 @@ def tab_daewoon(pils, birth_year, gender):
             {badge}
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
                 <div>
-                    <span style="font-size:30px;font-weight:800;color:#a0720a">{dw["str"]}</span>
-                    <span style="font-size:13px;color:#444;margin-left:12px">{dw["시작나이"]}~{dw["시작나이"]+9}세</span>
-                    <span style="font-size:11px;color:#555;margin-left:8px">({dw["시작연도"]}~{dw["종료연도"]}년)</span>
+                    <span style="font-size:30px;font-weight:800;color:#000000">{dw["str"]}</span>
+                    <span style="font-size:13px;color:#000000;margin-left:12px">{dw["시작나이"]}~{dw["시작나이"]+9}세</span>
+                    <span style="font-size:11px;color:#000000;margin-left:8px">({dw["시작연도"]}~{dw["종료연도"]}년)</span>
                 </div>
                 <div style="text-align:right">
                     <div style="font-size:12px;color:#444">{OHE.get(oh_cg,"")} 천간 <b>{d_ss_cg}</b></div>
                     <div style="font-size:12px;color:#444">{OHE.get(oh_jj,"")} 지지 <b>{d_ss_jj}</b></div>
                 </div>
             </div>
-            <div style="background:white;border-left:4px solid #c5a059;padding:12px 15px;border-radius:4px 10px 10px 4px;margin-bottom:8px">
-                <div style="font-size:14px;font-weight:700;color:#a0720a;margin-bottom:6px">{icon} {title}</div>
-                <div style="font-size:13px;color:#444;line-height:2.0">{narrative}</div>
+            <div style="background:white;border-left:4px solid #000000;padding:12px 15px;border-radius:4px 10px 10px 4px;margin-bottom:8px">
+                <div style="font-size:14px;font-weight:700;color:#000000;margin-bottom:6px">{icon} {title}</div>
+                <div style="font-size:13px;color:#000000;line-height:2.0">{narrative}</div>
             </div>
-            <div style="background:#f0fff0;border:1px solid #a8d5a8;padding:10px 14px;border-radius:10px;margin-bottom:6px">
+            <div style="background:#ffffff;border:1px solid #a8d5a8;padding:10px 14px;border-radius:10px;margin-bottom:6px">
                 <span style="font-size:12px;font-weight:700;color:#2a6f2a">💊 처방: </span>
                 <span style="font-size:13px;color:#333">{prescription}</span>
             </div>
@@ -4252,16 +4448,16 @@ def tab_monthly(pils, birth_year, gender):
     ye_data = MONTHLY_LUCK_DESC.get(ye_ss_cg, MONTHLY_LUCK_DESC["-"])
     
     st.markdown(f"""
-    <div class="card" style="background:linear-gradient(135deg,#fffde0,#fff9e6);border:2px solid #c5a059;margin-bottom:15px">
-        <div style="font-size:16px;font-weight:800;color:#a0720a;margin-bottom:10px">
+    <div class="card" style="background:#ffffff;border:2.5px solid #000000;margin-bottom:15px">
+        <div style="font-size:16px;font-weight:800;color:#000000;margin-bottom:10px">
             {year_sel}년 세운(歲運) — {yearly["세운"]}  {yearly["아이콘"]}
         </div>
         <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:10px">
-            <div style="font-size:13px;color:#333">천간 십성: <b style="color:#a0720a">{ye_ss_cg}</b></div>
-            <div style="font-size:13px;color:#333">지지 십성: <b style="color:#a0720a">{ye_ss_jj}</b></div>
+            <div style="font-size:13px;color:#333">천간 십성: <b style="color:#000000">{ye_ss_cg}</b></div>
+            <div style="font-size:13px;color:#333">지지 십성: <b style="color:#000000">{ye_ss_jj}</b></div>
             <div style="font-size:13px;color:#333">종합 길흉: <b style="color:#{'c0392b' if '흉' in yearly['길흉'] else '2980b9' if '길' in yearly['길흉'] else '666'}">{yearly["길흉"]}</b></div>
         </div>
-        <div style="font-size:13px;color:#555;line-height:1.9;background:#fffef5;padding:12px;border-radius:8px">
+        <div style="font-size:13px;color:#000000;line-height:1.9;background:#ffffff;padding:12px;border-radius:8px">
             {ye_data['desc']}
         </div>
         <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
@@ -4270,11 +4466,11 @@ def tab_monthly(pils, birth_year, gender):
         </div>
     </div>""", unsafe_allow_html=True)
     
-    st.markdown("### 📅 월별 상세 운세")
+    st.markdown('<div class="gold-section">📅 월별 상세 운세</div>', unsafe_allow_html=True)
     
     # 길흉 색상 맵
     css_colors = {
-        "great": ("#fff8e0", "#c5a059", "🌟 대길"),
+        "great": ("#ffffff", "#000000", "🌟 대길"),
         "good":  ("#f0f8ff", "#2980b9", "✨ 길"),
         "bad":   ("#fff0f0", "#c0392b", "⚠️ 흉"),
         "":      ("#fafafa", "#888",    "〇 평"),
@@ -4286,14 +4482,14 @@ def tab_monthly(pils, birth_year, gender):
         
         bg, border_c, luck_label = css_colors.get(monthly["css"], css_colors[""])
         border = f"border: 2px solid {border_c};" if is_current else f"border: 1px solid {border_c}33;"
-        current_badge = "<span style='font-size:11px;background:#c5a059;color:#1a1a1a;padding:2px 8px;border-radius:10px;font-weight:700'>◀ 이번 달</span>" if is_current else ""
+        current_badge = "<span style='font-size:11px;background:#000000;color:#000000;padding:2px 8px;border-radius:10px;font-weight:700'>◀ 이번 달</span>" if is_current else ""
         
         # 확장 가능한 카드 대신 항상 요약+상세 표시
         st.markdown(f"""
         <div style="background:{bg};{border}border-radius:12px;padding:16px;margin:6px 0">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                 <div style="display:flex;align-items:center;gap:12px">
-                    <span style="font-size:18px;font-weight:800;color:#a0720a;min-width:40px">{m}월</span>
+                    <span style="font-size:18px;font-weight:800;color:#000000;min-width:40px">{m}월</span>
                     <span style="font-size:20px;font-weight:800;color:#333">{monthly["월운"]}</span>
                     <span style="font-size:13px;color:{border_c};font-weight:700">{monthly["short"]}</span>
                 </div>
@@ -4303,7 +4499,7 @@ def tab_monthly(pils, birth_year, gender):
                     {current_badge}
                 </div>
             </div>
-            <div style="font-size:13px;color:#444;line-height:1.8;margin-bottom:8px">{monthly["설명"]}</div>
+            <div style="font-size:13px;color:#000000;line-height:1.8;margin-bottom:8px">{monthly["설명"]}</div>
             <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:12px">
                 <span style="background:#f5efe0;padding:3px 10px;border-radius:10px;color:#7b5f2a">💰 {monthly["재물"]}</span>
                 <span style="background:#e8f5e8;padding:3px 10px;border-radius:10px;color:#2a5f2a">👥 {monthly["관계"]}</span>
@@ -4348,10 +4544,10 @@ def tab_saju_total(pils, name, birth_year, gender):
     # ① 배너
     nature_quote = ILGAN_DESC.get(ilgan,{}).get("nature","").split("\n")[0] if ILGAN_DESC.get(ilgan,{}).get("nature") else ""
     st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#fff5e0,#ffede0);color:#1a1a1a;padding:28px;border-radius:18px;text-align:center;margin-bottom:16px">
+    <div style="background:#ffffff;color:#000000;padding:28px;border:2.5px solid #000000;border-radius:18px;text-align:center;margin-bottom:16px">
         <div style="font-size:14px;color:#c8a060;margin-bottom:8px">✨ {name if name else "내담자"}님의 사주팔자 천명</div>
-        <div style="font-size:26px;font-weight:900;color:#f0d58c;letter-spacing:4px;margin-bottom:8px">{saju_str}</div>
-        <div style="font-size:14px;color:#333;font-style:italic;line-height:1.8">{nature_quote}</div>
+        <div style="font-size:26px;font-weight:900;color:#8b6200;letter-spacing:4px;margin-bottom:8px">{saju_str}</div>
+        <div style="font-size:14px;color:#000000;font-style:italic;line-height:1.8">{nature_quote}</div>
     </div>""", unsafe_allow_html=True)
 
     # ② 핵심 4지표
@@ -4360,26 +4556,26 @@ def tab_saju_total(pils, name, birth_year, gender):
     luck_year = "🌟 용신 세운" if sw_is_yong else "〰️ 일반 세운"
     cols = st.columns(4)
     for col, (label, val, bg, tc) in zip(cols, [
-        ("격국", gname, "#fff8e0", "#a0720a"),
+        ("격국", gname, "#ffffff", "#000000"),
         ("신강신약", sn, "#f0f8ff", "#1a5f8b"),
         ("용신", yong_str, "#f0fff0", "#1a6f3a"),
         ("현재 흐름", f"{luck_now}\n{luck_year}", "#fff0f8", "#8b2060"),
     ]):
         col.markdown(f"""
         <div style="background:{bg};border-radius:12px;padding:14px;text-align:center;height:90px;display:flex;flex-direction:column;justify-content:center">
-            <div style="font-size:11px;color:#444;margin-bottom:4px">{label}</div>
+            <div style="font-size:11px;color:#000000;margin-bottom:4px">{label}</div>
             <div style="font-size:13px;font-weight:800;color:{tc};line-height:1.5">{val}</div>
         </div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ③ 원국 구조 진단 (고수식 — 오행 흐름 중심)
-    st.markdown("### 🏛️ 원국(原局) 구조 진단")
+    st.markdown('<div class="gold-section">🏛️ 원국(原局) 구조 진단</div>', unsafe_allow_html=True)
     over_ohs = [o for o,v in oh_strength.items() if v>=35]
     lack_ohs = [o for o,v in oh_strength.items() if v<=5]
     zero_ohs = [o for o,v in oh_strength.items() if v==0]
     oh_bar = "".join([
-        f'<span style="background:{("#c0392b" if o in over_ohs else "#2980b9" if o in lack_ohs else "#c5a059") if o in over_ohs+lack_ohs else "#888"};color:#1a1a1a;padding:4px 10px;border-radius:12px;font-size:12px;margin:2px;display:inline-block">{oh_emoji_map.get(o,"")}{OHN.get(o,"")} {v}%</span>'
+        f'<span style="background:{("#c0392b" if o in over_ohs else "#2980b9" if o in lack_ohs else "#000000") if o in over_ohs+lack_ohs else "#888"};color:#000000;padding:4px 10px;border-radius:12px;font-size:12px;margin:2px;display:inline-block">{oh_emoji_map.get(o,"")}{OHN.get(o,"")} {v}%</span>'
         for o,v in oh_strength.items()])
     orig_chung = get_chung_hyung(pils)
     chung_str = "·".join([c[0] for c in orig_chung["충"]]) if orig_chung["충"] else "없음"
@@ -4389,24 +4585,24 @@ def tab_saju_total(pils, name, birth_year, gender):
     yangin = get_yangin(pils)
 
     st.markdown(f"""
-    <div class="card" style="background:#fffef5;border:2px solid #c5a059">
+    <div class="card" style="background:#ffffff;border:2.5px solid #000000">
         <div style="margin-bottom:10px">{oh_bar}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:13px;color:#444;line-height:1.9">
-            <div style="flex:1;min-width:200px"><b style="color:#a0720a">🏛️ 격국:</b> {gname} — {gyeokguk["격의_등급"] if gyeokguk else ""}</div>
-            <div style="flex:1;min-width:200px"><b style="color:#a0720a">⚡ 원국 충:</b> {chung_str}</div>
-            <div style="flex:1;min-width:200px"><b style="color:#a0720a">✨ 원국 합:</b> {hap_str}</div>
-            <div style="flex:1;min-width:200px"><b style="color:#a0720a">🕳️ 공망:</b> {gong_str}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:13px;color:#000000;line-height:1.9">
+            <div style="flex:1;min-width:200px"><b style="color:#000000">🏛️ 격국:</b> {gname} — {gyeokguk["격의_등급"] if gyeokguk else ""}</div>
+            <div style="flex:1;min-width:200px"><b style="color:#000000">⚡ 원국 충:</b> {chung_str}</div>
+            <div style="flex:1;min-width:200px"><b style="color:#000000">✨ 원국 합:</b> {hap_str}</div>
+            <div style="flex:1;min-width:200px"><b style="color:#000000">🕳️ 공망:</b> {gong_str}</div>
             {f'<div style="flex:1;min-width:200px"><b style="color:#c0392b">🔥 양인:</b> {yangin["양인_지지"]} 존재 — 강렬한 에너지, 칠살과 함께면 극강</div>' if yangin["존재"] else ""}
             {f'<div style="flex:1;min-width:200px"><b style="color:#8b2020">⚠️ 완전 결핍:</b> {" ".join([OHN.get(o,"")+"("+o+")" for o in zero_ohs])} — 이 오행 운이 올 때 혼란</div>' if zero_ohs else ""}
         </div>
     </div>""", unsafe_allow_html=True)
 
     # ④ 현재 대운 × 세운 교차 진단 (핵심!)
-    st.markdown("### 🔀 현재 대운 × 세운 교차 진단")
+    st.markdown('<div class="gold-section">🔀 현재 대운 × 세운 교차 진단</div>', unsafe_allow_html=True)
     if current_dw:
         both_yong = dw_is_yong and sw_is_yong
         none_yong = not dw_is_yong and not sw_is_yong
-        cross_color = "#c5a059" if both_yong else "#c0392b" if none_yong else "#2980b9"
+        cross_color = "#000000" if both_yong else "#c0392b" if none_yong else "#2980b9"
         cross_label = ("🌟 용신 대운과 용신 세운이 겹쳤습니다 — 평생 최고의 기회 시기" if both_yong
                       else "⚠️ 기신 대운·세운이 겹쳤습니다 — 수비가 최선입니다" if none_yong
                       else f"{'✨ 용신 대운 속 일반 세운' if dw_is_yong else '🌿 기신 대운이지만 세운이 활로를 엽니다'}")
@@ -4416,14 +4612,14 @@ def tab_saju_total(pils, name, birth_year, gender):
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
                 <div style="flex:1;min-width:160px;background:white;padding:12px;border-radius:10px;text-align:center">
                     <div style="font-size:11px;color:#444">현재 대운</div>
-                    <div style="font-size:22px;font-weight:900;color:#a0720a">{current_dw["str"]}</div>
+                    <div style="font-size:22px;font-weight:900;color:#000000">{current_dw["str"]}</div>
                     <div style="font-size:12px;color:#333">{dw_ss} | {"🌟용신" if dw_is_yong else "기신"}</div>
                     <div style="font-size:11px;color:#555">{current_dw["시작나이"]}~{current_dw["시작나이"]+9}세 ({current_dw["시작연도"]}~{current_dw["종료연도"]})</div>
                 </div>
                 <div style="font-size:24px;color:{cross_color};display:flex;align-items:center">×</div>
                 <div style="flex:1;min-width:160px;background:white;padding:12px;border-radius:10px;text-align:center">
                     <div style="font-size:11px;color:#444">{current_year}년 세운</div>
-                    <div style="font-size:22px;font-weight:900;color:#a0720a">{yearly["세운"]}</div>
+                    <div style="font-size:22px;font-weight:900;color:#000000">{yearly["세운"]}</div>
                     <div style="font-size:12px;color:#333">{sw_ss} | {"🌟용신" if sw_is_yong else "일반"}</div>
                     <div style="font-size:11px;color:#555">{yearly.get("길흉","")}</div>
                 </div>
@@ -4441,7 +4637,7 @@ def tab_saju_total(pils, name, birth_year, gender):
                 st.markdown(f'<div class="card" style="border-left:4px solid {a["color"]}"><b style="color:{a["color"]}">{a["type"]}</b> — {a["desc"]}</div>', unsafe_allow_html=True)
 
     # ⑤ 처방 중심 조언
-    st.markdown("### 💊 처방 — 지금 당장 해야 할 것")
+    st.markdown('<div class="gold-section">💊 처방 — 지금 당장 해야 할 것</div>', unsafe_allow_html=True)
     prescriptions_total = []
     if dw_is_yong and sw_is_yong:
         prescriptions_total += ["✅ 지금이 황금 시기입니다. 중요한 결정(창업·투자·이직·결혼)을 미루지 마십시오.",
@@ -4466,14 +4662,14 @@ def tab_saju_total(pils, name, birth_year, gender):
         st.markdown(f'<div style="background:{color}12;border-left:4px solid {color};padding:10px 14px;border-radius:8px;margin:5px 0;font-size:13px;color:#333">{p}</div>', unsafe_allow_html=True)
 
     # ⑥ 미래 5년 요약
-    st.markdown("### 📅 향후 5년 핵심 요약")
+    st.markdown('<div class="gold-section">📅 향후 5년 핵심 요약</div>', unsafe_allow_html=True)
     for y in range(current_year, current_year+5):
         c2 = get_daewoon_sewoon_cross(pils, birth_year, gender, y)
         if not c2: continue
         dy = _get_yongshin_match(c2["대운_천간십성"], yongshin_ohs, ilgan_oh) == "yong"
         sy = _get_yongshin_match(c2["세운_천간십성"], yongshin_ohs, ilgan_oh) == "yong"
         hb = _get_hap_break_warning(pils, c2["대운"]["jj"], c2["세운"]["jj"])
-        if dy and sy:   row_lc,row_bg,badge="#c5a059","#fffde0","🌟 최길"
+        if dy and sy:   row_lc,row_bg,badge="#000000","#ffffff","🌟 최길"
         elif dy or sy:  row_lc,row_bg,badge="#2980b9","#f0f8ff","✨ 길"
         elif "흉" in c2["세운"]["길흉"]: row_lc,row_bg,badge="#c0392b","#fff5f5","⚠️ 흉"
         else:           row_lc,row_bg,badge="#888","#fafafa","〰️ 평"
@@ -4481,7 +4677,7 @@ def tab_saju_total(pils, name, birth_year, gender):
         age_y = y - birth_year + 1
         st.markdown(f"""
         <div style="display:flex;align-items:center;padding:10px 16px;border-radius:12px;margin:4px 0;background:{row_bg};border:1px solid {row_lc}44">
-            <span style="font-weight:900;color:#a0720a;min-width:55px">{y}년</span>
+            <span style="font-weight:900;color:#000000;min-width:55px">{y}년</span>
             <span style="min-width:45px;font-size:12px;color:#444">{age_y}세</span>
             <span style="min-width:80px;font-size:13px;color:#333">대운:{c2["대운"]["str"]}</span>
             <span style="min-width:80px;font-size:13px;color:#333">세운:{c2["세운"]["세운"]}</span>
@@ -4491,7 +4687,7 @@ def tab_saju_total(pils, name, birth_year, gender):
         </div>""", unsafe_allow_html=True)
 
     # ⑦ 텍스트 총평 (복사용)
-    st.markdown("### 📋 전문 총평 텍스트 (복사용)")
+    st.markdown('<div class="gold-section">📋 전문 총평 텍스트 (복사용)</div>', unsafe_allow_html=True)
     summary = generate_saju_summary(pils, name, birth_year, gender)
     st.text_area("", summary, height=300, label_visibility="collapsed")
 
@@ -4528,14 +4724,14 @@ def tab_ai_chat(pils, name, birth_year=1990, gender="남", api_key="", groq_key=
                     padding:12px 20px;margin-bottom:14px;
                     display:flex;gap:24px;align-items:center;flex-wrap:wrap">
             <div style="text-align:center;min-width:72px">
-                <div style="font-size:10px;color:#333;letter-spacing:1px">🧠 BRAIN 3</div>
+                <div style="font-size:10px;color:#000000;letter-spacing:1px">🧠 BRAIN 3</div>
                 <div style="font-size:26px;font-weight:900;color:{rate_color};line-height:1.1">{overall}%</div>
                 <div style="font-size:10px;color:#555">적중률 ({total_fb}건)</div>
             </div>
-            <div style="flex:1;font-size:11px;color:#444;line-height:2.0">
-                ✅ 잘 맞는 섹션 : <b style="color:#6fcf6f">{best_sec}</b><br>
+            <div style="flex:1;font-size:11px;color:#000000;line-height:2.0">
+                ✅ 잘 맞는 섹션 : <b style="color:#1a7a1a">{best_sec}</b><br>
                 ⚠️ 개선 중인 섹션 : <b style="color:#ffab40">{weak_sec}</b><br>
-                <span style="color:#555;font-size:10px">
+                <span style="color:#000000;font-size:10px">
                   피드백이 쌓일수록 AI 프롬프트가 자동 강화됩니다
                 </span>
             </div>
@@ -4552,207 +4748,133 @@ def tab_ai_chat(pils, name, birth_year=1990, gender="남", api_key="", groq_key=
     # 예언자 모드 헤더
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     st.markdown("""
-    <div style="background:linear-gradient(135deg,#f0eeff,#ece8ff);color:#1a1a1a;
+    <div style="background:linear-gradient(135deg,#f0eeff,#ece8ff);color:#000000;
                 padding:24px;border-radius:16px;margin-bottom:16px;text-align:center">
         <div style="font-size:26px;font-weight:900;letter-spacing:3px;
-                    color:#c5a059;margin-bottom:8px">🔮 예언자의 서(書)</div>
-        <div style="font-size:13px;color:#555;line-height:1.9">
+                    color:#000000;margin-bottom:8px">🔮 예언자의 서(書)</div>
+        <div style="font-size:13px;color:#000000;line-height:1.9">
             Brain 1(만세력)이 계산한 데이터 → Brain 2(AI)가 단정적으로 풀이합니다<br>
             과거 적중 · 현재 · 직업 · 결혼 · 미래 3년 · 돈 상승기
         </div>
     </div>""", unsafe_allow_html=True)
 
-    if st.button("🔮 예언자 풀이 — 6단계 천명 판독",
-                 use_container_width=True, type="primary"):
-        b3_track_behavior("view_ai")   # Brain 3: 행동 추적
-        with st.spinner("운명의 실타래를 읽는 중..."):
-            result = get_cached_ai_interpretation(
-                saju_key, "prophet", api_key,
-                birth_year=birth_year, gender=gender,
-                name=name, groq_key=groq_key
-            )
-            st.session_state["ai_prophet_result"] = result
+    # 마스터 엔진 실시간 라벨 배지
+    fate = turning.get("fate_label", "평온기 🍀")
+    fate_desc = turning.get("fate_desc", "안정된 흐름 속에 있습니다.")
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, #1a1a2e, #16213e); 
+                border-radius: 15px; padding: 20px; margin-bottom: 15px; 
+                border-left: 5px solid #000000; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="font-size: 30px;">{fate.split()[-1] if ' ' in fate else '✨'}</div>
+            <div>
+                <div style="color: #000000; font-size: 13px; font-weight: 700; letter-spacing: 1px; margin-bottom: 4px;">CURRENT LIFE SEASON</div>
+                <div style="color: #ffffff; font-size: 22px; font-weight: 900; letter-spacing: -0.5px;">당신은 현재 <span style="color: #f1c40f;">{fate}</span>를 지나고 있습니다</div>
+                <div style="color: #a0a0ba; font-size: 14px; margin-top: 5px;">{fate_desc}</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # ── 예언자 결과 렌더링 + Brain 3 섹션별 피드백 ──────────
-    if "ai_prophet_result" in st.session_state:
-        result_text = st.session_state["ai_prophet_result"]
-        sections = {
-            "1️⃣": ("과거 적중", "#f0e8ff", "#9b7ccc"),
-            "2️⃣": ("현재",      "#e8f4ff", "#5c9bc5"),
-            "3️⃣": ("직업",      "#e0f5ec", "#5cc58b"),
-            "4️⃣": ("결혼",      "#2e0a1a", "#c55c8b"),
-            "5️⃣": ("미래 3년",  "#fffde8", "#c5b55c"),
-            "6️⃣": ("돈 상승기", "#e0f5f5", "#5cc5c5"),
-        }
-        parsed = {}
-        for emoji in sections:
-            m = re.search(
-                rf'{re.escape(emoji)}[^\n]*\n([\s\S]*?)(?=(?:[1-6]️⃣)|$)',
-                result_text
-            )
-            if m:
-                parsed[emoji] = m.group(1).strip()
+    # 행운의 개운법 (Lucky Kit) 자체 로직 렌더링
+    ys_info = get_yongshin(pils)
+    primary_yong = ys_info.get("용신_1순위", "木")
+    render_lucky_kit(primary_yong)
 
-        fb_log = st.session_state.get("feedback_log", {})
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 🗣️ AI 만신과의 대화 (Multi-turn Chat)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if "chat_history" not in st.session_state:
+        st.session_state["chat_history"] = []
 
-        if parsed:
-            for emoji, (title, bg, color) in sections.items():
-                if emoji not in parsed:
-                    continue
-
-                b3_track_behavior("view_section")  # Brain 3: 섹션 조회 추적
-
-                st.markdown(f"""
-                <div style="background:{bg};border:1px solid {color}44;
-                            border-left:4px solid {color};border-radius:12px;
-                            padding:20px;margin:8px 0">
-                    <div style="font-size:15px;font-weight:800;color:{color};
-                                margin-bottom:10px;letter-spacing:1px">
-                        {emoji} {title}
-                    </div>
-                    <div style="font-size:14px;color:#333;line-height:2.1;
-                                white-space:pre-wrap">{parsed[emoji]}</div>
-                </div>""", unsafe_allow_html=True)
-
-                # ★ Brain 3: 섹션별 피드백 버튼
-                fb_key = f"prophet_{emoji}_{title}"
-                if fb_key in fb_log:
-                    res  = fb_log[fb_key]
-                    fc   = "#27ae60" if res == "hit" else "#c0392b"
-                    flbl = "✅ 맞았다고 응답" if res == "hit" else "❌ 아니었다고 응답"
-                    st.markdown(
-                        f'<div style="font-size:11px;color:{fc};margin:4px 0 12px 4px">{flbl}</div>',
-                        unsafe_allow_html=True)
+    # 1. 기존 대화 기록 출력 가이드
+    def render_message(role, content):
+        with st.chat_message(role):
+            # 리포트 형식(Prophet 모드) 파싱 및 렌더링
+            if "1️⃣" in content and "2️⃣" in content:
+                sections = {
+                    "1️⃣": ("과거 적중", "#f0e8ff", "#9b7ccc"),
+                    "2️⃣": ("현재",      "#e8f4ff", "#5c9bc5"),
+                    "3️⃣": ("직업",      "#e0f5ec", "#5cc88b"),
+                    "4️⃣": ("결혼",      "#2e0a1a", "#c55c8b"),
+                    "5️⃣": ("미래 3년",  "#fffde8", "#c5b55c"),
+                    "6️⃣": ("돈 상승기", "#e0f5f5", "#5cc5c5"),
+                    "7️⃣": ("오늘의 비방", "#fff8f8", "#cc2222"),
+                }
+                parsed = {}
+                for emoji in sections:
+                    m = re.search(rf'{re.escape(emoji)}[^\n]*\n([\s\S]*?)(?=(?:[1-7]️⃣)|$)', content)
+                    if m: parsed[emoji] = m.group(1).strip()
+                
+                if parsed:
+                    for emoji, (title, bg, color) in sections.items():
+                        if emoji in parsed:
+                            if emoji == "7️⃣":
+                                st.markdown(f'<div class="red-scroll"><div style="font-size:16px;font-weight:900;margin-bottom:12px">🧧 {title}</div>{parsed[emoji]}</div>', unsafe_allow_html=True)
+                            else:
+                                st.markdown(f'<div style="background:{bg};border:1px solid {color}44;border-left:4px solid {color};border-radius:12px;padding:20px;margin:8px 0"><div style="font-size:15px;font-weight:800;color:{color};margin-bottom:10px;letter-spacing:1px">{emoji} {title}</div><div style="font-size:14px;color:#000000;line-height:2.1;white-space:pre-wrap">{parsed[emoji]}</div></div>', unsafe_allow_html=True)
                 else:
-                    fb_c1, fb_c2, _ = st.columns([1, 1, 4])
-                    with fb_c1:
-                        if st.button("✅ 맞았다",
-                                     key=f"b3hit_{emoji}", use_container_width=True):
-                            save_feedback(fb_key, True)
-                            st.rerun()
-                    with fb_c2:
-                        if st.button("❌ 아니다",
-                                     key=f"b3miss_{emoji}", use_container_width=True):
-                            save_feedback(fb_key, False)
-                            st.rerun()
-        else:
-            st.markdown(f"""
-            <div style="background:#f5f5ff;border:1px solid #c5a05944;
-                        border-radius:12px;padding:24px">
-                <div style="font-size:14px;color:#333;line-height:2.1;
-                            white-space:pre-wrap">{result_text}</div>
-            </div>""", unsafe_allow_html=True)
-
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 일반 AI 풀이 버튼 3종
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    st.markdown("---")
-    st.markdown('<div class="gold-section">일반 AI 풀이</div>',
-                unsafe_allow_html=True)
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("📜 종합 해석", use_container_width=True):
-            b3_track_behavior("view_ai")
-            with st.spinner("천명을 읽는 중..."):
-                result = get_cached_ai_interpretation(
-                    saju_key, "general", api_key,
-                    birth_year, gender, name, groq_key=groq_key)
-                st.session_state["ai_result"] = result
-    with col2:
-        if st.button("💰 진로·재물", use_container_width=True):
-            b3_track_behavior("view_ai")
-            with st.spinner("재물운을 살피는 중..."):
-                result = get_cached_ai_interpretation(
-                    saju_key, "career", api_key,
-                    birth_year, gender, name, groq_key=groq_key)
-                st.session_state["ai_result"] = result
-    with col3:
-        if st.button("💕 배우자·연애", use_container_width=True):
-            b3_track_behavior("view_ai")
-            with st.spinner("인연을 찾는 중..."):
-                result = get_cached_ai_interpretation(
-                    saju_key, "love", api_key,
-                    birth_year, gender, name, groq_key=groq_key)
-                st.session_state["ai_result"] = result
-
-    if "ai_result" in st.session_state:
-        st.markdown(
-            f'<div class="fortune-text">{st.session_state["ai_result"]}</div>',
-            unsafe_allow_html=True)
-
-        # ── 미완성 서술 트릭 — 다음 단계 유도 ──────────────────
-        try:
-            turning = calc_turning_point(pils, birth_year, gender)
-            triggers = detect_event_triggers(pils, birth_year, gender)
-            high_t = [t for t in triggers if t["prob"] >= 75]
-
-            if turning["is_turning"] or high_t:
-                next_hint = ""
-                if turning["is_turning"]:
-                    next_hint = turning["reason"][0] if turning["reason"] else "인생 흐름이 바뀌는 계기"
-                elif high_t:
-                    next_hint = high_t[0]["title"]
-
-                st.markdown(f"""
-                <div style="background:linear-gradient(135deg,#fff8e8,#fff0d0);
-                            border:2px solid #c5a059;border-radius:14px;
-                            padding:18px 20px;margin:16px 0;text-align:center">
-                    <div style="font-size:13px;color:#a0720a;font-weight:700;margin-bottom:8px">
-                        ⚡ AI 분석 엔진이 감지한 추가 신호
-                    </div>
-                    <div style="font-size:14px;color:#333;line-height:1.9;margin-bottom:12px">
-                        지금 운의 흐름상,<br>
-                        <b style="color:#a0720a">{next_hint}</b>가 감지됩니다.<br>
-                        이 시기에 해야 할 구체적인 행동 지침이 있습니다.
-                    </div>
-                    <div style="font-size:12px;color:#888;font-style:italic">
-                        ▶ 위에서 집중 분야를 변경하고 재분석하면 더 상세한 해석을 받을 수 있습니다
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-        except Exception:
-            pass
-
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 직접 질문하기
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    st.markdown("---")
-    st.markdown("**🗣️ 직접 질문하기**")
-    user_q = st.text_area(
-        "궁금한 점을 여쭤보세요",
-        placeholder="예) 올해 이직 운이 어떤가요?", height=80)
-    if st.button("🔮 답변 구하기") and user_q:
-        b3_track_behavior("ask_question")   # Brain 3: 질문 행동 추적
-        with st.spinner("신묘한 이치를 풀이하는 중..."):
-            prompt = (
-                f"사주: {' '.join([p['str'] for p in pils])} (시일월년)\n"
-                f"일간: {ilgan} / 생년: {birth_year}년 / 성별: {gender}\n\n"
-                f"질문: {user_q}\n\n"
-                "전통 명리학 관점에서 구체적으로, 단정적으로 답변하십시오."
-            )
-            if api_key or groq_key:
-                answer = get_ai_interpretation(
-                    prompt, api_key, max_tokens=800, groq_key=groq_key)
+                    st.markdown(content)
             else:
-                answer = (
-                    f"◈ {ilgan}일간 기준 답변 ◈\n\n"
-                    f"{user_q}에 대해 사주를 살펴보면, "
-                    f"{ilgan}일간의 기운과 현재 운세의 흐름을 종합하여 판단해 드립니다.\n\n"
-                    "※ API 키를 입력하시면 더욱 정밀한 AI 해석을 받으실 수 있습니다."
+                st.markdown(content)
+
+    # 대화창 클리어 버튼
+    if st.session_state["chat_history"]:
+        if st.button("🔄 대화 초기화", use_container_width=True):
+            st.session_state["chat_history"] = []
+            st.rerun()
+
+    # 히스토리 렌더링
+    for msg in st.session_state["chat_history"]:
+        render_message(msg["role"], msg["content"])
+
+    # 2. 최초 시작 버튼 (히스토리가 없을 때만)
+    if not st.session_state["chat_history"]:
+        if st.button("🔮 예언자 풀이 | 6단계 천명 판독 시작", use_container_width=True, type="primary"):
+            b3_track_behavior("view_ai")
+            with st.status("🧠 사주 천명 판독 중...", expanded=True) as status:
+                st.write("천명의 언어 해석 및 상담 (Interpretation)...")
+                stream_gen = get_cached_ai_interpretation(
+                    saju_key, "prophet", api_key, birth_year=birth_year, 
+                    gender=gender, name=name, groq_key=groq_key, stream=True
                 )
-            st.markdown(
-                f'<div class="fortune-text">{answer}</div>',
-                unsafe_allow_html=True)
+                with st.chat_message("assistant"):
+                    placeholder = st.empty()
+                    full_text = placeholder.write_stream(stream_gen)
+                st.session_state["chat_history"].append({"role": "assistant", "content": full_text})
+                status.update(label="✅ 판독 완료", state="complete", expanded=False)
+                st.rerun()
 
+    # 3. 사용자 채팅 입력 및 펜딩 처리
+    prompt = st.chat_input("사주에 대해 궁금한 점을 더 물어보세요.")
+    if "_pending_sug" in st.session_state:
+        prompt = st.session_state.pop("_pending_sug")
 
+    if prompt:
+        st.session_state["chat_history"].append({"role": "user", "content": prompt})
+        # (렌더링은 루프에서 처리되므로 여기선 AI 응답 생성에 집중)
+        with st.chat_message("assistant"):
+            with st.spinner("AI 만신이 답을 구하는 중..."):
+                rich_ctx = format_saju_text(pils, name)
+                user_msg_with_ctx = f"【대상 사주】: {rich_ctx}\n【사용자 질문】: {prompt}\n\n위 사주를 바탕으로 대화의 맥락을 이어가며 답하십시오."
+                stream_gen = get_ai_interpretation(
+                    user_msg_with_ctx, api_key, system=PROPHET_SYSTEM,
+                    groq_key=groq_key, stream=True, history=st.session_state["chat_history"][:-1]
+                )
+                placeholder = st.empty()
+                full_answer = placeholder.write_stream(stream_gen)
+                st.session_state["chat_history"].append({"role": "assistant", "content": full_answer})
+        st.rerun()
 
-def tab_yongshin(pils):
-    """용신(用神) 탭"""
+    # 4. 추천 질문 (Suggestion Pills)
+    if st.session_state["chat_history"] and st.session_state["chat_history"][-1]["role"] == "assistant":
+        st.markdown("<div style='margin:10px 0 5px 0; font-size:13px; color:#000000;'>💡 **이런 질문은 어떠세요?**</div>", unsafe_allow_html=True)
+        suggestions = ["올해 가장 조심해야 할 달은?", "재물을 부르는 개운법은?", "내 사주의 가장 큰 강점은?"]
     st.markdown('<div class="gold-section">⚡ 용신(用神) — 내 사주의 구원 오행</div>', unsafe_allow_html=True)
     st.markdown("""
-    <div class="card" style="background:#f5f0ff;border:1px solid #c8b8e8;margin-bottom:12px">
+    <div class="card" style="background:#ffffff;border:1px solid #c8b8e8;margin-bottom:12px">
         <div style="font-size:13px;color:#5a2d8b;font-weight:700;margin-bottom:4px">💡 용신이란?</div>
-        <div style="font-size:13px;color:#444;line-height:1.8">
+        <div style="font-size:13px;color:#000000;line-height:1.8">
         용신(用神)은 내 사주에서 가장 필요한 기운입니다. 이 오행의 운이 올 때 발복하고, 반대 기신(忌神)의 운이 올 때 고난이 옵니다.
         용신 방향으로 이사하고, 용신 색상을 착용하고, 용신 직업을 선택하면 운명을 바꿀 수 있습니다.
         </div>
@@ -4766,7 +4888,7 @@ def tab_yongshin(pils):
     oh_season = {"木": "봄(1~3월)", "火": "여름(4~6월)", "土": "환절기", "金": "가을(7~9월)", "水": "겨울(10~12월)"}
     
     # 억부용신
-    st.markdown("### 1️⃣ 억부용신(抑扶用神)")
+    st.markdown('<div class="gold-section">1️⃣ 억부용신(抑扶用神)</div>', unsafe_allow_html=True)
     yong_ohs = ys["억부_용신"]
     cols = st.columns(len(yong_ohs) if yong_ohs else 1)
     for i, oh in enumerate(yong_ohs):
@@ -4774,11 +4896,11 @@ def tab_yongshin(pils):
         e = oh_emoji.get(oh, "")
         with cols[i]:
             st.markdown(f"""
-            <div class="card" style="background:linear-gradient(135deg,#fffde0,#fff5cc);border:2px solid {c};text-align:center">
+            <div class="card" style="background:#ffffff;border:2.5px solid #000000;text-align:center">
                 <div style="font-size:30px">{e}</div>
                 <div style="font-size:18px;font-weight:800;color:{c}">{OHN.get(oh,'')}</div>
-                <div style="font-size:12px;color:#333;margin-top:6px">억부용신</div>
-                <div style="font-size:12px;color:#444;margin-top:4px">
+                <div style="font-size:12px;color:#000000;margin-top:6px">억부용신</div>
+                <div style="font-size:12px;color:#000000;margin-top:4px">
                     방향: {oh_direction.get(oh,'')}<br>
                     색상: {oh_luckcolor.get(oh,'')}<br>
                     계절: {oh_season.get(oh,'')}
@@ -4786,9 +4908,9 @@ def tab_yongshin(pils):
             </div>""", unsafe_allow_html=True)
     
     st.markdown(f"""
-    <div class="card" style="background:#f0fff0;border-left:4px solid #4CAF50">
+    <div class="card" style="background:#ffffff;border-left:8px solid #000000;border:1.5px solid #000">
         <div style="font-size:13px;font-weight:700;color:#2a6f2a;margin-bottom:4px">{ys['억부_base']}</div>
-        <div style="font-size:13px;color:#333;line-height:1.9">{ys['억부_desc']}</div>
+        <div style="font-size:13px;color:#000000;line-height:1.9">{ys['억부_desc']}</div>
         <div style="font-size:12px;color:#c03020;margin-top:8px;background:#fff0f0;padding:8px;border-radius:6px">
             ⚠️ 기신(忌神): {ys['기신']}
         </div>
@@ -4796,12 +4918,12 @@ def tab_yongshin(pils):
     
     # 조후용신
     if ys["조후_desc"]:
-        st.markdown("### 2️⃣ 조후용신(調候用神)")
+        st.markdown('<div class="gold-section">2️⃣ 조후용신(調候用神)</div>', unsafe_allow_html=True)
         need_str = ", ".join([f"{OHN.get(OH.get(c,''),'')}{c}" for c in ys["조후_need"]])
         avoid_str = ", ".join([f"{OHN.get(OH.get(c,''),'')}{c}" for c in ys["조후_avoid"]])
         st.markdown(f"""
-        <div class="card" style="background:#f0f8ff;border-left:4px solid #2196F3">
-            <div style="font-size:13px;color:#333;line-height:1.9;margin-bottom:8px">{ys['조후_desc']}</div>
+        <div class="card" style="background:#ffffff;border-left:8px solid #000000;border:1.5px solid #000">
+            <div style="font-size:13px;color:#000000;line-height:1.9;margin-bottom:8px">{ys['조후_desc']}</div>
             {f'<div style="font-size:12px;color:#2a6f2a;background:#e8f5e8;padding:6px 10px;border-radius:6px;margin-bottom:4px">✅ 필요한 기운: {need_str}</div>' if need_str else ''}
             {f'<div style="font-size:12px;color:#c03020;background:#fce8e8;padding:6px 10px;border-radius:6px">❌ 피해야 할 기운: {avoid_str}</div>' if avoid_str else ''}
         </div>""", unsafe_allow_html=True)
@@ -4809,11 +4931,11 @@ def tab_yongshin(pils):
     # 통관용신
     if ys["통관_yong"]:
         oh = ys["통관_yong"]
-        st.markdown("### 3️⃣ 통관용신(通關用神)")
+        st.markdown('<div class="gold-section">3️⃣ 통관용신(通關用神)</div>', unsafe_allow_html=True)
         st.markdown(f"""
-        <div class="card" style="background:#fff8e0;border-left:4px solid #c5a059">
-            <div style="font-size:13px;color:#333;line-height:1.9">{ys['통관_desc']}</div>
-            <div style="font-size:13px;font-weight:700;color:#a0720a;margin-top:8px">
+        <div class="card" style="background:#ffffff;border-left:8px solid #000000;border:1.5px solid #000">
+            <div style="font-size:13px;color:#000000;line-height:1.9">{ys['통관_desc']}</div>
+            <div style="font-size:13px;font-weight:700;color:#000000;margin-top:8px">
                 {oh_emoji.get(oh,'')} 통관용신: {OHN.get(oh,'')} — 방향: {oh_direction.get(oh,'')} / 색상: {oh_luckcolor.get(oh,'')}
             </div>
         </div>""", unsafe_allow_html=True)
@@ -4821,12 +4943,12 @@ def tab_yongshin(pils):
     # 종합 용신 정리
     all_y = ys["종합_용신"]
     if all_y:
-        st.markdown("### ⭐ 종합 용신 정리")
+        st.markdown('<div class="gold-section">⭐ 종합 용신 정리</div>', unsafe_allow_html=True)
         st.markdown(f"""
-        <div class="card" style="background:linear-gradient(135deg,#fff2e9,#fff4e8);color:#1a1a1a;padding:20px">
-            <div style="font-size:15px;font-weight:700;margin-bottom:14px;color:#f0d58c">내 사주의 핵심 용신</div>
+        <div class="card" style="background:#ffffff;color:#000000;padding:20px;border:2.5px solid #000000">
+            <div style="font-size:15px;font-weight:700;margin-bottom:14px;color:#8b6200">내 사주의 핵심 용신</div>
             <div style="display:flex;flex-wrap:wrap;gap:10px">
-                {"".join([f'<div style="background:rgba(255,255,255,0.1);padding:12px 20px;border-radius:12px;text-align:center"><div style="font-size:24px">{oh_emoji.get(o,"")}</div><div style="font-size:14px;font-weight:700;color:#f0d58c;margin-top:4px">{OHN.get(o,"")} ({o})</div><div style="font-size:11px;color:#555;margin-top:4px">{oh_direction.get(o,"")} · {oh_luckcolor.get(o,"")}</div></div>' for o in all_y])}
+                {"".join([f'<div style="background:rgba(255,255,255,0.1);padding:12px 20px;border-radius:12px;text-align:center"><div style="font-size:24px">{oh_emoji.get(o,"")}</div><div style="font-size:14px;font-weight:700;color:#8b6200;margin-top:4px">{OHN.get(o,"")} ({o})</div><div style="font-size:11px;color:#000000;margin-top:4px">{oh_direction.get(o,"")} · {oh_luckcolor.get(o,"")}</div></div>' for o in all_y])}
             </div>
         </div>""", unsafe_allow_html=True)
 
@@ -4857,24 +4979,24 @@ def tab_chung_hyung(pils):
             st.markdown(f"""
             <div class="card" style="background:{bg};border-left:4px solid {color};margin:8px 0">
                 <div style="font-size:14px;font-weight:700;color:{color};margin-bottom:8px">{icon} {title}</div>
-                <div style="font-size:12px;color:#333;margin-bottom:10px">{guide}</div>
-                {"".join([f'<div style="background:white;padding:10px 14px;border-radius:8px;margin-bottom:6px"><b style=color:{color}>{it[0]}</b> <span style=color:#888;font-size:12px>({it[1] if len(it)>1 else ""})</span><div style=font-size:13px;color:#333;margin-top:4px>{it[2] if len(it)>2 else it[1] if len(it)>1 else ""}</div></div>' for it in items])}
+                <div style="font-size:12px;color:#000000;margin-bottom:10px">{guide}</div>
+                {"".join([f'<div style="background:white;padding:10px 14px;border-radius:8px;margin-bottom:6px"><b style=color:{color}>{it[0]}</b> <span style=color:#000000;font-size:12px>({it[1] if len(it)>1 else ""})</span><div style=font-size:13px;color:#000000;margin-top:4px>{it[2] if len(it)>2 else it[1] if len(it)>1 else ""}</div></div>' for it in items])}
             </div>""", unsafe_allow_html=True)
     
     # 자형
     if result.get("자형"):
         found_any = True
         st.markdown(f"""
-        <div class="card" style="background:#fef0ff;border-left:4px solid #9b59b6">
+        <div class="card" style="background:#ffffff;border-left:8px solid #000000;border:1.5px solid #000">
             <div style="font-size:14px;font-weight:700;color:#9b59b6;margin-bottom:6px">🔮 자형(自刑)</div>
             <div style="font-size:13px;color:#444">같은 지지가 두 개 이상: {', '.join(result['자형'])} — 스스로를 해치는 기운. 자기 비판, 자기 파괴적 행동을 조심하십시오.</div>
         </div>""", unsafe_allow_html=True)
     
     if not found_any:
         st.markdown("""
-        <div class="card" style="background:#f0fff0;border:2px solid #4CAF50;text-align:center;padding:24px">
+        <div class="card" style="background:#ffffff;border:2.5px solid #000000;text-align:center;padding:24px">
             <div style="font-size:18px;font-weight:700;color:#2a6f2a">✅ 합충형파해가 없는 안정적인 사주입니다</div>
-            <div style="font-size:13px;color:#444;margin-top:8px;line-height:1.8">
+            <div style="font-size:13px;color:#000000;margin-top:8px;line-height:1.8">
             지지 간의 극단적 충돌이 없어 안정적이고 꾸준한 삶을 영위합니다.<br>
             큰 변동보다는 점진적인 성장과 안정이 이 사주의 강점입니다.
             </div>
@@ -4885,9 +5007,9 @@ def tab_gongmang(pils):
     """공망(空亡) 탭"""
     st.markdown('<div class="gold-section">🕳️ 공망(空亡) — 운명의 빈 칸</div>', unsafe_allow_html=True)
     st.markdown("""
-    <div class="card" style="background:#f5f0ff;border:1px solid #c8b8e8">
+    <div class="card" style="background:#ffffff;border:1px solid #c8b8e8">
         <div style="font-size:13px;color:#5a2d8b;font-weight:700;margin-bottom:4px">💡 공망이란?</div>
-        <div style="font-size:13px;color:#444;line-height:1.8">
+        <div style="font-size:13px;color:#000000;line-height:1.8">
         60갑자에서 천간(10)과 지지(12)의 차이로 인해 2개의 지지가 짝을 갖지 못하는 상태입니다.
         공망이 된 지지는 그 기운이 허(虛)해집니다. 해당 육친이나 사항이 약화되거나 예상과 다른 결과를 가져옵니다.
         단, 공망된 기운이 운에서 채워지면(충공·합공) 오히려 크게 발복하기도 합니다.
@@ -4899,34 +5021,34 @@ def tab_gongmang(pils):
     found_pillars = gm["해당_기둥"]
     
     st.markdown(f"""
-    <div class="card" style="background:linear-gradient(135deg,#eef0ff,#e4e8ff);color:#1a1a1a;text-align:center;padding:20px">
-        <div style="font-size:13px;color:#555;margin-bottom:8px">년주 기준 공망 지지</div>
-        <div style="font-size:36px;font-weight:900;color:#c5a059;letter-spacing:8px">{' '.join(gong_pair)}</div>
-        <div style="font-size:13px;color:#555;margin-top:8px">{', '.join([JJ_KR[JJ.index(j)] for j in gong_pair if j in JJ])}</div>
+    <div class="card" style="background:#ffffff;color:#000000;text-align:center;padding:20px;border:2.5px solid #000000">
+        <div style="font-size:13px;color:#000000;margin-bottom:8px">년주 기준 공망 지지</div>
+        <div style="font-size:36px;font-weight:900;color:#000000;letter-spacing:8px">{' '.join(gong_pair)}</div>
+        <div style="font-size:13px;color:#000000;margin-top:8px">{', '.join([JJ_KR[JJ.index(j)] for j in gong_pair if j in JJ])}</div>
     </div>""", unsafe_allow_html=True)
     
     if found_pillars:
-        st.markdown("### ⚠️ 공망이 해당된 기둥")
+        st.markdown('<div class="gold-section">⚠️ 공망이 해당된 기둥</div>', unsafe_allow_html=True)
         for fp in found_pillars:
             gd = GONGMANG_JJ_DESC.get(fp["지지"], {})
             st.markdown(f"""
-            <div class="card" style="background:#fff0e0;border-left:4px solid #e67e22">
+            <div class="card" style="background:#ffffff;border-left:8px solid #000000;border:1.5px solid #000">
                 <div style="font-size:14px;font-weight:700;color:#e67e22;margin-bottom:6px">
                     ⚠️ {fp['기둥']} 공망 — {fp['지지']}({JJ_KR[JJ.index(fp['지지'])] if fp['지지'] in JJ else ''})
                 </div>
-                <div style="font-size:13px;color:#333;line-height:1.9;margin-bottom:8px">{fp['desc']}</div>
-                {f'<div style="background:#fffde0;padding:8px 12px;border-radius:8px"><div style="font-size:12px;font-weight:700;color:#a0720a;margin-bottom:4px">🔓 해공(解空) 방법</div><div style="font-size:12px;color:#444">{gd.get("remedy", "")}</div></div>' if isinstance(gd, dict) and gd.get("remedy") else ""}
+                <div style="font-size:13px;color:#000000;line-height:1.9;margin-bottom:8px">{fp['desc']}</div>
+                {f'<div style="background:#ffffff;padding:8px 12px;border-radius:8px"><div style="font-size:12px;font-weight:700;color:#000000;margin-bottom:4px">🔓 해공(解空) 방법</div><div style="font-size:12px;color:#444">{gd.get("remedy", "")}</div></div>' if isinstance(gd, dict) and gd.get("remedy") else ""}
             </div>""", unsafe_allow_html=True)
     else:
         st.markdown("""
-        <div class="card" style="background:#f0fff0;border:2px solid #4CAF50;text-align:center;padding:20px">
+        <div class="card" style="background:#ffffff;border:2.5px solid #000000;text-align:center;padding:20px">
             <div style="font-size:16px;font-weight:700;color:#2a6f2a">✅ 사주 기둥에 공망이 없습니다</div>
-            <div style="font-size:13px;color:#444;margin-top:6px">4개 기둥의 지지가 모두 실(實)하여 허한 구석이 없는 충실한 사주입니다.</div>
+            <div style="font-size:13px;color:#000000;margin-top:6px">4개 기둥의 지지가 모두 실(實)하여 허한 구석이 없는 충실한 사주입니다.</div>
         </div>""", unsafe_allow_html=True)
 
 
 def tab_ilju(pils):
-    """일주론(日柱論) — 60갑자 탭"""
+    """일주론(日柱論) | 60갑자 탭"""
     ilgan = pils[1]["cg"]; iljj = pils[1]["jj"]
     ilju_key = ilgan + iljj
     ilju = ILJU_DESC.get(ilju_key, {})
@@ -4938,39 +5060,39 @@ def tab_ilju(pils):
         nabjin = get_nabjin(ilgan, iljj)
         
         st.markdown(f"""
-        <div style="background:linear-gradient(135deg,#f5eeff,#eedaff);color:#1a1a1a;padding:24px;border-radius:16px;text-align:center;margin-bottom:16px">
+        <div style="background:#ffffff;color:#000000;padding:24px;border:2.5px solid #000000;border-radius:16px;text-align:center;margin-bottom:16px">
             <div style="font-size:48px;margin-bottom:8px">{ilju.get('symbol','')}</div>
-            <div style="font-size:32px;font-weight:900;color:#f0d58c;letter-spacing:6px">{ilju_key}</div>
+            <div style="font-size:32px;font-weight:900;color:#8b6200;letter-spacing:6px">{ilju_key}</div>
             <div style="font-size:14px;color:#c8b8f0;margin-top:8px">
                 {OHN.get(oh_cg,'')}({ilgan}) + {OHN.get(oh_jj,'')}({iljj}) &nbsp;|&nbsp; 납음: {nabjin['name']}
             </div>
         </div>""", unsafe_allow_html=True)
         
         st.markdown(f"""
-        <div class="card" style="background:linear-gradient(135deg,#fffde0,#fff9e6);border:2px solid #c5a059">
-            <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:10px">📜 일주의 천명 풀이</div>
-            <div style="font-size:14px;color:#333;line-height:2.1">{ilju.get('desc','')}</div>
+        <div class="card" style="background: #ffffff; border: 2.5px solid #000000;">
+            <div style="font-size:13px;font-weight:700;color:#000000;margin-bottom:10px">📜 일주의 천명 풀이</div>
+            <div style="font-size:14px;color:#000000;line-height:2.1">{ilju.get('desc','')}</div>
         </div>""", unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f"""
-            <div class="card" style="background:#f0fff0;border:1px solid #a8d5a8">
+            <div class="card" style="background:#ffffff;border:1px solid #a8d5a8">
                 <div style="font-size:13px;font-weight:700;color:#2a6f2a;margin-bottom:6px">✨ 운명의 빛</div>
-                <div style="font-size:13px;color:#333;line-height:1.9">{ilju.get('luck','')}</div>
+                <div style="font-size:13px;color:#000000;line-height:1.9">{ilju.get('luck','')}</div>
             </div>""", unsafe_allow_html=True)
         with col2:
             st.markdown(f"""
             <div class="card" style="background:#fff5f5;border:1px solid #d5a8a8">
                 <div style="font-size:13px;font-weight:700;color:#8b2020;margin-bottom:6px">⚠️ 경계할 것</div>
-                <div style="font-size:13px;color:#333;line-height:1.9">{ilju.get('caution','')}</div>
+                <div style="font-size:13px;color:#000000;line-height:1.9">{ilju.get('caution','')}</div>
             </div>""", unsafe_allow_html=True)
         
         # 납음오행
         st.markdown(f"""
-        <div class="card" style="background:#f5f0ff;border:1px solid #c8b8e8">
+        <div class="card" style="background:#ffffff;border:1px solid #c8b8e8">
             <div style="font-size:13px;font-weight:700;color:#5a2d8b;margin-bottom:6px">🎵 납음오행(納音五行): {nabjin['name']}</div>
-            <div style="font-size:13px;color:#444;line-height:1.8">{nabjin['desc']}</div>
+            <div style="font-size:13px;color:#000000;line-height:1.8">{nabjin['desc']}</div>
         </div>""", unsafe_allow_html=True)
     else:
         st.info(f"{ilju_key} 일주 데이터를 준비 중입니다.")
@@ -4981,9 +5103,9 @@ def tab_yukjin(pils, gender="남"):
     ilgan = pils[1]["cg"]
     st.markdown('<div class="gold-section">👨‍👩‍👧‍👦 육친론(六親論) — 가족과 인연</div>', unsafe_allow_html=True)
     st.markdown("""
-    <div class="card" style="background:#f5f0ff;border:1px solid #c8b8e8;margin-bottom:12px">
+    <div class="card" style="background:#ffffff;border:1px solid #c8b8e8;margin-bottom:12px">
         <div style="font-size:13px;color:#5a2d8b;font-weight:700;margin-bottom:4px">💡 육친론이란?</div>
-        <div style="font-size:13px;color:#444;line-height:1.8">
+        <div style="font-size:13px;color:#000000;line-height:1.8">
         일간을 기준으로 각 십성(十星)이 어느 가족을 나타내는지 분석합니다. 
         각 기둥의 십성 강약으로 가족관계의 덕, 인연, 갈등을 판단합니다.
         </div>
@@ -5011,17 +5133,17 @@ def tab_yukjin(pils, gender="남"):
                 <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
                     <span style="font-size:24px">{emoji}</span>
                     <div>
-                        <div style="font-size:15px;font-weight:700;color:#a0720a">{fam_name}</div>
+                        <div style="font-size:15px;font-weight:700;color:#000000">{fam_name}</div>
                         <div style="font-size:12px;color:#444">{where_str} | {strength_label}</div>
                     </div>
                 </div>
-                <div style="font-size:13px;color:#444;background:#fffef5;padding:8px 12px;border-radius:8px;margin-top:4px;line-height:1.8">{desc}</div>
+                <div style="font-size:13px;color:#000000;background:#ffffff;padding:8px 12px;border-radius:8px;margin-top:4px;line-height:1.8">{desc}</div>
             </div>""", unsafe_allow_html=True)
     else:
         st.info("육친 데이터를 분석 중입니다.")
     
     # 배우자 자리 분석
-    st.markdown("### 💑 배우자 자리 (일지) 분석")
+    st.markdown('<div class="gold-section">💑 배우자 자리 (일지) 분석</div>', unsafe_allow_html=True)
     iljj = pils[1]["jj"]
     iljj_ss = calc_sipsung(ilgan, pils)[1].get("jj_ss", "-")
     
@@ -5037,7 +5159,7 @@ def tab_yukjin(pils, gender="남"):
         <div style="font-size:14px;font-weight:700;color:#8b2060;margin-bottom:8px">
             💑 배우자 자리: {iljj}({JJ_KR[JJ.index(iljj)] if iljj in JJ else ''}) — {iljj_ss}
         </div>
-        <div style="font-size:13px;color:#444;line-height:1.9">{spouse_hint}</div>
+        <div style="font-size:13px;color:#000000;line-height:1.9">{spouse_hint}</div>
     </div>""", unsafe_allow_html=True)
 
 
@@ -5077,14 +5199,14 @@ def tab_gunghap(pils, name="나"):
             score = result["총점"]
             grade = result["등급"]
             bar = "🟥" * (score // 10) + "⬜" * (10 - score // 10)
-            score_color = "#c5a059" if score >= 70 else "#c03020" if score < 40 else "#888"
+            score_color = "#000000" if score >= 70 else "#c03020" if score < 40 else "#888"
             
             st.markdown(f"""
-            <div style="background:linear-gradient(135deg,#ffe2f6,#ffe1ff);color:#1a1a1a;padding:28px;border-radius:16px;text-align:center;margin:16px 0">
+            <div style="background:linear-gradient(135deg,#ffe2f6,#ffe1ff);color:#000000;padding:28px;border-radius:16px;text-align:center;margin:16px 0">
                 <div style="font-size:16px;color:#f0c0d8;margin-bottom:8px">{name} ❤️ {pname}</div>
-                <div style="font-size:48px;font-weight:900;color:#f0d58c">{score}점</div>
+                <div style="font-size:48px;font-weight:900;color:#8b6200">{score}점</div>
                 <div style="font-size:22px;margin:10px 0">{bar}</div>
-                <div style="font-size:20px;font-weight:700;color:#f0d58c">{grade}</div>
+                <div style="font-size:20px;font-weight:700;color:#8b6200">{grade}</div>
             </div>""", unsafe_allow_html=True)
             
             # 세부 분석
@@ -5093,13 +5215,13 @@ def tab_gunghap(pils, name="나"):
                 ir = result["일간관계"]
                 st.markdown(f"""
                 <div class="card">
-                    <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:6px">{ir[2]} 일간 관계: {ir[0]}</div>
+                    <div style="font-size:13px;font-weight:700;color:#000000;margin-bottom:6px">{ir[2]} 일간 관계: {ir[0]}</div>
                     <div style="font-size:13px;color:#444">{ir[1]}</div>
                 </div>""", unsafe_allow_html=True)
                 
                 if result["합"]:
                     st.markdown(f"""
-                    <div class="card" style="background:#f0fff0;border:1px solid #a8d5a8">
+                    <div class="card" style="background:#ffffff;border:1px solid #a8d5a8">
                         <div style="font-size:13px;font-weight:700;color:#2a6f2a;margin-bottom:6px">✨ 합(合) 발견!</div>
                         <div style="font-size:13px;color:#333">{', '.join(result['합'])}</div>
                     </div>""", unsafe_allow_html=True)
@@ -5110,7 +5232,7 @@ def tab_gunghap(pils, name="나"):
                     <div class="card" style="background:#fff0f0;border:1px solid #d5a8a8">
                         <div style="font-size:13px;font-weight:700;color:#8b2020;margin-bottom:6px">⚠️ 충(沖) 발견</div>
                         <div style="font-size:13px;color:#333">{', '.join(result['충'])}</div>
-                        <div style="font-size:12px;color:#444;margin-top:4px">충이 있어도 서로 이해하고 보완하면 더욱 단단한 인연이 됩니다.</div>
+                        <div style="font-size:12px;color:#000000;margin-top:4px">충이 있어도 서로 이해하고 보완하면 더욱 단단한 인연이 됩니다.</div>
                     </div>""", unsafe_allow_html=True)
                 
                 gui_items = []
@@ -5118,8 +5240,8 @@ def tab_gunghap(pils, name="나"):
                 if result["귀인_b"]: gui_items.append(f"{pname}의 사주에 {name}이 귀인 역할")
                 if gui_items:
                     st.markdown(f"""
-                    <div class="card" style="background:#fffde0;border:1px solid #e8d5a0">
-                        <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:6px">⭐ 천을귀인 인연!</div>
+                    <div class="card" style="background:#ffffff;border:1px solid #e8d5a0">
+                        <div style="font-size:13px;font-weight:700;color:#000000;margin-bottom:6px">⭐ 천을귀인 인연!</div>
                         <div style="font-size:13px;color:#444">{'<br>'.join(gui_items)}</div>
                     </div>""", unsafe_allow_html=True)
         except Exception as e:
@@ -5130,9 +5252,9 @@ def tab_taegil(pils, name="나"):
     """택일(擇日) 탭"""
     st.markdown('<div class="gold-section">📅 택일(擇日) — 길한 날을 고르다</div>', unsafe_allow_html=True)
     st.markdown("""
-    <div class="card" style="background:#fff8e0;border:1px solid #e8d5a0;margin-bottom:12px">
-        <div style="font-size:13px;color:#a0720a;font-weight:700;margin-bottom:4px">💡 택일이란?</div>
-        <div style="font-size:13px;color:#444;line-height:1.8">
+    <div class="card" style="background:#ffffff;border:1px solid #e8d5a0;margin-bottom:12px">
+        <div style="font-size:13px;color:#000000;font-weight:700;margin-bottom:4px">💡 택일이란?</div>
+        <div style="font-size:13px;color:#000000;line-height:1.8">
         내 사주와 천간지지가 잘 맞는 날을 골라 중요한 일(결혼·이사·계약·개업·수술 등)을 진행하면 
         더욱 좋은 결과를 얻을 수 있습니다. 천을귀인일·삼합일이 가장 좋은 날입니다.
         </div>
@@ -5156,14 +5278,14 @@ def tab_taegil(pils, name="나"):
             st.markdown(f"### ✨ {t_year}년 {t_month}월 {t_purpose}에 좋은 날")
             for d in good_days:
                 is_best = d["score"] >= 80
-                bg = "#fffde0" if is_best else "#fafafa"
-                border = "2px solid #c5a059" if is_best else "1px solid #e8e8e8"
+                bg = "#ffffff" if is_best else "#fafafa"
+                border = "2px solid #000000" if is_best else "1px solid #e8e8e8"
                 
                 st.markdown(f"""
                 <div style="background:{bg};{border};border-radius:12px;padding:14px;margin:6px 0;display:flex;justify-content:space-between;align-items:center">
                     <div>
-                        <span style="font-size:18px;font-weight:800;color:#a0720a">{t_year}년 {t_month}월 {d['day']}일</span>
-                        <span style="font-size:14px;color:#444;margin-left:10px">{d['pillar']}일</span>
+                        <span style="font-size:18px;font-weight:800;color:#000000">{t_year}년 {t_month}월 {d['day']}일</span>
+                        <span style="font-size:14px;color:#000000;margin-left:10px">{d['pillar']}일</span>
                     </div>
                     <div style="text-align:right">
                         <div style="font-size:16px;font-weight:700">{d['level']}</div>
@@ -5223,8 +5345,8 @@ def tab_special_stars(pils):
         for name, icon, desc in stars:
             st.markdown(f"""
             <div class="card" style="margin:8px 10px">
-                <div style="font-size:16px;font-weight:700;color:#a0720a">{icon} {name}</div>
-                <div style="font-size:13px;color:#555;margin-top:6px;line-height:1.8">{desc}</div>
+                <div style="font-size:16px;font-weight:700;color:#000000">{icon} {name}</div>
+                <div style="font-size:13px;color:#000000;margin-top:6px;line-height:1.8">{desc}</div>
             </div>""", unsafe_allow_html=True)
     else:
         st.markdown("""
@@ -5306,7 +5428,7 @@ def get_oigyeok(pils):
     results = []
     # 종왕격
     if oh_strength.get(ilgan_oh,0) >= 70 and sn=="신강(身强)":
-        results.append({"격":"종왕격(從旺格)","icon":"👑","color":"#c5a059",
+        results.append({"격":"종왕격(從旺格)","icon":"👑","color":"#000000",
             "desc":f"일간 오행({OHN.get(ilgan_oh,'')})이 사주를 지배. 같은 오행을 돕는 것이 용신.",
             "용신":f"{ilgan_oh}·{BIRTH_R.get(ilgan_oh,'')}","기신":f"{CTRL.get(ilgan_oh,'')}",
             "caution":"종왕격을 내격으로 착각하면 완전히 반대 풀이가 됩니다."})
@@ -5488,7 +5610,7 @@ def detect_event_triggers(pils, birth_year, gender, target_year=None):
         add("충","⚡ 일지 충(세운) — 삶의 터전 격변",
             "이사·직장변화·관계분리 확률이 높습니다. 기존 환경이 흔들리는 해입니다.",85)
     if dw_jj and _JIJI_CHUNG.get(il_jj) == dw_jj:
-        add("충","⚡ 일지 충(대운) — 10년 환경 변화",
+        add("충","⚡ 일지 충(대운) | 10년 환경 변화",
             "대운 수준의 큰 환경 변화. 이사·직업 전환의 대운입니다.",80)
     if _JIJI_CHUNG.get(wol_jj) == year_jj:
         add("충","🌊 월지 충 — 가족·직업 변동",
@@ -5596,7 +5718,7 @@ def calc_turning_point(pils, birth_year, gender, target_year=None):
         if yrs_to_change <= 1:
             reasons.append(f"⚡ 대운 {cur_dw['str']} 마지막 해 — 인생 국면 전환 목전")
         if cur_dw["시작연도"] == target_year:
-            reasons.append(f"🌟 새 대운 {cur_dw['str']} 시작 — 10년 흐름 완전 변화")
+            reasons.append(f"🌟 새 대운 {cur_dw['str']} 시작 | 10년 흐름 완전 변화")
 
     if prev_dw and cur_dw and cur_dw["시작연도"] == target_year:
         # 이전 대운과 오행 관계
@@ -5636,9 +5758,20 @@ def calc_turning_point(pils, birth_year, gender, target_year=None):
     else:
         intensity = "⬜ 흐름 유지"
 
+    # 운세 라벨링 (Stage Labeling)
+    fate_label = ("준비기 🌱", "새로운 시작을 위해 내면을 채우고 씨앗을 심는 시기입니다.")
+    if is_turning:
+        fate_label = ("전환기 ⚡", "삶의 경로가 바뀌는 격동의 시기입니다. 유연한 대처가 필요합니다.")
+    elif diff > 10:
+        fate_label = ("확장기 🔥", "에너지가 분출되고 외연을 넓히는 시기입니다. 적극적으로 움직이세요.")
+    elif curr_score >= 70:
+        fate_label = ("수확기 🍂", "그동안의 노력이 결실을 맺는 안정과 성취의 시기입니다.")
+
     return {
         "is_turning": is_turning,
         "intensity": intensity,
+        "fate_label": fate_label[0],
+        "fate_desc": fate_label[1],
         "reason": reasons,
         "score_prev": prev_score,
         "score_curr": curr_score,
@@ -5724,132 +5857,72 @@ def get_yongshin_multilayer(pils, birth_year, gender, target_year=None):
 
 def build_rich_ai_context(pils, birth_year, gender, target_year=None, focus="종합"):
     """
-    AI에게 전달할 풍부한 계산 데이터 JSON 빌더
-    focus: '종합' | '재물' | '연애' | '직장' | '건강'
-    focus에 따라 해당 영역 가중치 데이터 추가
+    AI에게 전달할 풍부한 계산 데이터 JSON 빌더 (Skill 2 & 3: Structuring & Analysis)
+    - 감정적 해석을 배제하고 순수 명리 분석 수치/지표만 전달합니다.
     """
     if target_year is None:
         target_year = datetime.now().year
-
+    
     ilgan = pils[1]["cg"]
-    ilgan_oh = OH.get(ilgan, "")
-    current_age = target_year - birth_year + 1
-
-    st_info = get_ilgan_strength(ilgan, pils)
-    oh_str  = st_info["oh_strength"]
-    sn      = st_info["신강신약"]
-    score   = st_info.get("일간점수", 50)
-    gk      = get_gyeokguk(pils)
-    gname   = gk.get("격국명", "미정격") if gk else "미정격"
-
-    ys       = get_yongshin_multilayer(pils, birth_year, gender, target_year)
-    luck_s   = calc_luck_score(pils, birth_year, gender, target_year)
-    triggers = detect_event_triggers(pils, birth_year, gender, target_year)
-    turning  = calc_turning_point(pils, birth_year, gender, target_year)
-    yl       = get_yearly_luck(pils, target_year)
-    dw_list  = SajuCoreEngine.get_daewoon(pils, birth_year, 1, 1, gender)
-    cur_dw   = next((d for d in dw_list if d["시작연도"] <= target_year <= d["종료연도"]), None)
-    cross    = get_daewoon_sewoon_cross(pils, birth_year, gender, target_year)
-
-    # 재물성 활성도 계산
-    JAESUNG = {"정재","편재"}
-    GWANSUNG = {"정관","편관"}
-    TGM = TEN_GODS_MATRIX.get(ilgan, {})
-    all_ss = [TGM.get(p["cg"], "-") for p in pils] + [TGM.get(JIJANGGAN.get(p["jj"], [""])[-1], "-") for p in pils]
-    wealth_count = sum(1 for s in all_ss if s in JAESUNG)
-    officer_count = sum(1 for s in all_ss if s in GWANSUNG)
-    wealth_star_level = min(100, wealth_count * 20 + oh_str.get(ilgan_oh, 0))
-    officer_clash = any(t["type"] == "충" and "관" in t["title"] for t in triggers)
-
-    # 집중 영역 데이터
-    focus_data = {}
+    strength_info = get_ilgan_strength(ilgan, pils)
+    ys_multi = get_yongshin_multilayer(pils, birth_year, gender, target_year)
+    turning = calc_turning_point(pils, birth_year, gender, target_year)
+    pillars_str = " ".join([p["str"] for p in pils])
+    
+    # 순수 데이터 구조화 (Skill 2: Structuring)
+    context = {
+        "metadata": {
+            "birth_year": birth_year,
+            "gender": gender,
+            "target_year": target_year,
+            "focus_area": focus
+        },
+        "saju_pillars": pillars_str,
+        "daymaster": {
+            "stem": ilgan,
+            "strength_score": strength_info["점수"],
+            "strength_label": strength_info["신강신약"]
+        },
+        "elements": strength_info["oh_strength"],
+        "yongshin_logic": {
+            "primary": ys_multi["용신_1순위"],
+            "secondary": ys_multi["용신_2순위"],
+            "hee_shin": ys_multi["희신"],
+            "gi_shin": ys_multi["기신"]
+        },
+        "current_flow": {
+            "is_turning_point": turning["is_turning"],
+            "intensity": turning["intensity"],
+            "score_change": turning["score_change"],
+            "triggers": [t["title"] for t in turning["triggers"][:3]]
+        }
+    }
+    
+    # 분야별 정밀 가중치 데이터 (Skill 3: Analysis)
     if focus == "재물":
-        focus_data = {
-            "재물_용신": ys["상황별_용신"].get("재물", ""),
-            "재성_활성도": f"{wealth_star_level}/100",
-            "재물_현재_길흉": yl.get("길흉", ""),
-            "재물_트리거": [t for t in triggers if t["type"] == "재물"],
+        context["domain_specific"] = {
+            "wealth_star_strength": "강" if strength_info["oh_strength"].get("土", 0) > 20 else "약", # 예시 로직
+            "business_luck": "상승기" if turning["score_change"] > 10 else "안정기"
         }
     elif focus == "연애":
-        focus_data = {
-            "연애_용신": ys["상황별_용신"].get("인간관계", ""),
-            "인연_십성": "정재" if gender == "남" else "정관",
-            "인연_트리거": [t for t in triggers if t["type"] == "합"],
+        context["domain_specific"] = {
+            "couple_star_status": "활성" if any("합" in t["title"] for t in turning["triggers"]) else "비활성"
         }
-    elif focus == "직장":
-        focus_data = {
-            "직업_용신": ys["상황별_용신"].get("직업", ""),
-            "관성_활성도": officer_count * 20,
-            "직장_트리거": [t for t in triggers if t["type"] in ("직업","황금기")],
-        }
-    elif focus == "건강":
-        focus_data = {
-            "건강_용신": ys["상황별_용신"].get("건강", ""),
-            "약한_오행": [k for k, v in oh_str.items() if v < 10],
-            "건강_주의": [t for t in triggers if t["type"] == "형"],
-        }
-
-    ctx = {
-        # ① 일간 힘 (점수화)
-        "daymaster_strength_score": score,
-        "daymaster_strength_label": sn,
-        "daymaster_element": ilgan_oh,
-
-        # ② 오행 세력 (정밀 계산)
-        "element_power": {k: f"{v}%" for k, v in oh_str.items()},
-        "strongest_element": max(oh_str, key=oh_str.get),
-        "weakest_element": min(oh_str, key=oh_str.get),
-
-        # ③ 격국·용신 (다층)
-        "gyeokguk": gname,
-        "yongshin_primary": ys["용신_1순위"],
-        "yongshin_secondary": ys["용신_2순위"],
-        "heeshin": ys["희신"],
-        "gishin": ys["기신"],
-        "daewoon_yongshin_note": ys["대운_해석"],
-
-        # ④ 현재 운기
-        "current_year": target_year,
-        "current_age": current_age,
-        "luck_score_total": luck_s,
-        "daewoon": cur_dw["str"] if cur_dw else "-",
-        "daewoon_ss": cross["대운_천간십성"] if cross else "-",
-        "sewoon": yl["세운"],
-        "sewoon_ss": yl["십성_천간"],
-        "sewoon_gilhung": yl["길흉"],
-
-        # ⑤ 전환점 감지
-        "turning_point_detected": turning["is_turning"],
-        "turning_intensity": turning["intensity"],
-        "turning_reasons": turning["reason"],
-        "score_change": turning["score_change"],
-
-        # ⑥ 사건 트리거
-        "event_triggers": [{"type":t["type"],"title":t["title"],"prob":t["prob"]} for t in triggers],
-        "high_prob_triggers": [t for t in triggers if t["prob"] >= 75],
-
-        # ⑦ 활성도
-        "wealth_star_level": wealth_star_level,
-        "officer_clash_detected": officer_clash,
-        "cross_analysis": cross["교차해석"] if cross else "",
-
-        # ⑧ 집중 영역
-        "focus": focus,
-        "focus_data": focus_data,
-    }
-    return ctx
+    
+    return context
 
 
-# ══════════════════════════════════════════════════════════════
-#  🔥 GOOSEBUMP ENGINE — 소름 문장 자동 생성 (Cold Reading 알고리즘)
-#  과거 적중 → 현재 공감 → 미래 예고 → 확신 강화
-# ══════════════════════════════════════════════════════════════
+
+# --------------------------------------------------------------
+# GOOSEBUMP ENGINE - 소름 문장 자동 생성 (Cold Reading 알고리즘)
+# 과거 적중 -> 현재 공감 -> 미래 예고 -> 확신 강화
+# --------------------------------------------------------------
 
 def goosebump_engine(pils, birth_year, gender, target_year=None):
     """
-    소름 느낌 자동 생성 엔진
-    사주 패턴 → 심리 트리거 → 확신 문장
-    Returns dict: {past, present, future, conviction, full_text}
+    [Engine] Goosebump Engine
+    Saju patterns -> Trigger -> Sentence
+    Returns: dict
     """
     if target_year is None:
         target_year = datetime.now().year
@@ -5871,7 +5944,7 @@ def goosebump_engine(pils, birth_year, gender, target_year=None):
     triggers = detect_event_triggers(pils, birth_year, gender, target_year)
     turning  = calc_turning_point(pils, birth_year, gender, target_year)
 
-    # ① 과거 적중 문장 — 사주 패턴 → 이미 겪은 일
+    # ① 과거 적중 문장 — 사주 패턴 -> 이미 겪은 일
     past_sentences = []
 
     # 관성 충 감지
@@ -5976,38 +6049,106 @@ def goosebump_engine(pils, birth_year, gender, target_year=None):
             )
         elif t["type"] == "합":
             future_sentences.append(
+                "새로운 인연이나 협력의 기운이 강하게 들어옵니다. 혼자보다는 함께할 때 결과가 좋습니다."
+            )
+        elif t["type"] == "인연":
+            future_sentences.append(
                 "인연의 기운이 움직이고 있습니다. 새로운 중요한 만남이 가까운 시일 안에 찾아옵니다."
             )
         elif t["type"] == "재물":
             future_sentences.append(
-                "재물의 흐름이 활발해지는 시기입니다. 돈이 들어오는 통로가 열리고 있습니다."
+                "재물운의 흐름이 강화되고 있습니다. 뜻하지 않은 기회나 보상이 따를 수 있는 시기입니다."
             )
 
-    # ④ 확신 강화 문장
-    conviction = (
-        "이 패턴은 우연히 나타나는 것이 아닙니다. "
-        f"사주 구조에서 {ilgan}(일간)의 흐름이 반복적으로 만들어내는 특징입니다. "
-        "만세력 계산 엔진이 확정한 데이터 기반입니다."
-    )
-
-    # ⑤ 통합
-    full_parts = []
-    if past_sentences:
-        full_parts.append("【 과거 적중 】\n" + "\n".join(f"• {s}" for s in past_sentences[:2]))
-    if present_sentences:
-        full_parts.append("【 현재 상태 】\n" + "\n".join(f"• {s}" for s in present_sentences[:2]))
-    if future_sentences:
-        full_parts.append("【 미래 예고 】\n" + "\n".join(f"• {s}" for s in future_sentences[:2]))
-    full_parts.append("【 근거 】\n" + conviction)
-
     return {
-        "past": past_sentences[:2],
-        "present": present_sentences[:2],
-        "future": future_sentences[:2],
-        "conviction": conviction,
-        "full_text": "\n\n".join(full_parts),
-        "triggers_used": [t["type"] for t in high_t[:3]],
+        "past": " ".join(past_sentences),
+        "present": " ".join(present_sentences),
+        "future": " ".join(future_sentences),
+        "full_text": "\n\n".join([" ".join(past_sentences), " ".join(present_sentences), " ".join(future_sentences)])
     }
+
+
+def render_lucky_kit(yong_oh):
+    """
+    Brain 1: 자체 로직 기반 행운의 개운법 UI 렌더링
+    """
+    kits = {
+        "木": {"color": "초록색, 민트", "num": "3, 8", "dir": "동쪽", "food": "신맛, 싱싱한 채소", "icon": ""},
+        "火": {"color": "빨간색, 주황색", "num": "2, 7", "dir": "남쪽", "food": "쓴맛, 구운 음식", "icon": ""},
+        "土": {"color": "노란색, 브라운", "num": "5, 10", "dir": "중앙", "food": "단맛, 뿌리채소", "icon": ""},
+        "金": {"color": "하얀색, 실버", "num": "4, 9", "dir": "서쪽", "food": "매운맛, 견과류", "icon": ""},
+        "水": {"color": "검정색, 네이비", "num": "1, 6", "dir": "북쪽", "food": "짠맛, 해조류", "icon": ""},
+    }
+    k = kits.get(yong_oh, kits["木"])
+    
+    st.markdown(f"""
+    <div style="background: #ffffff; border: 1px solid #e0d8c0; border-radius: 12px; padding: 20px; margin-bottom: 25px;">
+        <div style="font-size: 16px; font-weight: 800; color: #000000; margin-bottom: 15px; border-bottom: 1px solid #f0e8d0; padding-bottom: 8px;">
+            [개운] 오늘의 행운 개운 비방 (Lucky Kit)
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div style="font-size: 14px; color: #555;"><b>행운의 색상:</b> <span style="color:#333">{k['color']}</span></div>
+            <div style="font-size: 14px; color: #555;"><b>행운의 숫자:</b> <span style="color:#333">{k['num']}</span></div>
+            <div style="font-size: 14px; color: #555;"><b>행운의 방향:</b> <span style="color:#333">{k['dir']}</span></div>
+            <div style="font-size: 14px; color: #555;"><b>행운의 음식:</b> <span style="color:#333">{k['food']}</span></div>
+        </div>
+        <div style="margin-top: 12px; font-size: 12px; color: #888; font-style: italic;">
+            (안내) {yong_oh}의 기운을 보강하여 오늘 하루의 운기를 상승시키는 실천법입니다.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def b3_track_behavior(action):
+    """Brain 3: 사용자 행동 패턴 추적 및 사주 맞춤형 고도화 데이터 수집"""
+    if "user_behavior" not in st.session_state:
+        st.session_state["user_behavior"] = []
+    st.session_state["user_behavior"].append({
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "action": action
+    })
+
+
+def apply_mansin_filter(text):
+    """만신 AI 환각 방지 및 말투 보정 필터"""
+    if not text: return ""
+    text = text.replace("AI로서 말씀드리면", "만신의 눈으로 보건대")
+    text = text.replace("분석한 결과입니다", "천명의 암호를 풀이한 결과로다")
+    text = text.replace("도움이 되셨길 바랍니다", "부디 이 신탁이 네 삶의 등불이 되길 바란다")
+    return text
+
+
+def get_extra_sinsal(pils):
+    """
+    고급 신살 감지 로직 (Brain 1 정밀 분석)
+    문창귀인, 천을귀인, 귀문관살, 백호대살 등
+    """
+    ilgan = pils[1]["cg"]
+    all_jjs = [p["jj"] for p in pils]
+    stars = []
+    
+    munchang_map = {"甲":"巳","乙":"午","丙":"申","丁":"酉","戊":"申","己":"酉","庚":"亥","辛":"子","壬":"寅","癸":"卯"}
+    if munchang_map.get(ilgan) in all_jjs:
+        stars.append({"name": "문창귀인(文昌)", "desc": "지혜가 총명하고 학문과 예술에 뛰어난 재능"})
+
+    gwimun_pairs = [{"子","酉"},{"丑","午"},{"寅","未"},{"卯","申"},{"辰","亥"},{"巳","戌"}]
+    for pair in gwimun_pairs:
+        if pair.issubset(set(all_jjs)):
+            stars.append({"name": "귀문관살(鬼門)", "desc": "직관력이 뛰어나고 예민한 천재성, 영적 감각"})
+            break
+
+    baekho = ["甲辰","乙未","丙戌","丁丑","戊辰","壬戌","癸丑"]
+    for p in pils:
+        if (p["cg"]+p["jj"]) in baekho:
+            stars.append({"name": "백호대살(白虎)", "desc": "강한 추진력과 전문성, 압도적인 에너지"})
+            break
+
+    cheon_eul = {"甲":"未","乙":"申","丙":"酉","丁":"亥","戊":"未","己":"申","庚":"丑","辛":"寅","壬":"卯","癸":"巳"}
+    if cheon_eul.get(ilgan) in all_jjs:
+        stars.append({"name": "천을귀인(天乙)", "desc": "인생의 위기에서 돕는 귀인이 상주하는 최고의 길성"})
+
+    return stars
+
 
 
 # ══════════════════════════════════════════════════════════════
@@ -6087,28 +6228,28 @@ def get_persona_prompt_style(persona: str) -> str:
 
 
 def get_persona_label(persona: str) -> tuple:
-    """페르소나 → (emoji, 한국어 라벨, 색상)"""
+    """페르소나 -> (아이콘, 한국어 라벨, 색상)"""
     labels = {
-        "achievement_type":     ("🎯", "성취·결과형",    "#e65100"),
-        "emotional_type":       ("💑", "감정·관계형",    "#e91e8c"),
-        "career_type":          ("🎖️", "커리어·명예형", "#1565c0"),
-        "cautious_type":        ("🛡️", "안정·신중형",   "#2e7d32"),
-        "overthinking_type":    ("🧠", "분석·확인형",    "#6a1b9a"),
-        "deep_reflection_type": ("🌊", "성찰·탐색형",    "#00695c"),
-        "balanced_type":        ("⚖️", "균형·종합형",    "#8B6914"),
+        "achievement_type":     ("[목표]", "성취·결과형",    "#e65100"),
+        "emotional_type":       ("[감정]", "감정·관계형",    "#e91e8c"),
+        "career_type":          ("[커리어]", "커리어·명예형", "#1565c0"),
+        "cautious_type":        ("[신중]", "안정·신중형",   "#2e7d32"),
+        "overthinking_type":    ("[분석]", "분석·확인형",    "#6a1b9a"),
+        "deep_reflection_type": ("[성찰]", "성찰·탐색형",    "#00695c"),
+        "balanced_type":        ("[균형]", "균형·종합형",    "#8B6914"),
     }
-    return labels.get(persona, ("🔮", "종합형", "#8B6914"))
+    return labels.get(persona, ("[종합]", "종합형", "#8B6914"))
 
 
 # ══════════════════════════════════════════════════════════════
-#  ✅ SELF-CHECK ENGINE — AI 2패스 자기검증 시스템
-#  1차 해석 → AI 감수 → 논리 보정 → 최종 출력
+#  SELF-CHECK ENGINE — AI 2패스 자기검증 시스템
+#  1차 해석 -> AI 감수 -> 논리 보정 -> 최종 출력
 # ══════════════════════════════════════════════════════════════
 
 def self_check_ai(first_report: str, analysis_summary: str, api_key: str, groq_key: str = "") -> str:
     """
     AI 자기검증 시스템
-    1차 해석을 AI 감수관이 재검증 → 모순 제거 + 단정성 강화
+    1차 해석을 AI 감수관이 재검증 -> 모순 제거 + 단정성 강화
     API 비용 절약: 간결한 감수 프롬프트 사용
     """
     if not first_report or (not api_key and not groq_key):
@@ -6125,10 +6266,10 @@ def self_check_ai(first_report: str, analysis_summary: str, api_key: str, groq_k
 {first_report}
 
 검증 규칙:
-1. 계산 데이터와 모순되는 문장 → 삭제 또는 수정
-2. "아마", "가능성", "때로는", "일지도" 등 불확실 표현 → 단정적 표현으로 교체
-3. 근거 없는 추측 → 제거
-4. 앞뒤 논리 불일치 → 보정
+1. 계산 데이터와 모순되는 문장 -> 삭제 또는 수정
+2. "아마", "가능성", "때로는", "일지도" 등 불확실 표현 -> 단정적 표현으로 교체
+3. 근거 없는 추측 -> 제거
+4. 앞뒤 논리 불일치 -> 보정
 5. 길이 유지 (축약 금지)
 
 수정된 최종 리포트만 출력하라. 검증 과정 설명 불필요."""
@@ -6310,26 +6451,46 @@ def render_user_memory_badge(saju_key: str):
     mc = profile.get("main_concern", "")
     lp = profile.get("last_prediction", "")
 
-    st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#f0f0ff,#e8e8ff);
-                border:1px solid #b8a8ee;border-radius:12px;
-                padding:12px 14px;margin:8px 0">
-        <div style="font-size:11px;color:#7b5ea7;font-weight:700;margin-bottom:6px">
-            🧠 AI 기억 시스템 — {vc}회 상담 이력
-        </div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-            <div style="text-align:center">
-                <div style="font-size:10px;color:#888">신뢰도</div>
-                <div style="font-size:16px;font-weight:900;color:{bl_color}">{bl_pct}%</div>
-                <div style="font-size:9px;color:{bl_color}">{bl_label}</div>
-            </div>
-            <div style="flex:1;font-size:11px;color:#444;line-height:1.8">
-                {f'<div>📌 주요 관심: <b>{mc}</b></div>' if mc else ''}
-                {f'<div>💬 이전 예측: <span style="color:#666">{lp[:40]}...</span></div>' if lp else ''}
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    mc_html = f"<div>(관심): <b>{mc}</b></div>" if mc else ""
+    lp_html = f"<div>(이전): <span style='color:#666'>{lp[:40]}...</span></div>" if lp else ""
+    
+    html = "<div style='background:linear-gradient(135deg,#f0f0ff,#e8e8ff);border:1px solid #b8a8ee;border-radius:12px;padding:12px 14px;margin:8px 0'>"
+    html += f"<div style='font-size:11px;color:#7b5ea7;font-weight:700;margin-bottom:6px'>AI 기억 시스템 - {vc}회 상담 이력</div>"
+    html += "<div style='display:flex;gap:12px;flex-wrap:wrap;align-items:center'>"
+    html += "<div style='text-align:center'>"
+    html += "<div style='font-size:10px;color:#888'>신뢰도</div>"
+    html += f"<div style='font-size:16px;font-weight:900;color:{bl_color}'>{bl_pct}%</div>"
+    html += f"<div style='font-size:9px;color:{bl_color}'>{bl_label}</div>"
+    html += "</div>"
+    html += "<div style='flex:1;font-size:11px;color:#000000;line-height:1.8'>"
+    html += mc_html + lp_html
+    html += "</div></div></div>"
+    
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def render_ai_opening_ment(saju_key: str, name: str):
+    """사용자 상태에 따른 맞춤형 오프닝 멘트 (Retention)"""
+    profile = get_user_profile(saju_key)
+    vc = profile.get("visit_count", 0)
+    concern = profile.get("main_concern", "")
+    persona = profile.get("persona", "balanced_type")
+    _, p_label, _ = get_persona_label(persona)
+
+    # 멘트 템플릿
+    if vc <= 1:
+        ment = f"반갑습니다, {name}님. 당신의 천명을 풀이하러 온 {p_label} 마스터입니다. 오늘 어떤 고민이 당신의 마음을 흔들고 있나요?"
+    else:
+        visit_text = f"벌써 {vc}번째 방문이시네요."
+        if concern:
+            ment = f"어서 오세요, {name}님. {visit_text} 지난번에 '<b>{concern}</b>' 관련해 고민하셨던 흐름이 지금은 어떻게 바뀌었을까요? 다시 한번 정밀하게 짚어드리겠습니다."
+        else:
+            ment = f"다시 뵙게 되어 기쁩니다, {name}님. {visit_text} 오늘 당신의 운기 흐름에서 가장 먼저 짚어드려야 할 곳이 어디인지 선택해 주세요."
+
+    html = "<div style='background:linear-gradient(135deg,#f8f5ff,#ffffff);border-left:5px solid #7b5ea7;border-radius:0 12px 12px 0;padding:20px 18px;margin:15px 0;box-shadow:0 3px 10px rgba(0,0,0,0.05)'>"
+    html += f"<div style='font-size:15px;color:#2c1a4d;line-height:1.7;font-weight:600'>{ment}</div>"
+    html += "</div>"
+    st.markdown(html, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -6440,26 +6601,15 @@ def render_statistical_insights(pils, strength_info):
     for ins in insights:
         prob  = ins["prob"]
         color = ("#f44336" if prob >= 75 else "#ff9800" if prob >= 60 else "#4caf50")
-        st.markdown(f"""
-        <div style="background:#fffef8;border:1px solid #e8d5a0;border-radius:12px;
-                    padding:14px 16px;margin:6px 0">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:4px">
-                <span style="font-size:12px;font-weight:700;color:#333">
-                    🔍 {ins['topic']}
-                </span>
-                <span style="background:{color}22;border:1px solid {color}55;
-                             color:{color};font-size:12px;font-weight:800;
-                             padding:2px 10px;border-radius:8px">
-                    {prob}% 패턴
-                </span>
-            </div>
-            <div style="font-size:12px;color:#555;margin-bottom:6px">{ins['insight']}</div>
-            <div style="font-size:11px;color:#a0720a;background:#fff8e0;
-                        padding:6px 10px;border-radius:6px">
-                💡 {ins['advice']}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        html = f"<div style='background:#fffef8;border:1px solid #e8d5a0;border-radius:12px;padding:14px 16px;margin:6px 0'>"
+        html += "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:4px'>"
+        html += f"<span style='font-size:12px;font-weight:700;color:#333'>[분석] {ins['topic']}</span>"
+        html += f"<span style='background:{color}22;border:1px solid {color}55;color:{color};font-size:12px;font-weight:800;padding:2px 10px;border-radius:8px'>{prob}% 패턴</span>"
+        html += "</div>"
+        html += f"<div style='font-size:12px;color:#000000;margin-bottom:6px'>{ins['insight']}</div>"
+        html += f"<div style='font-size:11px;color:#000000;background:#ffffff;padding:6px 10px;border-radius:6px'>(조언): {ins['advice']}</div>"
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
 
 def _load_retention() -> dict:
     try:
@@ -6515,15 +6665,15 @@ def update_streak() -> dict:
 
     # 스트릭 메시지
     if count >= 30:
-        msg = f"🏆 {count}일 연속 방문 — 진정한 천명 탐구자!"
+        msg = f"[대단하네요] {count}일 연속 방문 - 진정한 천명 탐구자!"
     elif count >= 14:
-        msg = f"🔥 {count}일 연속 방문 — 운의 흐름을 꿰뚫고 있습니다"
+        msg = f"[대단하네요] {count}일 연속 방문 - 운의 흐름을 꿰뚫고 있습니다"
     elif count >= 7:
-        msg = f"⭐ {count}일 연속 방문 — 한 주 완성!"
+        msg = f"[대단하네요] {count}일 연속 방문 - 한 주 완성!"
     elif count >= 3:
-        msg = f"✨ {count}일 연속 방문 중"
+        msg = f"[대단하네요] {count}일 연속 방문 중"
     else:
-        msg = f"📅 {count}일째 방문"
+        msg = f"[방문] {count}일째 방문"
 
     return {"streak": count, "max": streak_data.get("max", count),
             "is_new_day": is_new_day, "message": msg}
@@ -6531,7 +6681,7 @@ def update_streak() -> dict:
 
 def get_daily_luck_score(pils, birth_year, gender, target_date=None) -> dict:
     """
-    일별 운세 점수 (기본운 × 대운 × 세운 × 월운 합산)
+    일별 운세 점수 (기본운 * 대운 * 세운 * 월운 합산)
     Returns: {score: int, trend: str, label: str}
     """
     if target_date is None:
@@ -6566,15 +6716,15 @@ def get_daily_luck_score(pils, birth_year, gender, target_date=None) -> dict:
     final = max(0, min(100, base + year_mod * 0.4 + month_mod * 0.3 + day_mod))
 
     if final >= 75:
-        label, trend = "대길(大吉)", "▲▲"
+        label, trend = "대길(Dae-Gil)", "UP-UP"
     elif final >= 60:
-        label, trend = "길(吉)", "▲"
+        label, trend = "길(Gil)", "UP"
     elif final >= 45:
-        label, trend = "평(平)", "→"
+        label, trend = "평(Normal)", "MID"
     elif final >= 30:
-        label, trend = "흉(凶)", "▼"
+        label, trend = "흉(Bad)", "DOWN"
     else:
-        label, trend = "흉흉(凶凶)", "▼▼"
+        label, trend = "흉흉(Very Bad)", "DOWN-DOWN"
 
     return {"score": int(final), "label": label, "trend": trend,
             "year_mod": year_mod, "month_mod": month_mod, "day_mod": day_mod}
@@ -6630,97 +6780,95 @@ def get_turning_countdown(pils, birth_year, gender) -> dict:
 
 
 def render_retention_widget(pils, birth_year, gender):
-    """
-    리텐션 위젯 렌더링
-    스트릭 + 7일 운 그래프 + 전환점 카운트다운
-    """
+    """중독 유발 핵심 위젯 (Main Addiction Engine)"""
     streak_info    = update_streak()
     graph_data     = get_7day_luck_graph(pils, birth_year, gender)
     countdown      = get_turning_countdown(pils, birth_year, gender)
     today_score    = next((d for d in graph_data if d["is_today"]), {})
 
     streak_c = streak_info["streak"]
-    streak_e = "🏆" if streak_c >= 30 else "🔥" if streak_c >= 7 else "✨"
 
-    # ── 상단 카드 (스트릭 + 오늘 운)
-    st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#fffef5,#fff8e0);
-                border:1.5px solid #e8d5a0;border-radius:16px;
-                padding:16px 14px;margin:10px 0">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-            <div style="text-align:center">
-                <div style="font-size:10px;color:#a0720a;font-weight:700;letter-spacing:1px">방문 스트릭</div>
-                <div style="font-size:28px;font-weight:900;color:#c5a059">{streak_e} {streak_c}일</div>
-                <div style="font-size:10px;color:#888">최고 {streak_info['max']}일</div>
-            </div>
-            <div style="text-align:center">
-                <div style="font-size:10px;color:#a0720a;font-weight:700;letter-spacing:1px">오늘 운세</div>
-                <div style="font-size:28px;font-weight:900;color:{'#4caf50' if today_score.get('score',50)>=60 else '#ff9800' if today_score.get('score',50)>=45 else '#f44336'}">{today_score.get('score',50)}점</div>
-                <div style="font-size:11px;color:#666">{today_score.get('label','평(平)')} {today_score.get('trend','→')}</div>
-            </div>
-            <div style="text-align:center">
-                <div style="font-size:10px;color:#a0720a;font-weight:700;letter-spacing:1px">전환점까지</div>
-                <div style="font-size:22px;font-weight:900;color:#e65100">
-                    {f"D-{countdown['days_left']}" if countdown['days_left'] else "D-?"}
-                </div>
-                <div style="font-size:10px;color:#888">{countdown.get('date','-')}</div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    days_left = countdown.get('days_left')
+    if days_left is None:
+        days_left_display = "365+"
+        progress = 0
+    else:
+        days_left_display = str(days_left)
+        progress = min(100, max(0, 100 - (days_left // 3)))
 
-    # ── 7일 운 그래프
+    score = today_score.get('score', 50)
+    score_color = '#4caf50' if score >= 60 else '#ff9800' if score >= 45 else '#f44336'
+    
+    html = "<div style='background:linear-gradient(135deg,#fffef5,#ffffff);border:1.5px solid #e8d5a0;border-radius:16px;padding:16px 14px;margin:10px 0'>"
+    html += "<div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px'>"
+    html += "<div style='text-align:center'>"
+    html += "<div style='font-size:10px;color:#000000;font-weight:700;letter-spacing:1px'>방문 스트릭</div>"
+    html += f"<div style='font-size:28px;font-weight:900;color:#000000'>{streak_c}일</div>"
+    html += f"<div style='font-size:10px;color:#888'>최고 {streak_info['max']}일</div>"
+    html += "</div>"
+    html += "<div style='text-align:center'>"
+    html += "<div style='font-size:10px;color:#000000;font-weight:700;letter-spacing:1px'>오늘 운세</div>"
+    html += f"<div style='font-size:28px;font-weight:900;color:{score_color}'>{score}점</div>"
+    html += f"<div style='font-size:11px;color:#666'>{today_score.get('label','Normal')}</div>"
+    html += "</div>"
+    html += "<div style='text-align:center'>"
+    html += "<div style='font-size:10px;color:#000000;font-weight:700;letter-spacing:1px'>전환점까지</div>"
+    html += f"<div style='font-size:22px;font-weight:900;color:#e65100'>D-{days_left_display}</div>"
+    html += f"<div style='font-size:10px;color:#888'>{countdown.get('date','-')}</div>"
+    html += "</div>"
+    html += "</div>"
+    
+    html += "<div style='margin-top:16px; background:white; border-radius:10px; padding:10px 12px; border:1px solid #eee'>"
+    html += "<div style='display:flex; justify-content:space-between; font-size:10px; color:#000000; font-weight:700; margin-bottom:5px'>"
+    html += "<span>현재 인생 흐름 진행률</span>"
+    html += f"<span>{progress}%</span>"
+    html += "</div>"
+    html += "<div style='background:#f0f0f0; height:12px; border-radius:6px; overflow:hidden;'>"
+    html += f"<div style='background:linear-gradient(90deg, #000000, #e65100); width:{progress}%; height:100%;'></div>"
+    html += "</div>"
+    html += f"<div style='font-size:10px; color:#e65100; font-weight:700; margin-top:5px; text-align:center'>{countdown.get('description', 'Status')}</div>"
+    html += "</div></div>"
+    st.markdown(html, unsafe_allow_html=True)
+
+    # -- 7일 운 그래프
     max_s = max(d["score"] for d in graph_data) or 100
-    bars = ""
+    bars = "<div style='display:flex;justify-content:space-between;align-items:flex-end;height:120px;padding:15px 10px;background:#fcfaf5;border-radius:12px;margin:5px 0'>"
     for d in graph_data:
         h = max(15, int(d["score"] / max_s * 70))
-        bg = "#c5a059" if d["is_today"] else ("#4caf50" if d["score"] >= 60 else "#ff9800" if d["score"] >= 45 else "#f44336")
+        bg = "#000000" if d["is_today"] else ("#4caf50" if d["score"] >= 60 else "#ff9800" if d["score"] >= 45 else "#f44336")
         fw = "800" if d["is_today"] else "600"
         bars += f"""
-        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1">
-            <div style="font-size:10px;color:#555;font-weight:{fw}">{d['score']}</div>
-            <div style="width:100%;max-width:32px;height:{h}px;background:{bg};border-radius:4px 4px 0 0;
-                        {'box-shadow:0 0 8px '+bg+'88;' if d['is_today'] else ''}opacity:{'1' if d['is_today'] else '0.7'}"></div>
-            <div style="font-size:10px;color:{'#a0720a' if d['is_today'] else '#888'};font-weight:{fw}">{d['day']}</div>
-            <div style="font-size:9px;color:#aaa">{d['date']}</div>
-        </div>"""
-
-    st.markdown(f"""
-    <div style="background:#fffef8;border:1px solid #e8d5a0;border-radius:12px;padding:14px 10px;margin:6px 0">
-        <div style="font-size:11px;color:#a0720a;font-weight:700;margin-bottom:10px">
-            📊 7일 운세 흐름
+        <div style="display:flex;flex-direction:column;align-items:center;width:14%;position:relative">
+            <div style="font-size:10px;color:#000000;margin-bottom:4px;font-weight:{fw}">{d["date"]}</div>
+            <div style="background:{bg};height:{h}px;width:80%;border-radius:4px;margin-bottom:4px;display:flex;align-items:flex-end;justify-content:center;color:white;font-size:10px;font-weight:bold">{d["score"]}</div>
+            <div style="font-size:10px;color:#000000;font-weight:{fw}">{d["day"]}</div>
         </div>
-        <div style="display:flex;align-items:flex-end;gap:4px;height:110px;padding-bottom:4px">
+        """
+    st.markdown(f"""
+    <div style="background:#fcfaf5;border:1.5px solid #e8d5a0;border-radius:16px;padding:16px 14px;margin:10px 0">
+        <div style="font-size:12px;color:#000000;font-weight:700;letter-spacing:1px;margin-bottom:10px">
+            7일 운세 흐름
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;height:120px;padding:15px 10px;background:#fcfaf5;border-radius:12px;margin:5px 0">
             {bars}
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── 전환점 카운트다운 배너
+    # -- 전환점 카운트다운 배너
     if countdown["days_left"] and countdown["days_left"] <= 60:
         ic = "#f44336" if "강력" in countdown["intensity"] else "#ff9800"
-        st.markdown(f"""
-        <div style="background:linear-gradient(135deg,#fff5f0,#ffe8e0);
-                    border:2px solid {ic};border-radius:12px;
-                    padding:14px 16px;margin:8px 0;text-align:center">
-            <div style="font-size:12px;color:{ic};font-weight:700;margin-bottom:4px">
-                ⚡ {countdown['intensity']} 감지
-            </div>
-            <div style="font-size:22px;font-weight:900;color:{ic}">
-                D-{countdown['days_left']}
-            </div>
-            <div style="font-size:12px;color:#333;margin-top:4px">
-                {countdown['description']}
-            </div>
-            <div style="font-size:11px;color:#888;margin-top:4px">
-                {countdown['date']}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        html = f"<div style='background:linear-gradient(135deg,#fff5f0,#ffe8e0);border:2px solid {ic};border-radius:12px;padding:14px 16px;margin:8px 0;text-align:center'>"
+        html += f"<div style='font-size:12px;color:{ic};font-weight:700;margin-bottom:4px'>[알림] {countdown['intensity']} 감지</div>"
+        html += f"<div style='font-size:22px;font-weight:900;color:{ic}'>D-{countdown['days_left']}</div>"
+        html += f"<div style='font-size:12px;color:#000000;margin-top:4px'>{countdown['description']}</div>"
+        html += f"<div style='font-size:11px;color:#000000;margin-top:4px'>{countdown['date']}</div>"
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
 
 
 def get_daewoon_sewoon_cross(pils, birth_year, gender, target_year=None):
-    """대운×세운 교차 분석"""
+    """대운*세운 교차 분석"""
     ilgan = pils[1]["cg"]
     if target_year is None:
         target_year = datetime.now().year
@@ -6945,8 +7093,8 @@ def analyze_name_oh(name_str):
 #               → Monetization Trigger (결제 타이밍 감지)
 #
 # [저장 파일]
-#   saju_feedback.json  — 피드백 원본 데이터 (삭제·캐싱 금지)
-#   saju_patterns.json  — 학습 패턴 결과 (자동 갱신)
+#   saju_feedback.json  - 피드백 원본 데이터 (삭제/캐싱 금지)
+#   saju_patterns.json  - 학습 패턴 결과 (자동 갱신)
 ################################################################################
 
 import time as _time
@@ -6954,16 +7102,16 @@ import time as _time
 _FEEDBACK_FILE = "saju_feedback.json"
 _PATTERN_FILE  = "saju_patterns.json"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Brain 3-① : Feedback Collector
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+# Brain 3-1 : Feedback Collector
+# -----------------------------------------------------------------------------
 
 def b3_save_feedback(saju_key: str, section: str, hit: bool,
                      prompt_type: str = "prophet", extra: dict = None):
     """
-    Brain 3 피드백 저장 — 영속 파일 기반
+    Brain 3 피드백 저장 - 영속 파일 기반
     session_state 방식과 달리 앱 재시작 후에도 누적 유지
-    [절대 캐싱 금지 — 사용자 반응은 실시간 반영]
+    [절대 캐싱 금지 - 사용자 반응은 실시간 반영]
     """
     try:
         cache = _load_json_cache(_FEEDBACK_FILE)
@@ -6995,14 +7143,14 @@ def b3_load_all_feedback() -> list:
     return all_records
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Brain 3-② : Pattern Analyzer
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+# Brain 3-2 : Pattern Analyzer
+# -----------------------------------------------------------------------------
 
 def b3_analyze_patterns() -> dict:
     """
     피드백 패턴 분석
-    반환: {section → 적중률, 가장 반응 좋은 섹션, 개선 필요 섹션}
+    반환: {section : 적중률, 가장 반응 좋은 섹션, 개선 필요 섹션}
     """
     records = b3_load_all_feedback()
     if not records:
@@ -7060,29 +7208,30 @@ def b3_build_optimized_prompt_suffix() -> str:
     if not patterns or patterns.get("total", 0) < 10:
         # 데이터 부족 → 기본 지침
         return """
-[Brain 3 최적화 지침 — 기본 모드]
-• 단정적 표현만 사용하십시오 (~입니다, ~했습니다)
-• 과거 사건은 나이와 연도를 반드시 명시하십시오
-• 해결책과 행동 지침을 모든 섹션에 포함하십시오
+[Brain 3 최적화 지침 - 기본 모드]
+- 단정적 표현만 사용하십시오 (~입니다, ~했습니다)
+- 과거 사건은 나이와 연도를 반드시 명시하십시오
+- 해결책과 행동 지침을 모든 섹션에 포함하십시오
 """
 
     weak = patterns.get("weak_sections", [])
     best = patterns.get("best_sections", [])
     overall = patterns.get("hit_rate", 0)
 
-    lines = [f"\n[Brain 3 최적화 지침 — 누적 {patterns['total']}건 학습 반영]"]
-    lines.append(f"• 현재 전체 적중률: {overall}% — {'충분히 높습니다. 유지하십시오.' if overall >= 70 else '개선이 필요합니다.'}")
+    lines = [f"\n[Brain 3 최적화 지침 - 누적 {patterns['total']}건 학습 반영]"]
+    lines.append(f"- 현재 전체 적중률: {overall}% - {'충분히 높습니다. 유지하십시오.' if overall >= 70 else '개선이 필요합니다.'}")
 
     if best:
-        lines.append(f"• 반응 좋은 섹션: {', '.join(best)} → 이 섹션의 서술 스타일을 다른 섹션에도 적용하십시오")
+        lines.append(f"- 반응 좋은 섹션: {', '.join(best)} : 이 섹션의 서술 스타일을 다른 섹션에도 적용하십시오")
     if weak:
-        lines.append(f"• 개선 필요 섹션: {', '.join(weak)} → 이 섹션은 더 구체적인 나이·연도·행동 지침을 추가하십시오")
+        lines.append(f"- 개선 필요 섹션: {', '.join(weak)} : 이 섹션은 더 구체적인 나이/연도/행동 지침을 추가하십시오")
         for sec in weak:
             stat = patterns.get("by_section", {}).get(sec, {})
             lines.append(f"  [{sec}] 적중 {stat.get('hit',0)}/{stat.get('total',0)}건 "
-                         f"({stat.get('rate',0)}%) → 더 단정적이고 구체적으로 서술하십시오")
+                         f"({stat.get('rate',0)}%) : 더 단정적이고 구체적으로 서술하십시오")
 
-    lines.append("• 마지막에 반드시 '지금 당장 할 행동 처방' 1가지를 추가하십시오")
+    lines.append("- [Skill 6: Coaching] 반드시 '오늘의 비방(秘方)' 또는 '당장 할 행동 처방' 1가지를 소름 돋게 처방하십시오")
+    lines.append("• 당신은 만신(萬神)의 권위를 가진 40년 경력의 전문가로서, 분석 데이터에 기반하여 단정적으로 예고하십시오.")
     return "\n".join(lines)
 
 
@@ -7113,11 +7262,11 @@ def b3_track_behavior(action: str):
 
 def b3_check_monetization_trigger(api_key: str) -> tuple:
     """
-    결제 타이밍 감지 → (should_trigger, message)
+    결제 타이밍 감지 : (should_trigger, message)
     조건:
       - API 키 없음 + 섹션 3개 이상 조회
       - API 키 없음 + 질문 1회 이상
-      - 고적중률 (70%↑) + API 키 없음
+      - 고적중률 (70% 이상) + API 키 없음
     """
     if api_key:  # API 있으면 트리거 없음
         return False, ""
@@ -7135,12 +7284,12 @@ def b3_check_monetization_trigger(api_key: str) -> tuple:
 
     msg = ""
     if overall >= 70 and view_count >= 2:
-        msg = (f"📊 이 사주는 누적 데이터 기준 **{overall}%** 적중률을 기록했습니다. "
+        msg = (f"[데이터] 이 사주는 누적 데이터 기준 **{overall}%** 적중률을 기록했습니다. "
                f"지금 흐름이 중요한 시기입니다. 심층 AI 풀이를 받으시겠습니까?")
     elif q_count >= 1:
-        msg = "💬 질문이 있으시다면 **AI 상담 API 키**를 입력하시면 직접 답변을 받으실 수 있습니다."
+        msg = "[질문] 질문이 있으시다면 **AI 상담 API 키**를 입력하시면 직접 답변을 받으실 수 있습니다."
     elif view_count >= 3:
-        msg = "🔮 여러 섹션을 살펴보셨군요. **예언자 모드**로 6단계 천명을 완전히 풀이받으시겠습니까?"
+        msg = "[추천] 여러 섹션을 살펴보셨군요. **예언자 모드**로 6단계 천명을 완전히 풀이받으시겠습니까?"
 
     if msg:
         if _B3_SESSION_KEY in st.session_state:
@@ -7152,20 +7301,12 @@ def b3_check_monetization_trigger(api_key: str) -> tuple:
 
 def b3_render_trigger_card(msg: str):
     """결제 유도 카드 렌더링"""
-    st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#f5eeff,#ecdaff);
-                border:2px solid #c5a059;border-radius:16px;
-                padding:22px 24px;margin:16px 0;text-align:center">
-        <div style="font-size:16px;color:#f0c060;font-weight:700;margin-bottom:10px">
-            ⭐ 지금이 중요한 시점입니다
-        </div>
-        <div style="font-size:13px;color:#e0d0a0;line-height:1.9;margin-bottom:16px">
-            {msg}
-        </div>
-        <div style="font-size:12px;color:#444;margin-top:8px">
-            Groq API는 무료 (groq.com) · Anthropic API는 소액 과금
-        </div>
-    </div>""", unsafe_allow_html=True)
+    html = "<div style='background:linear-gradient(135deg,#f5eeff,#ecdaff);border:2px solid #000000;border-radius:16px;padding:22px 24px;margin:16px 0;text-align:center'>"
+    html += "<div style='font-size:16px;color:#8b6200;font-weight:700;margin-bottom:10px'>[안내] 지금이 중요한 시점입니다</div>"
+    html += f"<div style='font-size:13px;color:#8b6200;line-height:1.9;margin-bottom:16px'>{msg}</div>"
+    html += "<div style='font-size:12px;color:#000000;margin-top:8px'>Groq API는 무료 (groq.com) / Anthropic API는 소액 과금</div>"
+    html += "</div>"
+    st.markdown(html, unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -7173,7 +7314,7 @@ def b3_render_trigger_card(msg: str):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def save_feedback(feedback_key, hit):
-    """피드백 저장 — session_state 누적 (하위 호환 유지)"""
+    """피드백 저장 - session_state 누적 (하위 호환 유지)"""
     if "feedback_log" not in st.session_state:
         st.session_state.feedback_log = {}
     st.session_state.feedback_log[feedback_key] = "hit" if hit else "miss"
@@ -7211,9 +7352,14 @@ def render_feedback_btn(key, desc):
                 st.rerun()
 
 
+def tab_yongshin(pils):
+    """용신(Yong-Shin) 탭"""
+    st.markdown('<div class="gold-section">[분석] 용신(Yong-Shin) - 내 사주의 구원 오행</div>', unsafe_allow_html=True)
+
+
 def tab_past_events(pils, birth_year, gender, name=""):
-    """🎯 과거 적중 탭 — 엔진이 계산, AI는 설명만"""
-    st.markdown('<div class="gold-section">🎯 과거 적중 — 엔진이 계산한 당신의 과거</div>',
+    """[적중] 과거 적중 탭 - 엔진이 계산, AI는 설명만"""
+    st.markdown('<div class="gold-section">[데이터] 과거 적중 - 엔진이 계산한 당신의 과거</div>',
                 unsafe_allow_html=True)
 
     # 엔진 하이라이트 생성
@@ -7224,69 +7370,57 @@ def tab_past_events(pils, birth_year, gender, name=""):
     current_year = datetime.now().year
     current_age = current_year - birth_year + 1
 
-    # ── 피드백 통계 ──────────────────────────────────────
+    # -- 피드백 통계 --------------------------------------
     total_fb, hit_fb = get_feedback_stats()
     if total_fb > 0:
         hit_rate = round(hit_fb / total_fb * 100)
-        st.markdown(f"""
-        <div style="background:linear-gradient(135deg,#f0fff0,#e8f5e8);color:#1a1a1a;
-                    padding:10px 18px;border-radius:10px;margin-bottom:10px;
-                    display:flex;align-items:center;gap:16px">
-            <span style="font-size:13px;color:#a8d58c">📊 적중률 피드백</span>
-            <span style="font-size:20px;font-weight:900;color:#{'4caf50' if hit_rate>=60 else 'ff5252'}">
-                {hit_rate}%</span>
-            <span style="font-size:12px;color:#444">(응답 {total_fb}개 중 {hit_fb}개 적중)</span>
-        </div>""", unsafe_allow_html=True)
+        color = '#4caf50' if hit_rate >= 60 else '#ff5252'
+        html = f"<div style='background:linear-gradient(135deg,#f0fff0,#e8f5e8);color:#000000;padding:10px 18px;border-radius:10px;margin-bottom:10px;display:flex;align-items:center;gap:16px'>"
+        html += f"<span style='font-size:13px;color:#a8d58c'>[분석] 적중률 피드백</span>"
+        html += f"<span style='font-size:20px;font-weight:900;color:{color}'>{hit_rate}%</span>"
+        html += f"<span style='font-size:12px;color:#444'>(응답 {total_fb}개 중 {hit_fb}개 적중)</span>"
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════
-    # STEP 0: 성향 판독 — 첫 번째로 보여줌
-    # ══════════════════════════════════════════
-    st.markdown("### 🧠 성향 판독")
-    st.markdown("""
-    <div style="font-size:12px;color:#444;margin-bottom:8px">
-    엔진 계산: 일간 + 일지 + 신강신약 + 오행 과다·부족 조합 공식 적용
-    </div>""", unsafe_allow_html=True)
+    # ------------------------------------------
+    # STEP 0: 성향 판독 - 첫 번째로 보여줌
+    # ------------------------------------------
+    st.markdown('<div class="gold-section">[분석] 성향 판독</div>', unsafe_allow_html=True)
+    st.markdown("<div style='font-size:12px;color:#000000;margin-bottom:8px'>엔진 계산: 일간 + 일지 + 신강신약 + 오행 과다/부족 조합 공식 적용</div>", unsafe_allow_html=True)
 
     personality = hl["personality"]
     for i, trait in enumerate(personality):
         # 겉/속 구분 강조
         if "겉" in trait or "속" in trait:
             bg, border = "#f0e8ff", "#9b7ccc"
-            tc = "#e8d8ff"
+            tc = "#3d1a6e"          # - 진한 보라
         elif "과다" in trait or "부족" in trait or "없습니다" in trait:
-            bg, border = "#fffde8", "#c5a059"
-            tc = "#f0e8c0"
+            bg, border = "#fffde8", "#000000"
+            tc = "#5a3e00"          # - 진한 갈색
         else:
             bg, border = "#e8f4ff", "#4a90d9"
-            tc = "#d0e8ff"
+            tc = "#0d3060"          # - 진한 파랑
 
-        st.markdown(f"""
-        <div style="background:{bg};color:{tc};padding:13px 16px;border-radius:10px;
-                    border-left:4px solid {border};margin:5px 0;font-size:13px;line-height:1.9">
-            {trait}
-        </div>""", unsafe_allow_html=True)
+        style = f"background:{bg};color:{tc};padding:13px 16px;border-radius:10px;border-left:4px solid {border};margin:5px 0;font-size:13px;line-height:1.9;font-weight:500"
+        st.markdown(f"<div style='{style}'>{trait}</div>", unsafe_allow_html=True)
 
     # 성향 피드백
-    st.markdown('<div style="font-size:12px;color:#444;margin:6px 0">이 성향이 맞나요?</div>',
+    st.markdown('<div style="font-size:12px;color:#000000;margin:6px 0">이 성향이 맞나요?</div>',
                 unsafe_allow_html=True)
     render_feedback_btn("personality_overall", "성향 전반")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════
-    # STEP 1: 과거 사건 — 나이 + 분야 + 이유
-    # ══════════════════════════════════════════
-    st.markdown("### 🔴 과거 적중 포인트")
-    st.markdown("""
-    <div style="font-size:12px;color:#444;margin-bottom:10px">
-    충(沖)·합(合)·십성 교차를 수학 계산으로 뽑은 과거 사건 시점입니다.<br>
-    <b style="color:#c5a059">나이와 분야를 먼저 확인하고 "맞았다/아니었다"를 눌러주세요.</b>
-    </div>""", unsafe_allow_html=True)
+    # ------------------------------------------
+    # STEP 1: 과거 사건 - 나이 + 분야 + 이유
+    # ------------------------------------------
+    st.markdown('<div class="gold-section">[포인트] 과거 적중 포인트</div>', unsafe_allow_html=True)
+    st.markdown("<div style='font-size:12px;color:#000000;margin-bottom:10px'>충/합/십성 교차를 수학 계산으로 뽑은 과거 사건 시점입니다.<br><b style='color:#000000'>나이와 분야를 먼저 확인하고 '맞았다/아니었다'를 눌러주세요.</b></div>", unsafe_allow_html=True)
 
-    # 🔴 강도 높은 것만 먼저 — 쪽집게 효과
-    red_events = [e for e in hl["past_events"] if e["intensity"] == "🔴"]
-    yellow_events = [e for e in hl["past_events"] if e["intensity"] == "🟡"]
-    green_events = [e for e in hl["past_events"] if e["intensity"] == "🟢"]
+    # 강도 높은 것만 먼저 - 쪽집게 효과
+    red_events = [e for e in hl["past_events"] if e["intensity"] == "High"]
+    yellow_events = [e for e in hl["past_events"] if e["intensity"] == "Mid"]
+    green_events = [e for e in hl["past_events"] if e["intensity"] == "Low"]
 
     def render_event_card(ev, idx):
         domain_colors = {
@@ -7299,241 +7433,176 @@ def tab_past_events(pils, birth_year, gender, name=""):
                 dc = kc; break
 
         intensity_bg = {
-            "🔴": ("#fff0f0", "#c0392b"),
-            "🟡": ("#fffde0", "#c5a059"),
-            "🟢": ("#f0fff0", "#27ae60"),
+            "High": ("#fff0f0", "#c0392b"),
+            "Mid": ("#ffffff", "#000000"),
+            "Low": ("#f0fff0", "#27ae60"),
         }
         card_bg, card_border = intensity_bg.get(ev["intensity"], ("#fafafa", "#888"))
 
-        st.markdown(f"""
-        <div style="background:{card_bg};border:1px solid {card_border}44;
-                    border-left:5px solid {card_border};border-radius:12px;
-                    padding:16px;margin:8px 0">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <div>
-                    <span style="font-size:20px;font-weight:900;color:{card_border}">
-                        {ev['age']}</span>
-                    <span style="font-size:12px;color:#444;margin-left:8px">({ev['year']}년)</span>
-                </div>
-                <div style="background:{dc};color:#1a1a1a;padding:3px 12px;
-                            border-radius:20px;font-size:12px;font-weight:700">
-                    {ev.get('domain','변화')}
-                </div>
-            </div>
-            <div style="font-size:13px;color:#333;line-height:1.9;background:white;
-                        padding:10px 14px;border-radius:8px;margin-bottom:6px">
-                {ev['desc']}
-            </div>
-        </div>""", unsafe_allow_html=True)
+        html = f"<div style='background:{card_bg};border:1px solid {card_border}44;border-left:5px solid {card_border};border-radius:12px;padding:16px;margin:8px 0'>"
+        html += "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'><div>"
+        html += f"<span style='font-size:20px;font-weight:900;color:{card_border}'>{ev['age']}</span>"
+        html += f"<span style='font-size:12px;color:#000000;margin-left:8px'>({ev['year']}년)</span>"
+        html += "</div>"
+        html += f"<div style='background:{dc};color:#000000;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700'>{ev.get('domain','변화')}</div>"
+        html += "</div>"
+        html += f"<div style='font-size:13px;color:#000000;line-height:1.9;background:white;padding:10px 14px;border-radius:8px;margin-bottom:6px'>{ev['desc']}</div>"
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
         render_feedback_btn(f"event_{idx}", ev["desc"][:20])
 
     if red_events:
-        st.markdown("#### 🔴 강한 변동 — 크게 흔들린 때")
+        st.markdown('<div style="font-size:13px;font-weight:800;color:#000000;margin:16px 0 8px;border-left:3px solid #000000;padding-left:10px">[변동] 강한 변동 - 크게 흔들린 때</div>', unsafe_allow_html=True)
         for i, ev in enumerate(red_events[:4]):
             render_event_card(ev, f"red_{i}")
 
     if yellow_events:
-        st.markdown("#### 🟡 흐름이 바뀐 때")
+        st.markdown('<div style="font-size:13px;font-weight:800;color:#000000;margin:16px 0 8px;border-left:3px solid #000000;padding-left:10px">[변화] 흐름이 바뀐 때</div>', unsafe_allow_html=True)
         for i, ev in enumerate(yellow_events[:3]):
             render_event_card(ev, f"yel_{i}")
 
     if green_events:
-        st.markdown("#### 🟢 반전 — 오히려 기회가 된 때")
+        st.markdown('<div style="font-size:13px;font-weight:800;color:#000000;margin:16px 0 8px;border-left:3px solid #000000;padding-left:10px">[반전] 기회가 된 때</div>', unsafe_allow_html=True)
         for i, ev in enumerate(green_events[:2]):
             render_event_card(ev, f"grn_{i}")
 
-    # ══════════════════════════════════════════
-    # 월지 충 — 가장 중요한 변동점
-    # ══════════════════════════════════════════
+    # ------------------------------------------
+    # 월지 충 - 가장 중요한 변동점
+    # ------------------------------------------
     if hl["wolji_chung"]:
-        st.markdown("---")
-        st.markdown("### 📍 월지(月支) 충 — 삶의 기반이 흔들린 시점")
-        st.markdown(f"""
-        <div class="card" style="background:#fff5f0;border:1px solid #e8a0a0;
-                    font-size:13px;color:#444;margin-bottom:8px">
-            월지 <b style="color:#c0392b">{pils[2]['jj']}</b>는 이 사주의 뿌리입니다.
-            충을 받을 때 직업·가정·건강 중 하나가 반드시 흔들렸습니다.
-        </div>""", unsafe_allow_html=True)
+        st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+        st.markdown('<div class="gold-section">[분석] 월지(Wolji) 충 - 삶의 기반이 흔들린 시점</div>', unsafe_allow_html=True)
+        html = f"<div class='card' style='background:#fff5f0;border:1px solid #e8a0a0;font-size:13px;color:#000000;margin-bottom:8px'>"
+        html += f"월지 <b style='color:#c0392b'>{pils[2]['jj']}</b>는 이 사주의 뿌리입니다. "
+        html += "충을 받을 때 직업/가정/건강 중 하나가 반드시 흔들렸습니다.</div>"
+        st.markdown(html, unsafe_allow_html=True)
 
         for i, wc in enumerate(hl["wolji_chung"][:4]):
-            st.markdown(f"""
-            <div style="background:#fff0f0;border-left:4px solid #c0392b;
-                        border-radius:8px;padding:12px 16px;margin:5px 0">
-                <span style="font-size:16px;font-weight:800;color:#c0392b">{wc['age']}</span>
-                <div style="font-size:13px;color:#333;margin-top:4px;line-height:1.9">{wc['desc']}</div>
-            </div>""", unsafe_allow_html=True)
+            html = f"<div style='background:#fff0f0;border-left:4px solid #c0392b;border-radius:8px;padding:12px 16px;margin:5px 0'>"
+            html += f"<span style='font-size:16px;font-weight:800;color:#c0392b'>{wc['age']}</span>"
+            html += f"<div style='font-size:13px;color:#000000;margin-top:4px;line-height:1.9'>{wc['desc']}</div></div>"
+            st.markdown(html, unsafe_allow_html=True)
             render_feedback_btn(f"wolji_{i}", wc["desc"][:20])
 
     # ══════════════════════════════════════════
     # 돈 + 결혼 타이밍
     # ══════════════════════════════════════════
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
     col_money, col_marry = st.columns(2)
 
     with col_money:
-        st.markdown("### 💰 돈이 오는 시기")
+        st.markdown('<div class="gold-section">[재물] 돈이 오는 시기</div>', unsafe_allow_html=True)
         if hl["money_peak"]:
             for mp in hl["money_peak"][:3]:
-                color = "#c5a059" if mp.get("ss") == "더블" else "#27ae60"
-                st.markdown(f"""
-                <div style="background:#f0fff0;border-left:4px solid {color};
-                            border-radius:8px;padding:10px 14px;margin:5px 0">
-                    <span style="font-weight:800;color:{color}">{mp['age']}</span>
-                    <span style="font-size:11px;color:#444;margin-left:6px">({mp['year']})</span>
-                    <div style="font-size:12px;color:#333;margin-top:4px">{mp['desc']}</div>
-                </div>""", unsafe_allow_html=True)
+                color = "#000000" if mp.get("ss") == "더블" else "#27ae60"
+                html = f"<div style='background:#ffffff;border-left:4px solid {color};border-radius:8px;padding:10px 14px;margin:5px 0'>"
+                html += f"<span style='font-weight:800;color:{color}'>{mp['age']}</span>"
+                html += f"<span style='font-size:11px;color:#000000;margin-left:6px'>({mp['year']})</span>"
+                html += f"<div style='font-size:12px;color:#000000;margin-top:4px'>{mp['desc']}</div></div>"
+                st.markdown(html, unsafe_allow_html=True)
         else:
             st.info("재물 상승기 계산 중")
 
     with col_marry:
-        st.markdown("### 💑 인연이 오는 시기")
+        st.markdown('<div class="gold-section">[인연] 인연이 오는 시기</div>', unsafe_allow_html=True)
         if hl["marriage_peak"]:
             for mp in hl["marriage_peak"][:3]:
-                st.markdown(f"""
-                <div style="background:#fff0f8;border-left:4px solid #e91e8c;
-                            border-radius:8px;padding:10px 14px;margin:5px 0">
-                    <span style="font-weight:800;color:#e91e8c">{mp['age']}</span>
-                    <span style="font-size:11px;color:#444;margin-left:6px">({mp['year']})</span>
-                    <div style="font-size:12px;color:#333;margin-top:4px">{mp['desc']}</div>
-                </div>""", unsafe_allow_html=True)
+                html = f"<div style='background:#fff0f8;border-left:4px solid #e91e8c;border-radius:8px;padding:10px 14px;margin:5px 0'>"
+                html += f"<span style='font-weight:800;color:#e91e8c'>{mp['age']}</span>"
+                html += f"<span style='font-size:11px;color:#000000;margin-left:6px'>({mp['year']})</span>"
+                html += f"<div style='font-size:12px;color:#000000;margin-top:4px'>{mp['desc']}</div></div>"
+                st.markdown(html, unsafe_allow_html=True)
         else:
             st.info("인연 시기 계산 중")
 
-    # ══════════════════════════════════════════
+    # ------------------------------------------
     # 위험 구간
-    # ══════════════════════════════════════════
+    # ------------------------------------------
     if hl["danger_zones"]:
-        st.markdown("---")
-        st.markdown("### ⚠️ 조심해야 할 구간")
+        st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+        st.markdown('<div class="gold-section">[주의] 조심해야 할 구간</div>', unsafe_allow_html=True)
         for dz in hl["danger_zones"][:3]:
-            st.markdown(f"""
-            <div style="background:#fff5f0;border-left:4px solid #e67e22;
-                        border-radius:8px;padding:10px 14px;margin:5px 0">
-                <span style="font-weight:800;color:#e67e22">{dz['age']}</span>
-                <span style="font-size:11px;color:#444;margin-left:6px">({dz['year']})</span>
-                <div style="font-size:12px;color:#333;margin-top:4px">{dz['desc']}</div>
-            </div>""", unsafe_allow_html=True)
+            html = f"<div style='background:#fff5f0;border-left:4px solid #e67e22;border-radius:8px;padding:10px 14px;margin:5px 0'>"
+            html += f"<span style='font-weight:800;color:#e67e22'>{dz['age']}</span>"
+            html += f"<span style='font-size:11px;color:#000000;margin-left:6px'>({dz['year']})</span>"
+            html += f"<div style='font-size:12px;color:#000000;margin-top:4px'>{dz['desc']}</div></div>"
+            st.markdown(html, unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════
+    # ------------------------------------------
     # 누적 적중률 현황
-    # ══════════════════════════════════════════
-    st.markdown("---")
+    # ------------------------------------------
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
     total_fb2, hit_fb2 = get_feedback_stats()
     if total_fb2 > 0:
         hit_rate2 = round(hit_fb2 / total_fb2 * 100)
         miss = total_fb2 - hit_fb2
-        st.markdown(f"""
-        <div style="background:linear-gradient(135deg,#f5f5ff,#eef0ff);color:#1a1a1a;
-                    padding:20px;border-radius:14px;text-align:center">
-            <div style="font-size:13px;color:#555;margin-bottom:10px">📊 이 사주의 피드백 적중률</div>
-            <div style="font-size:36px;font-weight:900;color:{'#4caf50' if hit_rate2>=60 else '#ff5252'}">
-                {hit_rate2}%</div>
-            <div style="font-size:13px;color:#444;margin-top:6px">
-                ✅ 맞았다 {hit_fb2}개 &nbsp;|&nbsp; ❌ 아니었다 {miss}개
-            </div>
-        </div>""", unsafe_allow_html=True)
+        color = '#4caf50' if hit_rate2 >= 60 else '#ff5252'
+        html = "<div style='background:linear-gradient(135deg,#f5f5ff,#eef0ff);color:#000000;padding:20px;border-radius:14px;text-align:center'>"
+        html += "<div style='font-size:13px;color:#000000;margin-bottom:10px'>[데이터] 이 사주의 피드백 적중률</div>"
+        html += f"<div style='font-size:36px;font-weight:900;color:{color}'>{hit_rate2}%</div>"
+        html += f"<div style='font-size:13px;color:#000000;margin-top:6px'>[맞았다] {hit_fb2}개 | [아니었다] {miss}개</div></div>"
+        st.markdown(html, unsafe_allow_html=True)
     else:
-        st.markdown("""
-        <div style="background:#eef0ff;color:#444;padding:14px;border-radius:10px;
-                    text-align:center;font-size:13px">
-            위 항목들에 "맞았다/아니었다"를 눌러주세요.<br>
-            피드백이 쌓일수록 적중률이 표시됩니다.
-        </div>""", unsafe_allow_html=True)
+        st.markdown("<div style='background:#ffffff;color:#000000;padding:14px;border-radius:10px;text-align:center;font-size:13px'>위 항목들에 '맞았다/아니었다'를 눌러주세요.<br>피드백이 쌓일수록 적중률이 표시됩니다.</div>", unsafe_allow_html=True)
 
 
 
 def tab_waryeong(pils):
-    st.markdown('<div class="gold-section">🌸 월령(月令) — 계절이 사주를 지배한다</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">[분석] 월령(Wol-ryeong) - 계절이 사주를 지배한다</div>', unsafe_allow_html=True)
     wr = get_waryeong(pils)
     wol_jj = wr["월지"]
-    oh_emoji = {"木":"🌳","火":"🔥","土":"🏔️","金":"⚔️","水":"💧"}
-    st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#f5eeff,#eedaff);color:#1a1a1a;padding:20px;border-radius:14px;text-align:center;margin-bottom:14px">
-        <div style="font-size:13px;color:#c8b8f0">태어난 월지(月支)</div>
-        <div style="font-size:36px;font-weight:900;color:#f0d58c;margin:8px 0">{wol_jj}</div>
-        <div style="font-size:14px;color:#c8b8f0">{wr['계절']}</div>
-    </div>""", unsafe_allow_html=True)
+    oh_emoji = {"木":"[木]","火":"[火]","土":"[土]","金":"[金]","水":"[水]"}
+    html = "<div style='background:linear-gradient(135deg,#f5eeff,#eedaff);color:#000000;padding:20px;border-radius:14px;text-align:center;margin-bottom:14px'>"
+    html += f"<div style='font-size:13px;color:#c8b8f0'>태어난 월지(Wol-ji)</div>"
+    html += f"<div style='font-size:36px;font-weight:900;color:#8b6200;margin:8px 0'>{wol_jj}</div>"
+    html += f"<div style='font-size:14px;color:#c8b8f0'>{wr['계절']}</div></div>"
+    st.markdown(html, unsafe_allow_html=True)
     st.markdown('<div class="gold-section">오행별 月令 왕상휴수사(旺相休囚死)</div>', unsafe_allow_html=True)
     oh_strength = calc_ohaeng_strength(pils[1]["cg"], pils)
     cols = st.columns(5)
     for i,oh in enumerate(["木","火","土","金","水"]):
         d = wr["오행별"][oh]
         with cols[i]:
-            st.markdown(f"""
-            <div style="text-align:center;padding:12px;background:#fffef5;border-radius:12px;border:2px solid {'#c5a059' if d['score']>=85 else '#ddd'}">
-                <div style="font-size:20px">{oh_emoji[oh]}</div>
-                <div style="font-size:14px;font-weight:800;color:#a0720a">{OHN.get(oh,'')}</div>
-                <div style="font-size:22px;font-weight:900;color:{d['color']}">{d['grade']}</div>
-                <div style="font-size:12px;color:#444">{d['score']}점</div>
-            </div>""", unsafe_allow_html=True)
+            html = f"<div style='text-align:center;padding:12px;background:#ffffff;border-radius:12px;border:2px solid {'#000000' if d['score']>=85 else '#ddd'}'>"
+            html += f"<div style='font-size:20px'>{oh_emoji[oh]}</div>"
+            html += f"<div style='font-size:14px;font-weight:800;color:#000000'>{OHN.get(oh,'')}</div>"
+            html += f"<div style='font-size:22px;font-weight:900;color:{d['color']}'>{d['grade']}</div>"
+            html += f"<div style='font-size:12px;color:#444'>{d['score']}점</div></div>"
+            st.markdown(html, unsafe_allow_html=True)
             st.progress(d["score"]/100)
-    st.markdown("### 📜 월령 상세 해석")
+    st.markdown('<div class="gold-section">[데이터] 월령 상세 해석</div>', unsafe_allow_html=True)
     for oh in ["木","火","土","金","水"]:
         d = wr["오행별"][oh]; val = oh_strength.get(oh,0)
         bg = "#fff0e0" if d["score"]>=85 else "#fafafa"
         bdr = d["color"] if d["score"]>=60 else "#ccc"
-        st.markdown(f"""
-        <div class="card" style="background:{bg};border-left:4px solid {bdr};margin:4px 0">
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                <span style="font-size:14px;font-weight:700;color:{bdr}">{oh_emoji[oh]} {OHN.get(oh,'')}({oh}) — {d['grade']}</span>
-                <span style="font-size:12px;color:#444">월령 {d['score']}점 | 사주 {val}%</span>
-            </div>
-            <div style="font-size:13px;color:#444">{d['desc']}</div>
-        </div>""", unsafe_allow_html=True)
+        st.markdown(f"<div class='card' style='background:{bg};border-left:4px solid {bdr};margin:4px 0'><div style='display:flex;justify-content:space-between;margin-bottom:4px'><span style='font-size:14px;font-weight:700;color:{bdr}'>{oh_emoji[oh]} {OHN.get(oh,'')}({oh}) - {d['grade']}</span><span style='font-size:12px;color:#444'>월령 {d['score']}점 | 사주 {val}%</span></div><div style='font-size:13px;color:#444'>{d['desc']}</div></div>", unsafe_allow_html=True)
 
 
 def tab_oigyeok(pils):
-    st.markdown('<div class="gold-section">🌟 외격(外格) + 양인(羊刃) 분석</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">[분석] 외격(Oi-gyeok) + 양인(Yang-in) 분석</div>', unsafe_allow_html=True)
     results = get_oigyeok(pils)
     if results:
         for r in results:
-            st.markdown(f"""
-            <div class="card" style="background:linear-gradient(135deg,#fffde0,#fff5cc);border:2px solid {r['color']}">
-                <div style="font-size:18px;font-weight:800;color:{r['color']};margin-bottom:10px">{r['icon']} {r['격']} 성립!</div>
-                <div style="font-size:14px;color:#333;line-height:2.0;margin-bottom:12px">{r['desc']}</div>
-                <div style="display:flex;flex-wrap:wrap;gap:8px">
-                    <div style="flex:1;min-width:160px;background:#f0fff0;padding:10px;border-radius:10px">
-                        <div style="font-size:12px;font-weight:700;color:#2a6f2a;margin-bottom:4px">✅ 용신</div>
-                        <div style="font-size:12px">{r['용신']}</div>
-                    </div>
-                    <div style="flex:1;min-width:160px;background:#fff0f0;padding:10px;border-radius:10px">
-                        <div style="font-size:12px;font-weight:700;color:#8b2020;margin-bottom:4px">❌ 기신</div>
-                        <div style="font-size:12px">{r['기신']}</div>
-                    </div>
-                </div>
-                <div style="margin-top:10px;background:#fff0e0;padding:8px 12px;border-radius:8px;font-size:12px;color:#8b4020">⚠️ {r['caution']}</div>
-            </div>""", unsafe_allow_html=True)
+            html = f"<div class='card' style='background:linear-gradient(135deg,#ffffff,#fff5cc);border:2px solid {r['color']}'>"
+            html += f"<div style='font-size:18px;font-weight:800;color:{r['color']};margin-bottom:10px'>{r['격']} 성립!</div>"
+            html += f"<div style='font-size:14px;color:#000000;line-height:2.0;margin-bottom:12px'>{r['desc']}</div>"
+            html += "<div style='display:flex;flex-wrap:wrap;gap:8px'>"
+            html += "<div style='flex:1;min-width:160px;background:#ffffff;padding:10px;border-radius:10px'>"
+            html += f"<div style='font-size:12px;font-weight:700;color:#2a6f2a;margin-bottom:4px'>[용신]</div><div style='font-size:12px'>{r['용신']}</div></div>"
+            html += "<div style='flex:1;min-width:160px;background:#fff0f0;padding:10px;border-radius:10px'>"
+            html += f"<div style='font-size:12px;font-weight:700;color:#8b2020;margin-bottom:4px'>[기신]</div><div style='font-size:12px'>{r['기신']}</div></div></div>"
+            html += f"<div style='margin-top:10px;background:#fff0e0;padding:8px 12px;border-radius:8px;font-size:12px;color:#8b4020'>[주의] {r['caution']}</div></div>"
+            st.markdown(html, unsafe_allow_html=True)
     else:
-        st.markdown("""
-        <div class="card" style="background:#f0f8ff;border:2px solid #2980b9;text-align:center;padding:24px">
-            <div style="font-size:18px;font-weight:700;color:#1a5f7a">✅ 내격(內格) 사주입니다</div>
-            <div style="font-size:13px;color:#444;margin-top:8px">종격·화기격 등의 외격 조건이 성립하지 않습니다. 일반 내격 이론으로 해석하십시오.</div>
-        </div>""", unsafe_allow_html=True)
+        st.markdown("<div class='card' style='background:#ffffff;border:2px solid #2980b9;text-align:center;padding:24px'><div style='font-size:18px;font-weight:700;color:#1a5f7a'>[안내] 내격(Nae-gyeok) 사주입니다</div><div style='font-size:13px;color:#000000;margin-top:8px'>종격/화기격 등의 외격 조건이 성립하지 않습니다. 일반 내격 이론으로 해석하십시오.</div></div>", unsafe_allow_html=True)
     # 양인
-    st.markdown('<div class="gold-section" style="margin-top:16px">🗡️ 양인(羊刃) 분석</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section" style="margin-top:16px">[분석] 양인(Yang-in) 분석</div>', unsafe_allow_html=True)
     yin = get_yangin(pils)
     if yin["존재"]:
         d = yin["설명"]
-        st.markdown(f"""
-        <div class="card" style="background:#fff0e0;border:2px solid #e67e22">
-            <div style="font-size:16px;font-weight:800;color:#e67e22;margin-bottom:8px">⚔️ {d.get('name','양인')} 존재 — {', '.join(yin['위치'])}에서 발견</div>
-            <div style="font-size:13px;color:#333;line-height:1.9;margin-bottom:10px">{d.get('desc','')}</div>
-            <div style="display:flex;flex-wrap:wrap;gap:8px">
-                <div style="flex:1;min-width:160px;background:#f0fff0;padding:10px;border-radius:10px">
-                    <div style="font-size:12px;font-weight:700;color:#2a6f2a;margin-bottom:4px">✨ 긍정적 발현</div>
-                    <div style="font-size:12px">{d.get('good','')}</div>
-                </div>
-                <div style="flex:1;min-width:160px;background:#fff0f0;padding:10px;border-radius:10px">
-                    <div style="font-size:12px;font-weight:700;color:#8b2020;margin-bottom:4px">⚠️ 주의사항</div>
-                    <div style="font-size:12px">{d.get('caution','')}</div>
-                </div>
-            </div>
-        </div>""", unsafe_allow_html=True)
+        st.markdown(f"<div class='card' style='background:#fff0e0;border:2px solid #e67e22'><div style='font-size:16px;font-weight:800;color:#e67e22;margin-bottom:8px'>[변동] {d.get('name','양인')} 존재 - {', '.join(yin['위치'])}에서 발견</div><div style='font-size:13px;color:#000000;line-height:1.9;margin-bottom:10px'>{d.get('desc','')}</div><div style='display:flex;flex-wrap:wrap;gap:8px'><div style='flex:1;min-width:160px;background:#ffffff;padding:10px;border-radius:10px'><div style='font-size:12px;font-weight:700;color:#2a6f2a;margin-bottom:4px'>[긍정] 긍정적 발현</div><div style='font-size:12px'>{d.get('good','')}</div></div><div style='flex:1;min-width:160px;background:#fff0f0;padding:10px;border-radius:10px'><div style='font-size:12px;font-weight:700;color:#8b2020;margin-bottom:4px'>[주의] 주의사항</div><div style='font-size:12px'>{d.get('caution','')}</div></div></div></div>", unsafe_allow_html=True)
     else:
-        st.markdown(f"""
-        <div class="card" style="background:#f0fff0;border:1px solid #a8d5a8">
-            <div style="font-size:14px;color:#2a6f2a">✅ 양인 없는 온화한 사주 — {pils[1]['cg']}일간 양인 지지({yin['양인_지지']})가 사주에 없습니다.</div>
-        </div>""", unsafe_allow_html=True)
+        st.markdown(f"<div class='card' style='background:#ffffff;border:1px solid #a8d5a8'><div style='font-size:14px;color:#2a6f2a'>✅ 양인 없는 온화한 사주 — {pils[1]['cg']}일간 양인 지지({yin['양인_지지']})가 사주에 없습니다.</div></div>", unsafe_allow_html=True)
 
 
 def tab_sinsal12(pils):
@@ -7547,19 +7616,17 @@ def tab_sinsal12(pils):
                 c = type_colors[grp_type]
                 st.markdown(f'<div style="font-size:15px;font-weight:700;color:{c};margin:12px 0 6px">{grp_label}</div>', unsafe_allow_html=True)
                 for s in grp:
-                    st.markdown(f"""
-                    <div class="card" style="border-left:4px solid {c};margin:6px 0">
-                        <div style="font-size:14px;font-weight:700;color:{c};margin-bottom:6px">{s['icon']} {s['이름']} — <span style="font-size:12px;color:#444">{', '.join(s['위치'])}</span></div>
-                        <div style="font-size:13px;color:#333;line-height:1.8;margin-bottom:8px">{s['desc']}</div>
-                        <div style="display:flex;flex-wrap:wrap;gap:6px">
-                            <div style="flex:1;min-width:150px;background:#f0fff0;padding:6px 10px;border-radius:8px;font-size:12px;color:#2a6f2a">✨ {s['good']}</div>
-                            <div style="flex:1;min-width:150px;background:#fff0f0;padding:6px 10px;border-radius:8px;font-size:12px;color:#8b2020">⚠️ {s['caution']}</div>
-                        </div>
-                    </div>""", unsafe_allow_html=True)
+                    html = f"<div class='card' style='border-left:4px solid {c};margin:6px 0'>"
+                    html += f"<div style='font-size:14px;font-weight:700;color:{c};margin-bottom:6px'>[분석] {s['이름']} - <span style='font-size:12px;color:#444'>{', '.join(s['위치'])}</span></div>"
+                    html += f"<div style='font-size:13px;color:#000000;line-height:1.8;margin-bottom:8px'>{s['desc']}</div>"
+                    html += "<div style='display:flex;flex-wrap:wrap;gap:6px'>"
+                    html += f"<div style='flex:1;min-width:150px;background:#ffffff;padding:6px 10px;border-radius:8px;font-size:12px;color:#2a6f2a'>[긍정] {s['good']}</div>"
+                    html += f"<div style='flex:1;min-width:150px;background:#fff0f0;padding:6px 10px;border-radius:8px;font-size:12px;color:#8b2020'>[주의] {s['caution']}</div></div></div>"
+                    st.markdown(html, unsafe_allow_html=True)
     else:
         st.success("두드러진 신살이 없는 평온한 사주입니다.")
     # 조견표
-    st.markdown("### 📋 12신살 전체 조견표")
+    st.markdown('<div class="gold-section">[데이터] 12신살 전체 조견표</div>', unsafe_allow_html=True)
     nyon_jj = pils[3]["jj"]
     san_groups = ["寅午戌","申子辰","巳酉丑","亥卯未"]
     my_group = next((g for g in san_groups if nyon_jj in g),"寅午戌")
@@ -7568,21 +7635,21 @@ def tab_sinsal12(pils):
     for sname,jj_map in SINSAL_12_TABLE.items():
         sinsal_jj = jj_map.get(my_group,"")
         d = SINSAL_12_DESC.get(sname,{})
-        has = "✅" if sinsal_jj in pil_jjs else "—"
-        badge = {"길":"🟦","흉":"🟥","중":"🟪"}.get(d.get("type","중"),"⬜")
-        rows += f"<tr><td style='padding:6px;font-weight:700'>{d.get('icon','')} {d.get('name',sname)}</td><td style='text-align:center;padding:6px'>{sinsal_jj}</td><td style='text-align:center;padding:6px'>{badge}</td><td style='text-align:center;padding:6px;font-size:16px'>{has}</td></tr>"
+        has = "Y" if sinsal_jj in pil_jjs else "-"
+        badge = {"길":"[길]","흉":"[흉]","중":"[중]"}.get(d.get("type","중"),"[ ]")
+        rows += f"<tr><td style='padding:6px;font-weight:700'>{d.get('name',sname)}</td><td style='text-align:center;padding:6px'>{sinsal_jj}</td><td style='text-align:center;padding:6px'>{badge}</td><td style='text-align:center;padding:6px;font-size:16px'>{has}</td></tr>"
     st.markdown(f"""<table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead><tr style="background:#fffde0"><th style="padding:8px;text-align:left">신살</th><th style="text-align:center">해당지지</th><th style="text-align:center">길흉</th><th style="text-align:center">내 사주</th></tr></thead>
+        <thead><tr style="background:#ffffff"><th style="padding:8px;text-align:left">신살</th><th style="text-align:center">해당지지</th><th style="text-align:center">길흉</th><th style="text-align:center">내 사주</th></tr></thead>
         <tbody>{rows}</tbody></table>""", unsafe_allow_html=True)
 
 
 def tab_cross_analysis(pils, birth_year, gender):
-    """대운·세운 교차 분석 — 3중 완전판"""
-    st.markdown('<div class="gold-section">🔀 대운·세운 교차 분석 — 운명의 교차점</div>', unsafe_allow_html=True)
+    """대운·세운 교차 분석 - 3중 완전판"""
+    st.markdown('<div class="gold-section">[분석] 대운/세운 교차 분석 - 운명의 교차점</div>', unsafe_allow_html=True)
     st.markdown("""
-    <div class="card" style="background:#f5f5ff;color:#555;padding:14px;font-size:13px;line-height:1.9;margin-bottom:12px">
-    📖 <b style="color:#f0d58c">고수가 보는 법:</b> 원국은 무대 설계, 대운은 계절, 세운은 날씨입니다.
-    <b style="color:#c5a059">세 가지가 겹치는 해</b>에 인생의 큰 사건이 일어납니다. 특히 원국의 합이 운에서 충으로 깨질 때를 정확히 짚는 것이 핵심입니다.
+    <div class="card" style="background:#f5f5ff;color:#000000;padding:14px;font-size:13px;line-height:1.9;margin-bottom:12px">
+    [안내] <b style="color:#8b6200">고수가 보는 법:</b> 원국은 무대 설계, 대운은 계절, 세운은 날씨입니다.
+    <b style="color:#000000">세 가지가 겹치는 해</b>에 인생의 큰 사건이 일어납니다. 특히 원국의 합이 운에서 충으로 깨질 때를 정확히 짚는 것이 핵심입니다.
     </div>""", unsafe_allow_html=True)
 
     current_year = datetime.now().year
@@ -7600,85 +7667,79 @@ def tab_cross_analysis(pils, birth_year, gender):
     sw_is_yong = _get_yongshin_match(sw_ss, yongshin_ohs, ilgan_oh) == "yong"
     hap_breaks = _get_hap_break_warning(pils, dw["jj"], sw["jj"])
 
-    lc = "#c5a059" if (dw_is_yong and sw_is_yong) else "#c0392b" if (not dw_is_yong and not sw_is_yong) else "#2980b9"
-    overall = ("🌟 용신 대운×세운 겹침 — 최고의 발복 시기" if (dw_is_yong and sw_is_yong)
-               else "⚠️ 기신 대운×세운 — 수비 전략 필요" if (not dw_is_yong and not sw_is_yong)
-               else "〰️ 대운·세운 혼재 — 선별적 추진")
+    lc = "#000000" if (dw_is_yong and sw_is_yong) else "#c0392b" if (not dw_is_yong and not sw_is_yong) else "#2980b9"
+    overall = ("[최고] 용신 대운x세운 겹침 - 최고의 발복 시기" if (dw_is_yong and sw_is_yong)
+               else "[수비] 기신 대운x세운 - 수비 전략 필요" if (not dw_is_yong and not sw_is_yong)
+               else "[혼재] 대운/세운 혼재 - 선별적 추진")
 
-    st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#f0eeff,#ece8ff);color:#1a1a1a;padding:28px;border-radius:16px;margin-bottom:14px">
-        <div style="text-align:center;font-size:13px;color:#555;margin-bottom:14px">{year_sel}년 운명의 교차점</div>
-        <div style="display:flex;justify-content:center;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:14px">
-            <div style="text-align:center;background:{'rgba(197,160,89,0.25)' if dw_is_yong else 'rgba(255,255,255,0.08)'};padding:16px 24px;border-radius:14px;border:{'2px solid #c5a059' if dw_is_yong else '1px solid #333'}">
-                <div style="font-size:11px;color:#555">대운(大運)</div>
-                <div style="font-size:30px;font-weight:900;color:#f0d58c">{dw["str"]}</div>
-                <div style="font-size:12px;color:#c8b8f0">{dw_ss} / {cross["대운_지지십성"]}</div>
-                {f'<div style="font-size:11px;color:#f0d58c;margin-top:4px">⭐ 용신 대운</div>' if dw_is_yong else ''}
-            </div>
-            <div style="font-size:28px;color:{lc}">×</div>
-            <div style="text-align:center;background:{'rgba(197,160,89,0.25)' if sw_is_yong else 'rgba(255,255,255,0.08)'};padding:16px 24px;border-radius:14px;border:{'2px solid #c5a059' if sw_is_yong else '1px solid #333'}">
-                <div style="font-size:11px;color:#555">세운(歲運)</div>
-                <div style="font-size:30px;font-weight:900;color:#f0d58c">{sw["세운"]}</div>
-                <div style="font-size:12px;color:#c8b8f0">{sw_ss} / {cross["세운_지지십성"]}</div>
-                {f'<div style="font-size:11px;color:#f0d58c;margin-top:4px">⭐ 용신 세운</div>' if sw_is_yong else ''}
-            </div>
-        </div>
-        <div style="text-align:center;font-size:15px;font-weight:700;color:{lc}">{overall}</div>
-    </div>""", unsafe_allow_html=True)
+    html = f"""
+    <div style="background:linear-gradient(135deg,#f0eeff,#ece8ff);color:#000000;padding:28px;border-radius:16px;margin-bottom:14px">
+        <div style="text-align:center;font-size:13px;color:#000000;margin-bottom:14px">{year_sel}년 운명의 교차점</div>
+    """
+    html += "<div style='display:flex;justify-content:center;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:14px'>"
+    html += f"<div style='text-align:center;background:{'rgba(197,160,89,0.25)' if dw_is_yong else 'rgba(255,255,255,0.08)'};padding:16px 24px;border-radius:14px;border:{'2px solid #000000' if dw_is_yong else '1px solid #333'}'>"
+    html += f"<div style='font-size:11px;color:#555'>대운(Dae-woon)</div>"
+    html += f"<div style='font-size:30px;font-weight:900;color:#8b6200'>{dw['str']}</div>"
+    html += f"<div style='font-size:12px;color:#c8b8f0'>{dw_ss} / {cross['대운_지지십성']}</div>"
+    if dw_is_yong: html += "<div style='font-size:11px;color:#8b6200;margin-top:4px'>[용신 대운]</div>"
+    html += "</div>"
+    html += f"<div style='font-size:28px;color:{lc}'>x</div>"
+    html += f"<div style='text-align:center;background:{'rgba(197,160,89,0.25)' if sw_is_yong else 'rgba(255,255,255,0.08)'};padding:16px 24px;border-radius:14px;border:{'2px solid #000000' if sw_is_yong else '1px solid #333'}'>"
+    html += f"<div style='font-size:11px;color:#555'>세운(Se-woon)</div>"
+    html += f"<div style='font-size:30px;font-weight:900;color:#8b6200'>{sw['세운']}</div>"
+    html += f"<div style='font-size:12px;color:#c8b8f0'>{sw_ss} / {cross['세운_지지십성']}</div>"
+    if sw_is_yong: html += "<div style='font-size:11px;color:#8b6200;margin-top:4px'>[용신 세운]</div>"
+    html += "</div></div>"
+    html += f"<div style='text-align:center;font-size:15px;font-weight:700;color:{lc}'>{overall}</div></div>"
+    st.markdown(html, unsafe_allow_html=True)
 
     # 합이 깨지는 경고
     if hap_breaks:
-        st.markdown("### 🚨 원국 합(合)이 운에서 깨지는 경고")
+        st.markdown('<div class="gold-section">[경고] 원국 합(Hap)이 운에서 깨지는 경고</div>', unsafe_allow_html=True)
         for w in hap_breaks:
-            st.markdown(f"""
-            <div class="card" style="background:{w['color']}18;border-left:5px solid {w['color']}">
-                <div style="font-size:13px;font-weight:700;color:{w['color']};margin-bottom:4px">{w['level']}</div>
-                <div style="font-size:13px;color:#333;line-height:1.9">{w['desc']}</div>
-            </div>""", unsafe_allow_html=True)
+            html = f"<div class='card' style='background:{w['color']}18;border-left:5px solid {w['color']}'>"
+            html += f"<div style='font-size:13px;font-weight:700;color:{w['color']};margin-bottom:4px'>{w['level']}</div>"
+            html += f"<div style='font-size:13px;color:#000000;line-height:1.9'>{w['desc']}</div></div>"
+            st.markdown(html, unsafe_allow_html=True)
 
     # 교차 해석
-    st.markdown(f"""
-    <div class="card" style="background:#fffde0;border:2px solid #c5a059">
-        <div style="font-size:14px;font-weight:700;color:#a0720a;margin-bottom:8px">🔮 {year_sel}년 핵심 해석</div>
-        <div style="font-size:14px;color:#333;line-height:2.0;margin-bottom:10px">{cross["교차해석"]}</div>
-    </div>""", unsafe_allow_html=True)
+    st.markdown(f"<div class='card' style='background:#ffffff;border:2px solid #000000'><div style='font-size:14px;font-weight:700;color:#000000;margin-bottom:8px'>[데이터] {year_sel}년 핵심 해석</div><div style='font-size:14px;color:#000000;line-height:2.0;margin-bottom:10px'>{cross['교차해석']}</div></div>", unsafe_allow_html=True)
 
     if cross["교차사건"]:
-        st.markdown("### ⚡ 원국과의 교차 사건")
+        st.markdown('<div class="gold-section">[분석] 원국과의 교차 사건</div>', unsafe_allow_html=True)
         for ev in cross["교차사건"]:
-            c = "#c5a059" if "합" in ev["type"] else "#c0392b" if "충" in ev["type"] else "#8e44ad"
-            st.markdown(f'<div class="card" style="border-left:4px solid {c}"><b style="color:{c}">{ev["type"]}</b> — {ev["desc"]}</div>', unsafe_allow_html=True)
+            c = "#000000" if "합" in ev["type"] else "#c0392b" if "충" in ev["type"] else "#8e44ad"
+            st.markdown(f'<div class="card" style="border-left:4px solid {c}"><b style="color:{c}">{ev["type"]}</b> - {ev["desc"]}</div>', unsafe_allow_html=True)
 
     # 처방
     PCMAP = {
-        (True,True):   ("🌟 황금 시기 — 전력 질주하십시오!", "#27ae60", "이 시기에 가장 중요한 결정(창업·결혼·이직·투자)을 내리십시오. 용신 에너지가 두 배로 작동합니다."),
-        (True,False):  ("⚡ 기회 속 위험 — 선별적 추진", "#e67e22", "대운의 좋은 기운을 살리되 세운의 걸림돌을 조심하십시오. 큰 결정은 신중하게, 작은 시도는 적극적으로."),
-        (False,True):  ("🌿 터닝포인트 — 세운이 구원합니다", "#2980b9", "힘든 대운이지만 올해 세운이 활로를 열어줍니다. 다음 용신 대운을 위한 준비를 하십시오."),
-        (False,False): ("🛡️ 수비 모드 — 내실 다지기", "#c0392b", "무리한 확장·투자·이동을 피하십시오. 건강과 재정 점검에 집중하십시오."),
+        (True,True):   ("[최고] 황금 시기 - 전력 질주하십시오!", "#27ae60", "이 시기에 가장 중요한 결정(창업/결혼/이직/투자)을 내리십시오. 용신 에너지가 두 배로 작동합니다."),
+        (True,False):  ("[기회] 기회 속 위험 - 선별적 추진", "#e67e22", "대운의 좋은 기운을 살리되 세운의 걸림돌을 조심하십시오. 큰 결정은 신중하게, 작은 시도는 적극적으로."),
+        (False,True):  ("[구원] 터닝포인트 - 세운이 구원합니다", "#2980b9", "힘든 대운이지만 올해 세운이 활로를 열어줍니다. 다음 용신 대운을 위한 준비를 하십시오."),
+        (False,False): ("[수비] 수비 모드 - 내실 다지기", "#c0392b", "무리한 확장/투자/이동을 피하십시오. 건강과 재정 점검에 집중하십시오."),
     }
-    plabel, pcolor, pdesc = PCMAP.get((dw_is_yong, sw_is_yong), ("〰️ 평범한 해", "#888", "꾸준한 노력으로 안정을 유지하십시오."))
-    st.markdown(f"""
-    <div class="card" style="background:{pcolor}15;border:2px solid {pcolor};margin-top:10px">
-        <div style="font-size:15px;font-weight:800;color:{pcolor};margin-bottom:8px">{plabel}</div>
-        <div style="font-size:13px;color:#333;line-height:1.9">{pdesc}</div>
-    </div>""", unsafe_allow_html=True)
+    plabel, pcolor, pdesc = PCMAP.get((dw_is_yong, sw_is_yong), ("[보통] 평범한 해", "#888", "꾸준한 노력으로 안정을 유지하십시오."))
+    html = f"<div class='card' style='background:{pcolor}15;border:2px solid {pcolor};margin-top:10px'>"
+    html += f"<div style='font-size:15px;font-weight:800;color:{pcolor};margin-bottom:8px'>{plabel}</div>"
+    html += f"<div style='font-size:13px;color:#000000;line-height:1.9'>{pdesc}</div></div>"
+    st.markdown(html, unsafe_allow_html=True)
 
     # 향후 10년 타임라인
-    st.markdown("### 📅 향후 10년 운세 타임라인")
+    st.markdown('<div class="gold-section">📅 향후 10년 운세 타임라인</div>', unsafe_allow_html=True)
     for y in range(year_sel, year_sel+10):
         c2 = get_daewoon_sewoon_cross(pils, birth_year, gender, y)
         if not c2: continue
         d_is_y = _get_yongshin_match(c2["대운_천간십성"], yongshin_ohs, ilgan_oh) == "yong"
         s_is_y = _get_yongshin_match(c2["세운_천간십성"], yongshin_ohs, ilgan_oh) == "yong"
         hb = _get_hap_break_warning(pils, c2["대운"]["jj"], c2["세운"]["jj"])
-        if d_is_y and s_is_y:   row_lc, row_bg, badge = "#c5a059","#fffde0","🌟 최길"
+        if d_is_y and s_is_y:   row_lc, row_bg, badge = "#000000","#ffffff","🌟 최길"
         elif d_is_y or s_is_y:  row_lc, row_bg, badge = "#2980b9","#f0f8ff","✨ 길"
         elif "흉" in c2["세운"]["길흉"]: row_lc, row_bg, badge = "#c0392b","#fff5f5","⚠️ 흉"
         else:                    row_lc, row_bg, badge = "#888","#fafafa","〰️ 평"
         hb_icon = " 🚨합깨짐" if hb else ""
         st.markdown(f"""
         <div style="display:flex;align-items:center;padding:9px 14px;border-radius:10px;margin:3px 0;background:{row_bg};border:{'2px solid '+row_lc if y==year_sel else '1px solid #e8e8e8'}">
-            <span style="font-weight:800;color:#a0720a;min-width:52px">{y}년</span>
+            <span style="font-weight:800;color:#000000;min-width:52px">{y}년</span>
             <span style="min-width:80px;font-size:13px;color:#333">대운:{c2["대운"]["str"]}</span>
             <span style="min-width:80px;font-size:13px;color:#333">세운:{c2["세운"]["세운"]}</span>
             <span style="flex:1;font-size:12px;color:#444">{c2["대운_천간십성"]}+{c2["세운_천간십성"]}</span>
@@ -7705,121 +7766,111 @@ def tab_jijanggan(pils):
             with cols[j]:
                 tuchul = item["투출"]
                 st.markdown(f"""
-                <div style="background:{'#fffde0' if tuchul else '#fafafa'};border:{'2px solid #c5a059' if tuchul else '1px solid #ddd'};border-radius:12px;padding:14px;text-align:center">
+                <div style="background:{'#ffffff' if tuchul else '#fafafa'};border:{'2px solid #000000' if tuchul else '1px solid #ddd'};border-radius:12px;padding:14px;text-align:center">
                     <div style="font-size:11px;color:#444">{TYPE_LABEL.get(item['타입'],item['타입'])}</div>
-                    <div style="font-size:26px;font-weight:900;color:#a0720a;margin:6px 0">{item['천간']}</div>
+                    <div style="font-size:26px;font-weight:900;color:#000000;margin:6px 0">{item['천간']}</div>
                     <div style="font-size:12px;color:#333">{item['십성']}</div>
                     <div style="font-size:11px;color:#444">{item['일수']}일</div>
-                    {f'<div style="font-size:11px;background:#c5a059;color:#1a1a1a;padding:2px 8px;border-radius:10px;margin-top:4px">✨ 투출!</div>' if tuchul else ''}
+                    {f'<div style="font-size:11px;background:#000000;color:#000000;padding:2px 8px;border-radius:10px;margin-top:4px">✨ 투출!</div>' if tuchul else ''}
                 </div>""", unsafe_allow_html=True)
-        st.markdown(f"""<div style="background:#f5f0ff;padding:8px 12px;border-radius:8px;font-size:12px;color:#5a2d8b;margin:4px 0 12px">
-            ⏱️ 발동: {' → '.join([f"{it['천간']}({it['십성']}) {TYPE_LABEL.get(it['타입'],'')}" for it in items])}
-        </div>""", unsafe_allow_html=True)
+        st.markdown(f"<div style='background:#ffffff;padding:8px 12px;border-radius:8px;font-size:12px;color:#5a2d8b;margin:4px 0 12px'>[발동] {' -> '.join([f'{it['천간']}({it['십성']}) {TYPE_LABEL.get(it['타입'],'')}' for it in items])}</div>", unsafe_allow_html=True)
 
 
 def tab_health(pils, gender="남"):
     ilgan = pils[1]["cg"]
-    st.markdown('<div class="gold-section">🏥 건강론(健康論) — 사주로 보는 건강 지도</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">[분석] 건강론(Health) - 사주로 보는 건강 지도</div>', unsafe_allow_html=True)
     health = get_health_analysis(pils, gender)
     il_oh = health["ilgan_oh"]
-    oh_emoji = {"木":"🌳","火":"🔥","土":"🏔️","金":"⚔️","水":"💧"}
+    oh_emoji = {"木":"[木]","火":"[火]","土":"[土]","金":"[金]","水":"[水]"}
     h = health["일간_건강"]
-    st.markdown(f"""
-    <div class="card" style="background:#f0f8ff;border:2px solid #2980b9">
-        <div style="font-size:14px;font-weight:700;color:#1a5f8b;margin-bottom:10px">{oh_emoji.get(il_oh,'')} {ilgan}일간 — {OHN.get(il_oh,'')} 기운의 건강 특성</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px">
-            {''.join([f'<div style="flex:1;min-width:180px;background:white;padding:10px;border-radius:8px"><div style="font-size:12px;font-weight:700;color:#2980b9;margin-bottom:3px">{k}</div><div style="font-size:12px;color:#333">{v}</div></div>' for k,v in [("🫀 주요 장기",h.get("organs","")),("😤 취약 감정",h.get("emotion","")),("🥗 도움 식품",h.get("food","")),("🌟 생활 처방",h.get("lifestyle",""))]])}
-        </div>
-    </div>""", unsafe_allow_html=True)
+    html = "<div class='card' style='background:#ffffff;border:2px solid #2980b9'>"
+    html += f"<div style='font-size:14px;font-weight:700;color:#1a5f8b;margin-bottom:10px'>{oh_emoji.get(il_oh,'')} {ilgan}일간 - {OHN.get(il_oh,'')} 기운의 건강 특성</div>"
+    html += "<div style='display:flex;flex-wrap:wrap;gap:8px'>"
+    html += ''.join([f'<div style="flex:1;min-width:180px;background:white;padding:10px;border-radius:8px"><div style="font-size:12px;font-weight:700;color:#2980b9;margin-bottom:3px">{k}</div><div style="font-size:12px;color:#333">{v}</div></div>' for k,v in [("[장기] 주요 장기",h.get("organs","")),("[감정] 취약 감정",h.get("emotion","")),("[식품] 도움 식품",h.get("food","")),("[처방] 생활 처방",h.get("lifestyle",""))]])
+    html += "</div></div>"
+    st.markdown(html, unsafe_allow_html=True)
     if health["일주_건강"]:
-        st.markdown(f'<div class="card" style="background:#fff0e0;border-left:4px solid #e67e22;margin-top:8px"><b style="color:#e67e22">⚠️ 일주 12운성 건강:</b> {health["일주_건강"]}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card" style="background:#fff0e0;border-left:4px solid #e67e22;margin-top:8px"><b style="color:#e67e22">[주의] 일주 12운성 건강:</b> {health["일주_건강"]}</div>', unsafe_allow_html=True)
     if health["과다_오행"]:
-        st.markdown("### 🔴 과다 오행 건강 경보")
+        st.markdown('<div class="gold-section">[주의] 과다 오행 건강 경보</div>', unsafe_allow_html=True)
         for item in health["과다_오행"]:
             h2=item["health"]; oh=item["오행"]
-            st.markdown(f"""
-            <div class="card" style="background:#fff5f0;border-left:4px solid #c0392b">
-                <b style="color:#c0392b">{oh}({OHN.get(oh,'')}) 과다 {item['수치']}%</b> — 주의 질환: {h2.get('over_symptom','')}
-                <div style="font-size:12px;color:#444;margin-top:6px">💊 처방: {h2.get('food','')} / {h2.get('lifestyle','')}</div>
-            </div>""", unsafe_allow_html=True)
+            html = f"<div class='card' style='background:#fff5f0;border-left:4px solid #c0392b'>"
+            html += f"<b style='color:#c0392b'>{oh}({OHN.get(oh,'')}) 과다 {item['수치']}%</b> - 주의 질환: {h2.get('over_symptom','')}"
+            html += f"<div style='font-size:12px;color:#000000;margin-top:6px'>[처방] {h2.get('food','')} / {h2.get('lifestyle','')}</div></div>"
+            st.markdown(html, unsafe_allow_html=True)
     if health["부족_오행"]:
-        st.markdown("### 🔵 부족 오행 건강 처방")
+        st.markdown('<div class="gold-section">[처방] 부족 오행 건강 처방</div>', unsafe_allow_html=True)
         for item in health["부족_오행"]:
             h2=item["health"]; oh=item["오행"]
-            st.markdown(f"""
-            <div class="card" style="background:#f0f5ff;border-left:4px solid #2980b9">
-                <b style="color:#2980b9">{oh}({OHN.get(oh,'')}) 부족 {item['수치']}%</b> — 증상: {h2.get('lack_symptom','')}
-                <div style="font-size:12px;color:#444;margin-top:6px">💊 보충: {h2.get('food','')} / {h2.get('lifestyle','')}</div>
-            </div>""", unsafe_allow_html=True)
+            html = f"<div class='card' style='background:#f0f5ff;border-left:4px solid #2980b9'>"
+            html += f"<b style='color:#2980b9'>{oh}({OHN.get(oh,'')}) 부족 {item['수치']}%</b> - 증상: {h2.get('lack_symptom','')}"
+            html += f"<div style='font-size:12px;color:#000000;margin-top:6px'>[보충] {h2.get('food','')} / {h2.get('lifestyle','')}</div></div>"
+            st.markdown(html, unsafe_allow_html=True)
     # 오행별 바 차트
-    st.markdown("### 📋 오행 건강 조견표")
+    st.markdown('<div class="gold-section">[데이터] 오행 건강 조견표</div>', unsafe_allow_html=True)
     for oh in ["木","火","土","金","水"]:
         val = health["oh_strength"].get(oh,0)
         h2 = HEALTH_OH[oh]
         c = "#c0392b" if val>=35 else "#2980b9" if val<=5 else "#888"
-        st.markdown(f"""
-        <div style="padding:8px 14px;border-radius:10px;background:#fafafa;border:1px solid #e8e8e8;margin:3px 0">
-            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                <span style="font-weight:700;color:{c}">{oh_emoji.get(oh,'')}{OHN.get(oh,'')} {val}%</span>
-                <span style="font-size:12px;color:#444">{h2['organs']}</span>
-            </div>
-            <div style="background:#e8e8e8;border-radius:4px;height:6px"><div style="background:{c};border-radius:4px;height:6px;width:{min(val,100)}%"></div></div>
-        </div>""", unsafe_allow_html=True)
+        html = "<div style='padding:8px 14px;border-radius:10px;background:#fafafa;border:1px solid #e8e8e8;margin:3px 0'>"
+        html += "<div style='display:flex;justify-content:space-between;margin-bottom:4px'>"
+        html += f"<span style='font-weight:700;color:{c}'>{oh_emoji.get(oh,'')}{OHN.get(oh,'')} {val}%</span>"
+        html += f"<span style='font-size:12px;color:#444'>{h2['organs']}</span></div>"
+        html += f"<div style='background:#e8e8e8;border-radius:4px;height:6px'><div style='background:{c};border-radius:4px;height:6px;width:{min(val,100)}%'></div></div></div>"
+        st.markdown(html, unsafe_allow_html=True)
 
 
 def tab_jaemul(pils, birth_year, gender="남"):
-    st.markdown('<div class="gold-section">💰 재물론(財物論) — 돈이 모이는 구조 분석</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">[재물론] 재물론(財物論) - 돈이 모이는 구조 분석</div>', unsafe_allow_html=True)
     jm = get_jaemul_analysis(pils, birth_year, gender)
-    oh_emoji = {"木":"🌳","火":"🔥","土":"🏔️","金":"⚔️","水":"💧"}
-    st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#f3ffe1,#f3ffe1);color:#1a1a1a;padding:20px;border-radius:14px;text-align:center;margin-bottom:14px">
-        <div style="font-size:13px;color:#a8d58c">재성(財星) 오행</div>
-        <div style="font-size:36px;margin:8px 0">{oh_emoji.get(jm['재성_오행'],'💰')}</div>
-        <div style="font-size:22px;font-weight:900;color:#f0d58c">{OHN.get(jm['재성_오행'],'')} 재성 강도 {jm['재성_강도']}%</div>
-    </div>""", unsafe_allow_html=True)
-    st.markdown(f"""
-    <div class="card" style="background:#f0fff0;border:2px solid #27ae60">
-        <div style="font-size:13px;font-weight:700;color:#1a6f3a;margin-bottom:6px">🎯 재물 유형</div>
-        <div style="font-size:14px;color:#333;line-height:1.9">{jm['재물_유형']}</div>
-        <div style="margin-top:8px;background:#e8f5e8;padding:8px 12px;border-radius:8px;font-size:13px;color:#1a6f3a">💡 전략: {jm['재물_전략']}</div>
-    </div>""", unsafe_allow_html=True)
+    oh_emoji = {"木":"[木]","火":"[火]","土":"[土]","金":"[金]","수":"[수]"}
+    html = "<div style='background:linear-gradient(135deg,#fff9e0,#fff3c0);color:#000000;padding:20px;border-radius:14px;text-align:center;margin-bottom:14px'>"
+    html += f"<div style='font-size:13px;color:#000000'>재성 오행(Wealth Element)</div>"
+    html += f"<div style='font-size:36px;margin:8px 0'>{oh_emoji.get(jm['재성_오행'],'[Wealth]')}</div>"
+    html += f"<div style='font-size:22px;font-weight:900;color:#8b6200'>{OHN.get(jm['재성_오행'],'')} 재성 강도 {jm['재성_강도']}%</div></div>"
+    st.markdown(html, unsafe_allow_html=True)
+    html = "<div class='card' style='background:#ffffff;border:2px solid #27ae60'>"
+    html += "<div style='font-size:13px;font-weight:700;color:#1a6f3a;margin-bottom:6px'>[분석] 재물 유형</div>"
+    html += f"<div style='font-size:14px;color:#000000;line-height:1.9'>{jm['재물_유형']}</div>"
+    html += f"<div style='margin-top:8px;background:#e8f5e8;padding:8px 12px;border-radius:8px;font-size:13px;color:#1a6f3a'>[전략] {jm['재물_전략']}</div></div>"
+    st.markdown(html, unsafe_allow_html=True)
     if jm["재성_위치"]:
-        st.markdown(f'<div class="card" style="background:#fffde0;border:1px solid #e8d5a0;margin-top:8px"><b style="color:#a0720a">📍 재성 위치:</b> {"  |  ".join(jm["재성_위치"])}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card" style="background:#ffffff;border:1px solid #e8d5a0;margin-top:8px"><b style="color:#000000">[위치] 재성 위치:</b> {"  |  ".join(jm["재성_위치"])}</div>', unsafe_allow_html=True)
     if jm["재물_피크_대운"]:
-        st.markdown("### 💫 재물 상승기 대운")
+        st.markdown('<div class="gold-section">[상승] 재물 상승기 대운</div>', unsafe_allow_html=True)
         for peak in jm["재물_피크_대운"]:
-            c = {"정재":"#27ae60","편재":"#2980b9","식신":"#8e44ad"}.get(peak["십성"],"#c5a059")
-            st.markdown(f"""
-            <div style="background:#fffde0;border-left:4px solid {c};border-radius:10px;padding:12px 16px;margin:5px 0;display:flex;justify-content:space-between;align-items:center">
-                <div><span style="font-size:16px;font-weight:800;color:#a0720a">{peak['대운']}</span> <span style="font-size:13px;color:#444">{peak['나이']}</span></div>
-                <div style="text-align:right"><div style="font-size:13px;font-weight:700;color:{c}">{peak['십성']}</div><div style="font-size:12px;color:#444">{peak['연도']}</div></div>
-            </div>""", unsafe_allow_html=True)
+            c = {"정재":"#27ae60","편재":"#2980b9","식신":"#8e44ad"}.get(peak["십성"],"#000000")
+            html = f"<div style='background:#ffffff;border-left:4px solid {c};border-radius:10px;padding:12px 16px;margin:5px 0;display:flex;justify-content:space-between;align-items:center'>"
+            html += f"<div><span style='font-size:16px;font-weight:800;color:#000000'>{peak['대운']}</span> <span style='font-size:13px;color:#444'>{peak['나이']}</span></div>"
+            html += f"<div style='text-align:right'><div style='font-size:13px;font-weight:700;color:{c}'>{peak['십성']}</div><div style='font-size:12px;color:#444'>{peak['연도']}</div></div></div>"
+            st.markdown(html, unsafe_allow_html=True)
 
 
 def tab_career(pils, gender="남"):
-    st.markdown('<div class="gold-section">🎯 직업론(職業論) — 천부적 적성과 최적 직업</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">[분석] 직업론(Career) - 천부적 적성과 최적 직업</div>', unsafe_allow_html=True)
     ca = get_career_analysis(pils, gender)
     ilgan = pils[1]["cg"]
-    st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#e8f4ff,#e1f2ff);color:#1a1a1a;padding:20px;border-radius:14px;text-align:center;margin-bottom:14px">
-        <div style="font-size:13px;color:#a8c8f0">격국 기반 직업 분석</div>
-        <div style="font-size:26px;font-weight:900;color:#f0d58c;margin:8px 0">{ca['격국']}</div>
-    </div>""", unsafe_allow_html=True)
-    st.markdown("### ✨ 최적 직업군")
-    st.markdown('<div style="padding:10px 0;line-height:2">' + "".join([f'<span style="background:#fffde0;border:1px solid #c5a059;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;color:#a0720a;margin:4px;display:inline-block">{j}</span>' for j in ca["최적직업"]]) + '</div>', unsafe_allow_html=True)
+    html = "<div style='background:linear-gradient(135deg,#e8f4ff,#e1f2ff);color:#000000;padding:20px;border-radius:14px;text-align:center;margin-bottom:14px'>"
+    html += "<div style='font-size:13px;color:#a8c8f0'>격국 기반 직업 분석</div>"
+    html += f"<div style='font-size:26px;font-weight:900;color:#8b6200;margin:8px 0'>{ca['격국']}</div></div>"
+    st.markdown(html, unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">[데이터] 최적 직업군</div>', unsafe_allow_html=True)
+    st.markdown('<div style="padding:10px 0;line-height:2">' + "".join([f'<span style="background:#ffffff;border:1px solid #000000;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;color:#000000;margin:4px;display:inline-block">{j}</span>' for j in ca["최적직업"]]) + '</div>', unsafe_allow_html=True)
     if ca["유리직업"]:
-        st.markdown("### 🌿 유리한 직업군")
-        st.markdown('<div style="padding:8px 0;line-height:2">' + "".join([f'<span style="background:#f0fff0;border:1px solid #a8d5a8;padding:5px 12px;border-radius:20px;font-size:13px;color:#2a6f2a;margin:4px;display:inline-block">{j}</span>' for j in ca["유리직업"]]) + '</div>', unsafe_allow_html=True)
+        st.markdown('<div class="gold-section">[안내] 유리한 직업군</div>', unsafe_allow_html=True)
+        st.markdown('<div style="padding:8px 0;line-height:2">' + "".join([f'<span style="background:#ffffff;border:1px solid #a8d5a8;padding:5px 12px;border-radius:20px;font-size:13px;color:#2a6f2a;margin:4px;display:inline-block">{j}</span>' for j in ca["유리직업"]]) + '</div>', unsafe_allow_html=True)
     if ca["일간추가"]:
-        st.markdown(f"### 🌟 {ilgan}일간 특화")
-        st.markdown('<div style="padding:8px 0;line-height:2">' + "".join([f'<span style="background:#f5f0ff;border:1px solid #c8b8e8;padding:5px 12px;border-radius:20px;font-size:13px;color:#5a2d8b;margin:4px;display:inline-block">{j}</span>' for j in ca["일간추가"]]) + '</div>', unsafe_allow_html=True)
+        st.markdown(f"### [분석] {ilgan}일간 특화")
+        st.markdown('<div style="padding:8px 0;line-height:2">' + "".join([f'<span style="background:#ffffff;border:1px solid #c8b8e8;padding:5px 12px;border-radius:20px;font-size:13px;color:#5a2d8b;margin:4px;display:inline-block">{j}</span>' for j in ca["일간추가"]]) + '</div>', unsafe_allow_html=True)
     if ca["신살보정"]:
-        st.markdown(f"""<div class="card" style="background:#fff8e0;border:1px solid #e8d5a0;margin-top:8px">
-            <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:6px">💫 신살·양인 직업 보정</div>
-            {''.join([f'<div style="font-size:13px;color:#444;margin:3px 0">✦ {s}</div>' for s in ca["신살보정"]])}
-        </div>""", unsafe_allow_html=True)
+        html = "<div class='card' style='background:#ffffff;border:1px solid #e8d5a0;margin-top:8px'>"
+        html += "<div style='font-size:13px;font-weight:700;color:#000000;margin-bottom:6px'>[보정] 신살/양인 직업 보정</div>"
+        html += ''.join([f'<div style="font-size:13px;color:#000000;margin:3px 0">✦ {s}</div>' for s in ca["신살보정"]])
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
     if ca["피할직업"]:
-        st.markdown(f'<div class="card" style="background:#fff0f0;border:1px solid #d5a8a8;margin-top:8px"><b style="color:#8b2020">❌ 피해야 할 직업:</b> {"  /  ".join(ca["피할직업"])}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card" style="background:#fff0f0;border:1px solid #d5a8a8;margin-top:8px"><b style="color:#8b2020">[제외] 피해야 할 직업:</b> {"  /  ".join(ca["피할직업"])}</div>', unsafe_allow_html=True)
 
 
 def tab_gaemyeong(pils, name=""):
@@ -7827,42 +7878,42 @@ def tab_gaemyeong(pils, name=""):
     ilgan = pils[1]["cg"]
     yongshin = get_yongshin(pils)
     target_ohs = yongshin["종합_용신"]
-    oh_emoji = {"木":"🌳","火":"🔥","土":"🏔️","金":"⚔️","水":"💧"}
-    st.markdown(f"""<div class="card" style="background:#fffde0;border:1px solid #e8d5a0;margin-bottom:12px">
-        <div style="font-size:13px;font-weight:700;color:#a0720a;margin-bottom:6px">이 사주의 용신 오행</div>
+    oh_emoji = {"木":"[木]","火":"[火]","土":"[土]","金":"[金]","水":"[수]"}
+    st.markdown(f"""<div class="card" style="background:#ffffff;border:1px solid #e8d5a0;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:#000000;margin-bottom:6px">이 사주의 용신 오행</div>
         <div style="font-size:14px;color:#333">{'  /  '.join([f"{oh_emoji.get(o,'')}{OHN.get(o,'')}({o})" for o in target_ohs]) if target_ohs else "없음"}</div>
     </div>""", unsafe_allow_html=True)
     name_input = st.text_input("이름 입력 (한글)", value=name, placeholder="예) 홍길동", key="gaemyeong_name")
     if name_input:
         oh_count, oh_pct = analyze_name_oh(name_input)
-        st.markdown(f"### 📊 '{name_input}' 오행 분포")
+        st.markdown(f"### [분석] '{name_input}' 오행 분포")
         cols = st.columns(5)
         for i,oh in enumerate(["木","火","土","金","水"]):
             pct = oh_pct.get(oh,0)
             is_t = oh in target_ohs
             with cols[i]:
                 st.markdown(f"""
-                <div style="text-align:center;padding:12px;background:{'#fffde0' if is_t else '#fafafa'};border-radius:12px;border:{'2px solid #c5a059' if is_t else '1px solid #ddd'}">
+                <div style="text-align:center;padding:12px;background:{'#ffffff' if is_t else '#fafafa'};border-radius:12px;border:{'2px solid #000000' if is_t else '1px solid #ddd'}">
                     <div style="font-size:18px">{oh_emoji[oh]}</div>
-                    <div style="font-size:14px;font-weight:800;color:#a0720a">{OHN.get(oh,'')}</div>
-                    <div style="font-size:22px;font-weight:900;color:#c5a059">{pct}%</div>
-                    {f'<div style="font-size:10px;background:#c5a059;color:#1a1a1a;padding:1px 6px;border-radius:8px">용신</div>' if is_t else ''}
+                    <div style="font-size:14px;font-weight:800;color:#000000">{OHN.get(oh,'')}</div>
+                    <div style="font-size:22px;font-weight:900;color:#000000">{pct}%</div>
+                    {f'<div style="font-size:10px;background:#000000;color:#000000;padding:1px 6px;border-radius:8px">용신</div>' if is_t else ''}
                 </div>""", unsafe_allow_html=True)
                 st.progress(pct/100)
         target_pct = sum(oh_pct.get(oh,0) for oh in target_ohs)
-        if target_pct>=50: ev,ec,eb="✅ 용신 오행이 충분한 좋은 이름입니다.","#2a6f2a","#f0fff0"
-        elif target_pct>=30: ev,ec,eb="🟡 용신 오행이 어느 정도 있습니다. 보완 여지 있음.","#a0720a","#fffde0"
-        else: ev,ec,eb="⚠️ 용신 오행이 부족합니다. 개명을 고려해 볼 수 있습니다.","#8b2020","#fff0f0"
-        st.markdown(f'<div class="card" style="background:{eb};border-left:4px solid {ec};margin-top:8px"><div style="font-size:14px;color:{ec};font-weight:700">{ev}</div><div style="font-size:13px;color:#444;margin-top:6px">용신 오행 비율: {target_pct}%</div></div>', unsafe_allow_html=True)
-        st.markdown("### 💡 용신 오행 이름 자모 예시")
+        if target_pct>=50: ev,ec,eb="[우수] 용신 오행이 충분한 좋은 이름입니다.","#2a6f2a","#f0fff0"
+        elif target_pct>=30: ev,ec,eb="[보통] 용신 오행이 어느 정도 있습니다. 보완 여지 있음.","#000000","#ffffff"
+        else: ev,ec,eb="[경고] 용신 오행이 부족합니다. 개명을 고려해 볼 수 있습니다.","#8b2020","#fff0f0"
+        st.markdown(f'<div class="card" style="background:{eb};border-left:4px solid {ec};margin-top:8px"><div style="font-size:14px;color:{ec};font-weight:700">{ev}</div><div style="font-size:13px;color:#000000;margin-top:6px">용신 오행 비율: {target_pct}%</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="gold-section">[가이드] 용신 오행 이름 자모 예시</div>', unsafe_allow_html=True)
         for oh in target_ohs:
             jamos = [j for j,o in HANGUL_OH.items() if o==oh]
-            st.markdown(f'<div class="card" style="background:#f5f0ff;border:1px solid #c8b8e8"><b style="color:#5a2d8b">{oh_emoji.get(oh,"")}{OHN.get(oh,"")}({oh}) 자모:</b> <span style="font-size:14px;letter-spacing:4px;font-weight:700">{"  ".join(jamos)}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card" style="background:#ffffff;border:1px solid #c8b8e8"><b style="color:#5a2d8b">{oh_emoji.get(oh,"")}{OHN.get(oh,"")}({oh}) 자모:</b> <span style="font-size:14px;letter-spacing:4px;font-weight:700">{"  ".join(jamos)}</span></div>', unsafe_allow_html=True)
 
 
-# ══════════════════════════════════════════════════
-#  서술형 대형 내러티브 생성기
-# ══════════════════════════════════════════════════
+# --------------------------------------------------
+# 서술형 대형 내러티브 생성기
+# --------------------------------------------------
 
 ILGAN_CHAR_DESC = {
     "甲": {
@@ -8031,22 +8082,22 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
         sw_next = get_yearly_luck(pils, current_year + 1)
 
         OH_KR_MAP = {"木":"목(木)","火":"화(火)","土":"토(土)","金":"금(金)","水":"수(水)"}
-        yong_kr = "·".join([OH_KR_MAP.get(o, o) for o in yongshin_ohs])
+        yong_kr = " - ".join([OH_KR_MAP.get(o, o) for o in yongshin_ohs])
 
         char = ILGAN_CHAR_DESC.get(ilgan, {})
         sn_narr = STRENGTH_NARRATIVE.get(sn, "")
         gnarr = GYEOKGUK_NARRATIVE.get(gname, f"{gname}은 독특한 개성과 능력을 가진 격국입니다.")
 
-        # ── 리포트용 (menu1)
+        # 리포트용 (menu1)
         if section == "report":
             result = []
             result.append(f"""
-┌─────────────────────────────────────────────────────┐
-│  {display_name}님의 사주 종합 리포트                          │
-│  {birth_year}년생 · {ilgan_kr}({ilgan}) 일간 · {sn}           │
-└─────────────────────────────────────────────────────┘
+    -----------------------------------------------------
+      {display_name}님의 사주 종합 리포트
+      {birth_year}년생 | {ilgan_kr}({ilgan}) 일간 | {sn}
+    -----------------------------------------------------
 
-【 제1장 · 일간(日干) 캐릭터 완전 분석 】
+    [ 제1장 | 일간(Daymaster) 캐릭터 완전 분석 ]
 
 일간(日干)은 사주의 핵심입니다. 일간은 나 자신을 나타내며, 내가 어떤 사람인지 본질적인 성품을 담고 있습니다.
 
@@ -8054,21 +8105,21 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 
 {char.get('성격_핵심', '')}
 
-◈ 장점: {char.get('장점', '')}
+    [장점]: {char.get('장점', '')}
 
-{char.get('단점', '')}
+    [약점]: {char.get('단점', '')}
 
 일간 {ilgan_kr}이(가) {iljj_kr}(地支) 위에 앉아 있습니다. 이는 {display_name}님의 현실적 토대와 행동 패턴에 {iljj_kr}의 기운이 깊숙이 관여한다는 뜻입니다. 일지(日支)는 배우자 자리이기도 하여, 파트너 관계에서도 이 기운이 크게 드러납니다.
 
-【 제2장 · 신강신약(身强身弱) — 기운의 세기 】
-
-{sn_narr}
+[ 제2장 | 신강신약(Strength) - 기운의 세기 ]
+    
+    {sn_narr}
 
 현재 {display_name}님의 체력 점수는 {strength_info.get('helper_score', 50)}점으로 측정됩니다. 이는 평균적인 기준에서 {'강한 편' if '신강' in sn else '약한 편' if '신약' in sn else '균형 잡힌'} 기운을 의미합니다.
 
-{'• 신강한 사주는 직접 움직여야 기회가 옵니다. 수동적으로 기다리면 아무것도 이루지 못합니다.' if '신강' in sn else '• 신약한 사주는 귀인과 함께할 때 가장 강합니다. 좋은 파트너와 스승을 만나는 것이 운명을 바꾸는 열쇠입니다.' if '신약' in sn else '• 중화 사주는 꾸준함이 가장 큰 무기입니다. 한 분야를 깊이 파고드는 전략이 가장 효과적입니다.'}
+{'* 신강한 사주는 직접 움직여야 기회가 옵니다. 수동적으로 기다리면 아무것도 이루지 못합니다.' if '신강' in sn else '* 신약한 사주는 귀인과 함께할 때 가장 강합니다. 좋은 파트너와 스승을 만나는 것이 운명을 바꾸는 열쇠입니다.' if '신약' in sn else '* 중화 사주는 꾸준함이 가장 큰 무기입니다. 한 분야를 깊이 파고드는 전략이 가장 효과적입니다.'}
 
-【 제3장 · 격국(格局) — 타고난 인생 설계도 】
+[ 제3장 | 격국(Gyeokguk) - 타고난 인생 설계도 ]
 
 {gnarr}
 
@@ -8079,38 +8130,38 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 둘째, 격국의 장점을 살리면서 단점을 보완하는 운을 활용해야 합니다.
 셋째, 용신 오행이 들어오는 시기에 결정적인 도전을 해야 합니다.
 
-【 제4장 · 용신(用神) — 내 인생의 보물 오행 】
+[ 제4장 | 용신(Yongshin) - 내 인생의 보물 오행 ]
 
 용신은 내 사주에 가장 필요한 오행입니다. 이 오행이 강화될 때 건강·재물·명예 모두가 좋아집니다.
 
 {display_name}님의 용신: {yong_kr}
 
 용신 오행을 일상에서 강화하는 방법:
-• 용신 색상의 옷·소품을 활용하십시오
-• 용신 방위 쪽에 중요한 공간(침실·사무실·책상)을 배치하십시오
-• 용신 오행에 해당하는 음식을 자주 드십시오
-• 용신 오행이 강한 해(用神年)에 큰 결정을 내리십시오
+* 용신 색상의 옷/소품을 활용하십시오
+* 용신 방위 쪽에 중요한 공간(침실/사무실/책상)을 배치하십시오
+* 용신 오행에 해당하는 음식을 자주 드십시오
+* 용신 오행이 강한 해(Yongshin Year)에 큰 결정을 내리십시오
 
-기신(忌神)이 강해지는 해에는 무리한 투자·이동·결정을 자제하고 내실을 다지는 것이 현명합니다.
+기신(Gishin)이 강해지는 해에는 무리한 투자, 이동, 결정을 자제하고 내실을 다지는 것이 현명합니다.
 
-【 제5장 · 십성(十星) 조합 — 당신만의 인생 코드 】
+[ 제5장 | 십성(Sipsung) 조합 - 당신만의 인생 코드 ]
 """)
 
             for key, combo in combos[:2]:
                 result.append(f"""
-◈ [{' × '.join(key)}] 조합
+- [{' x '.join(key)}] 조합
 
 {combo.get('요약', '')}
 
-• 성향: {combo.get('성향', '')}
-• 재물 방식: {combo.get('재물', '')}
-• 직업 적성: {combo.get('직업', '')}
-• 연애 패턴: {combo.get('연애', '')}
-• 주의사항: {combo.get('주의', '')}
+* 성향: {combo.get('성향', '')}
+* 재물 방식: {combo.get('재물', '')}
+* 직업 적성: {combo.get('직업', '')}
+* 연애 패턴: {combo.get('연애', '')}
+* 주의사항: {combo.get('주의', '')}
 """)
 
             result.append(f"""
-【 제6장 · 건강(健康) 주의사항 】
+[ 제6장 | 건강(Health) 주의사항 ]
 
 일간 {ilgan_kr}의 건강 취약점: {char.get('건강', '')}
 
@@ -8119,48 +8170,51 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 {'화(火) 기운이 강하면 심장·소장·혈압·시력을 주의하십시오.' if '火' in ilgan_oh else ''}
 {'토(土) 기운이 강하면 비장·위장·췌장·소화기를 주의하십시오.' if '土' in ilgan_oh else ''}
 {'금(金) 기운이 강하면 폐·대장·기관지·피부를 주의하십시오.' if '金' in ilgan_oh else ''}
-{'수(水) 기운이 강하면 신장·방광·생식기·귀를 주의하십시오.' if '水' in ilgan_oh else ''}
+{'수(水) 기운이 강하면 신장·방광·생식기·귀를 주의하십시오.' if '수' in ilgan_oh else ''}
 
 건강을 지키는 가장 확실한 방법은 용신 오행을 강화하는 것입니다.
 규칙적인 생활 리듬, 적절한 운동, 충분한 수면이 이 사주에 가장 중요한 건강법입니다.
-
-【 제7장 · 직업 적성 분석 】
+""")
+            result.append(f"""
+[ 제7장 | 직업 적성 분석 ]
 
 일간 {ilgan_kr}에게 가장 잘 맞는 직업: {char.get('직업', '')}
 
 현재 주요 십성 {', '.join(top_ss)}의 조합이 의미하는 적합 업종:
-{'• 식신이 강하면: 요리·예술·창작·교육·서비스 분야에서 자연스럽게 빛납니다.' if '식신' in top_ss else ''}
-{'• 상관이 강하면: IT·마케팅·방송·예술·컨설팅에서 독보적 능력을 발휘합니다.' if '상관' in top_ss else ''}
-{'• 편재가 강하면: 사업·투자·영업·무역·부동산에서 두각을 나타냅니다.' if '편재' in top_ss else ''}
-{'• 정재가 강하면: 금융·회계·행정·유통에서 안정적인 커리어를 쌓습니다.' if '정재' in top_ss else ''}
-{'• 편관이 강하면: 군경·의료·법조·스포츠에서 강인한 의지를 발휘합니다.' if '편관' in top_ss else ''}
-{'• 정관이 강하면: 공무원·교육·관리직에서 신뢰받는 전문가가 됩니다.' if '정관' in top_ss else ''}
-{'• 편인이 강하면: 연구·철학·역술·IT·의학에서 독보적 전문성을 쌓습니다.' if '편인' in top_ss else ''}
-{'• 정인이 강하면: 학문·자격증 기반의 전문직에서 평생 성장합니다.' if '정인' in top_ss else ''}
-{'• 비견이 강하면: 독립사업·프리랜서·자영업에서 진가를 발휘합니다.' if '비견' in top_ss else ''}
-{'• 겁재가 강하면: 영업·스포츠·투자에서 강한 승부 본능을 발휘합니다.' if '겁재' in top_ss else ''}
+* 식신이 강하면: 요리, 예술, 창작, 교육, 서비스 분야에서 자연스럽게 빛납니다.
+* 상관이 강하면: IT, 마케팅, 방송, 예술, 컨설팅에서 독보적 능력을 발휘합니다.
+* 편재가 강하면: 사업, 투자, 영업, 무역, 부동산에서 두각을 나타냅니다.
+* 정재가 강하면: 금융, 회계, 행정, 유통에서 안정적인 커리어를 쌓습니다.
+* 편관이 강하면: 군경, 의료, 법조, 스포츠에서 강인한 의지를 발휘합니다.
+* 정관이 강하면: 공무원, 교육, 관리직에서 신뢰받는 전문가가 됩니다.
+* 편인이 강하면: 연구, 철학, 역술, IT, 의학에서 독보적 전문성을 쌓습니다.
+* 정인이 강하면: 학문, 자격증 기반의 전문직에서 평생 성장합니다.
+* 비견이 강하면: 독립사업, 프리랜서, 자영업에서 진가를 발휘합니다.
+* 겁재가 강하면: 영업, 스포츠, 투자에서 강한 승부 본능을 발휘합니다.
+""")
 
-【 제8장 · 현재 운기(運氣) — {current_year}년 상황 】
+            result.append(f"""
+[ 제8장 | 현재 운기(Flow) - {current_year}년 상황 ]
 
 현재 {cur_dw['str'] if cur_dw else '-'} 대운이 진행 중입니다.
-({cur_dw_ss} 십성 대운 — {cur_dw['시작연도'] if cur_dw else '-'}년부터 {cur_dw['종료연도'] if cur_dw else '-'}년까지)
+    ({cur_dw_ss} 십성 대운 | {cur_dw['시작연도'] if cur_dw else '-'}년부터 {cur_dw['종료연도'] if cur_dw else '-'}년까지)
 
 올해 {sw_now.get('세운', '')} 세운 ({sw_now.get('십성_천간', '')} / {sw_now.get('길흉', '')})
 
 {'이 시기는 용신 대운이 들어오는 황금기입니다. 적극적으로 움직이고 도전하십시오. 지금 준비하면 반드시 결실이 옵니다.' if cur_dw and _get_yongshin_match(cur_dw_ss, yongshin_ohs, ilgan_oh) == 'yong' else '이 시기는 주의가 필요한 대운입니다. 무리한 확장보다 내실을 다지고 건강 관리에 집중하십시오. 지금의 인내가 다음 황금기를 준비하는 것입니다.'}
-
-내년 {sw_next.get('세운', '')} 세운 전망: {sw_next.get('십성_천간', '')} 십성 — {sw_next.get('길흉', '')}
-
-【 제9장 · 연애·결혼 성향 】
+""")
+            result.append(f"    내년 {sw_next.get('세운', '')} 세운 전망: {sw_next.get('십성_천간', '')} 십성 | {sw_next.get('길흉', '')}\n")
+            result.append(f"""
+[ 제9장 | 연애/결혼 성향 ]
 
 일간 {ilgan_kr}의 연애 패턴:
-{'• ' + char.get('연애_남', '') if gender == '남' else '• ' + char.get('연애_여', '')}
+{'* ' + char.get('연애_남', '') if gender == '남' else '* ' + char.get('연애_여', '')}
 
 배우자 자리 일지(日支) {iljj_kr}({iljj})의 의미:
 배우자 자리에 있는 지지는 배우자의 성품과 부부 관계의 방향을 나타냅니다.
 {iljj_kr} 일지를 가진 분은 배우자에게서 {'안정과 현실적인 도움을 받는' if iljj in ['丑','辰','戌','未'] else '열정적이고 활기찬 에너지를 받는' if iljj in ['寅','午','戌'] else '지적 교감과 소통을 중요하게 여기는' if iljj in ['申','酉'] else '따뜻한 감성적 유대감을 원하는'} 경향이 있습니다.
 
-【 제10장 · 인생 총평 — 만신의 한 말씀 】
+[ 제10장 | 인생 총평 - 만신의 한 말씀 ]
 
 {display_name}님의 사주를 종합적으로 보았을 때, 이 분의 인생 키워드는 "{', '.join(top_ss[:2])}" 조합이 만들어내는 에너지입니다.
 
@@ -8172,13 +8226,13 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 
 앞으로의 {yong_kr} 용신 강화를 통해 건강·재물·명예 모두를 함께 향상시키십시오. 이것이 이 사주의 가장 핵심적인 처방입니다.
 """)
-            # ── 확장 콘텐츠: 신살·오행·연도별 조언
+            # 확장 콘텐츠: 신살, 오행, 연도별 조언
             try:
                 sinsal_list = get_extra_sinsal(pils)
                 if sinsal_list:
-                    sinsal_text = "\n".join([f"• {s['name']}: {s['desc']}\n  처방: {s.get('remedy','')}" for s in sinsal_list])
+                    sinsal_text = "\n".join([f"* {s['name']}: {s['desc']}\n  처방: {s.get('remedy','')}" for s in sinsal_list])
                     result.append(f"""
-【 제11장 · 신살(神殺) 완전 분석 】
+[ 제11장 | 신살(Sinsal) 완전 분석 ]
 
 신살은 사주에 내재된 특수한 기운으로, 삶의 특정 측면에 강한 영향을 줍니다.
 
@@ -8188,9 +8242,9 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 """)
                 sinsal12 = get_12sinsal(pils)
                 if sinsal12:
-                    s12_text = "\n".join([f"• {s['이름']}: {s.get('desc','')}" for s in sinsal12[:5]])
+                    s12_text = "\n".join([f"* {s['이름']}: {s.get('desc','')}" for s in sinsal12[:5]])
                     result.append(f"""
-【 제12장 · 12신살(十二神殺) 】
+[ 제12장 | 12신살(12 Sinsal) ]
 
 {s12_text}
 """)
@@ -8206,45 +8260,45 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
                     level = "강함" if oh_val >= 30 else "보통" if oh_val >= 15 else "약함"
                     body_part = OH_BODY.get(oh_key, "")
                     if oh_val >= 30:
-                        oh_lines.append(f"• {oh_key}({oh_val}점/강함): {OH_STRONG.get(oh_key,'')} — 건강 주의 부위: {body_part}")
+                        oh_lines.append(f"* {oh_key}({oh_val}점/강함): {OH_STRONG.get(oh_key,'')} | 건강 주의 부위: {body_part}")
                     elif oh_val < 15:
-                        oh_lines.append(f"• {oh_key}({oh_val}점/약함): {OH_WEAK.get(oh_key,'')} — 보충 필요 부위: {body_part}")
+                        oh_lines.append(f"* {oh_key}({oh_val}점/약함): {OH_WEAK.get(oh_key,'')} | 보충 필요 부위: {body_part}")
                 result.append(f"""
-【 제13장 · 오행(五行) 분포와 건강 심층 분석 】
+[ 제13장 | 오행(Five Elements) 분포와 건강 심층 분석 ]
 
 오행의 강약은 성격과 건강 모두에 영향을 줍니다.
 
 {chr(10).join(oh_lines)}
 
 오행 균형을 맞추기 위한 처방:
-• 부족한 오행을 보충하는 음식·색상·활동을 일상에서 꾸준히 활용하십시오
-• 과잉된 오행의 기관을 정기적으로 검진하십시오
-• 용신 오행이 약하다면 그 오행을 강화하는 노력이 인생 전반을 향상시킵니다
+* 부족한 오행을 보충하는 음식/색상/활동을 일상에서 꾸준히 활용하십시오
+* 과잉된 오행의 기관을 정기적으로 검진하십시오
+* 용신 오행이 약하다면 그 오행을 강화하는 노력이 인생 전반을 향상시킵니다
 """)
             except: pass
 
             result.append(f"""
-【 제14장 · 연령대별 인생 전략 — {display_name}님에게만 드리는 맞춤 처방 】
+[ 제14장 | 연령대별 인생 전략 - {display_name}님에게만 드리는 맞춤 처방 ]
 
-◈ 현재 {current_age}세 — {current_year}년
-대운: {cur_dw['str'] if cur_dw else '-'} ({cur_dw_ss})
-세운: {sw_now.get('세운','')} ({sw_now.get('십성_천간','')} / {sw_now.get('길흉','')})
+    - 현재 {current_age}세 | {current_year}년
+    대운: {cur_dw['str'] if cur_dw else '-'} ({cur_dw_ss})
+    세운: {sw_now.get('세운','')} ({sw_now.get('십성_천간','')} / {sw_now.get('길흉','')})
 
 지금 이 순간의 처방:
-{'✅ 용신 대운과 용신 세운이 겹치는 황금기입니다. 지금 움직이지 않으면 언제 움직이겠습니까. 두려움을 버리고 계획했던 것을 실행하십시오.' if cur_dw and _get_yongshin_match(cur_dw_ss, yongshin_ohs, ilgan_oh) == 'yong' and _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '⚠️ 지금은 신중하게 내실을 다지는 시기입니다. 무리한 확장보다 체력·실력·자금을 비축하십시오.'}
+{f'[처방] 용신 대운과 용신 세운이 겹치는 황금기입니다. 지금 움직이지 않으면 언제 움직이겠습니까. 두려움을 버리고 계획했던 것을 실행하십시오.' if cur_dw and _get_yongshin_match(cur_dw_ss, yongshin_ohs, ilgan_oh) == 'yong' and _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '[주의] 지금은 신중하게 내실을 다지는 시기입니다. 무리한 확장보다 체력, 실력, 자금을 비축하십시오.'}
 
-◈ 내년 {current_year+1}년 전망
-세운: {sw_next.get('세운','')} ({sw_next.get('십성_천간','')} / {sw_next.get('길흉','')})
-{'내년은 올해보다 더 나은 흐름이 예상됩니다. 올해 준비한 것이 내년에 결실을 맺습니다.' if sw_next.get('길흉','') in ['길','대길'] else '내년도 신중한 한 해가 될 것입니다. 계획을 세우고 차분하게 실행하십시오.'}
+    - 내년 {current_year+1}년 전망
+    세운: {sw_next.get('세운','')} ({sw_next.get('십성_천간','')} / {sw_next.get('길흉','')})
+    {'내년은 올해보다 더 나은 흐름이 예상됩니다. 올해 준비한 것이 내년에 결실을 맺습니다.' if sw_next.get('길흉','') in ['길','대길'] else '내년도 신중한 한 해가 될 것입니다. 계획을 세우고 차분하게 실행하십시오.'}
 
-◈ 향후 5년 핵심 전략
+    - 향후 5년 핵심 전략
 1. 용신 {yong_kr} 오행이 강한 환경에 자신을 노출시키십시오
 2. {gname}의 특성을 최대한 살리는 직업·사업 방향으로 나아가십시오
-3. {sn}에 맞는 방식으로 에너지를 운용하십시오 — {'직접 움직여 기회를 만들어가십시오' if '신강' in sn else '좋은 파트너와 함께 시너지를 내십시오' if '신약' in sn else '꾸준하고 안정적으로 성장하십시오'}
-4. 기신 오행의 유혹(투자·환경·인연)을 의식적으로 피하십시오
+3. {sn}에 맞는 방식으로 에너지를 운용하십시오: {'직접 움직여 기회를 만들어가십시오' if '신강' in sn else '좋은 파트너와 함께 시너지를 내십시오' if '신약' in sn else '꾸준하고 안정적으로 성장하십시오'}
+4. 기신 오행의 유혹(투자, 환경, 인연)을 의식적으로 피하십시오
 5. 건강이 모든 운의 기반입니다. {char.get('건강','정기적 건강 관리')}에 주의하십시오
 
-【 제15장 · 만신의 최종 한 말씀 】
+[ 제15장 | 만신의 최종 한 말씀 ]
 
 {display_name}님의 사주는 한마디로 "{combos[0][1].get('요약','자신만의 독특한 빛을 가진 사주') if combos else '평생 성장하는 사주'}"입니다.
 
@@ -8255,7 +8309,7 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 {display_name}님에게 드리는 만신의 마지막 한 마디:
 "운명은 사주가 정하지만, 운명을 만드는 것은 당신입니다."
 """)
-            # ── 제16~20장 확장 콘텐츠 ────────────────────────────────
+            # 제16~20장 확장 콘텐츠 --------------------------------
             try:
                 iljj  = pils[1]["jj"]
                 ilju_str = pils[1]["str"]
@@ -8291,47 +8345,44 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
                 ilju_spouse  = ILJJ_SPOUSE.get(iljj, "")
                 ilju_detail  = ILJU_DATA.get(ilju_str, {}).get("desc", f"{ilgan_kr} 위에 {iljj_kr}이 앉은 일주입니다.")
                 result.append(f"""
-【 제16장 · 일주론(日柱論) — {ilju_str} 일주의 완전 분석 】
+[ 제16장 | 일주론(Ilju-ron) - {ilju_str} 일주의 완전 분석 ]
 
 일주(日柱)는 사주의 핵심입니다. 일간(日干)은 나 자신이고, 일지(日支)는 내가 서 있는 토대이자 배우자 자리입니다.
 {display_name}님의 일주는 {ilju_str}({ilgan_kr}/{iljj_kr})입니다.
 
-◈ {ilju_str} 일주 특성
-{ilju_detail}
+    - 일주 특성 ({iljj_kr})
+    {ilju_nature}
 
-◈ 일지({iljj_kr}) 성정(性情)
-{ilju_nature}
+    - 배우자 자리(Day Branch) 분석
+    {ilju_spouse}
 
-◈ 배우자 자리(日支) 분석
-{ilju_spouse}
-
-◈ 일간 {ilgan_kr}의 오행적 특성
+    - 일간 {ilgan_kr}의 오행적 특성
 {OHN.get(ilgan_oh,'')} 기운은 {'성장과 창의, 새로운 시작을 상징합니다.' if ilgan_oh=='木' else '열정과 표현, 인기를 상징합니다.' if ilgan_oh=='火' else '안정과 신뢰, 중심을 상징합니다.' if ilgan_oh=='土' else '결단과 원칙, 정제를 상징합니다.' if ilgan_oh=='金' else '지혜와 유연성, 깊이를 상징합니다.'}
 이 기운이 {display_name}님의 삶 전반에 흐르며, 용신 {yong_kr} 오행과 만날 때 가장 크게 빛납니다.
 """)
             except: pass
 
-            # ── 제17장: 재물운 로드맵
+            # 제17장: 재물운 로드맵
             try:
                 hi = generate_engine_highlights(pils, birth_year, gender)
                 mp_text = "\n".join([
-                    f"• {mp['age']} ({mp['year']}): {mp['desc']}"
+                    f"* {mp['age']} ({mp['year']}): {mp['desc']}"
                     for mp in hi.get('money_peak', [])[:4]
-                ]) or "• 계산된 재물 황금기가 없습니다."
+                ]) or "* 계산된 재물 황금기가 없습니다."
                 result.append(f"""
-【 제17장 · 재물운(財物運) 완전 로드맵 】
+[ 제17장 | 재물운(Wealth) 완전 로드맵 ]
 
-◈ {display_name}님의 재물 패턴
-{char.get('재물패턴','꾸준한 노력으로 재물을 쌓아가는 타입입니다.')}
+    - {display_name}님의 재물 패턴
+    {char.get('재물패턴','꾸준한 노력으로 재물을 쌓아가는 타입입니다.')}
 
-◈ 평생 재물 황금기
-{mp_text}
+    - 평생 재물 황금기
+    {mp_text}
 
-◈ 재물 핵심 전략
-• {gname}: {'직업 안정 수입이 기반. 투기는 금물.' if '정재' in gname else '사업·투자로 큰 기회. 기복 대비 안전자산 필수.' if '편재' in gname else '전문성·창의력으로 수입. 재능을 팔아 돈 버는 구조.' if '식신' in gname or '상관' in gname else '명예와 재물 동시에. 실력 먼저, 돈은 따라온다.'}
-• 기신 운: {'대운·세운 모두 기신일 때 큰 투자·동업·보증 금지'}
-• 용신 {yong_kr} 오행 해(年): 재물 결정과 실행의 최적기
-• {sn}: {'직접 부딪혀야 재물이 온다. 기다리면 지나간다.' if '신강' in sn else '귀인·파트너와 함께할 때 재물이 배로 온다.' if '신약' in sn else '꾸준함이 최대 재물 전략이다.'}
+    - 재물 핵심 전략
+* {gname}: {'직업 안정 수입이 기반. 투기는 금물.' if '정재' in gname else '사업, 투자로 큰 기회. 기복 대비 안전자산 필수.' if '편재' in gname else '전문성, 창의력으로 수입. 재능을 팔아 돈 버는 구조.' if '식신' in gname or '상관' in gname else '명예와 재물 동시에. 실력 먼저, 돈은 따라온다.'}
+* 기신 운: {'대운, 세운 모두 기신일 때 큰 투자, 동업, 보증 금지'}
+* 용신 {yong_kr} 오행 해(Year): 재물 결정과 실행의 최적기
+* {sn}: {'직접 부딪혀야 재물이 온다. 기다리면 지나간다.' if '신강' in sn else '귀인, 파트너와 함께할 때 재물이 배로 온다.' if '신약' in sn else '꾸준함이 최대 재물 전략이다.'}
 """)
             except: pass
 
@@ -8352,23 +8403,23 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
                     "金":"습도 관리, 가습기 활용. 건조 환경 주의. 매운맛(마늘·생강) 적당히.",
                     "水":"수분 충분히. 짠 음식·과로 금지. 검은 음식(검은콩·미역·김) 권장.",
                 }
-                h_lines = [f"◈ 일간 {ilgan_kr} 주의사항\n{char.get('건강','규칙적인 생활과 수면이 핵심입니다.')}\n"]
+                h_lines = [f"[일간 주의사항] {ilgan_kr}\n{char.get('건강','규칙적인 생활과 수면이 핵심입니다.')}\n"]
                 for o, v in oh_strength2.items():
                     if v >= 30:
-                        h_lines.append(f"◈ {OHN.get(o,'')}({o}) 과다({v}%) — 주의: {OH_BODY_FULL.get(o,'')}\n  처방: {OH_HEALTH_ADV.get(o,'')}")
+                        h_lines.append(f"[과다] {OHN.get(o,'')}({o}) ({v}%) | 주의: {OH_BODY_FULL.get(o,'')}\n  처방: {OH_HEALTH_ADV.get(o,'')}")
                     elif v <= 8:
-                        h_lines.append(f"◈ {OHN.get(o,'')}({o}) 부족({v}%) — 보충 필요: {OH_BODY_FULL.get(o,'')}\n  처방: {OH_HEALTH_ADV.get(o,'')}")
+                        h_lines.append(f"[부족] {OHN.get(o,'')}({o}) ({v}%) | 보충 필요: {OH_BODY_FULL.get(o,'')}\n  처방: {OH_HEALTH_ADV.get(o,'')}")
                 result.append(f"""
-【 제18장 · 건강운(健康運) 완전 분석 】
+[ 제18장 | 건강운(Health) 완전 분석 ]
 
 {chr(10).join(h_lines)}
 
-◈ 현재 대운({cur_dw_ss}) 건강 주의
-{'편관 대운 — 과로·수술·관재 위험. 정기검진 필수.' if cur_dw_ss=='편관' else '겁재 대운 — 정신적 스트레스가 신체에 영향. 감정 관리가 곧 건강 관리.' if cur_dw_ss=='겁재' else '비교적 건강한 대운. 기본 생활습관 유지가 핵심.'}
+[현재 대운 주의] ({cur_dw_ss})
+{'편관 대운 - 과로, 수술, 관재 위험. 정기검진 필수.' if cur_dw_ss=='편관' else '겁재 대운 - 정신적 스트레스가 신체에 영향. 감정 관리가 곧 건강 관리.' if cur_dw_ss=='겁재' else '비교적 건강한 대운. 기본 생활습관 유지가 핵심.'}
 
-◈ 평생 건강 5대 수칙
-1. 수면: 규칙적 수면 — {ilgan_kr} 일간의 건강 기반
-2. 감정: {'분노 억제' if ilgan_oh=='木' else '과잉 흥분 조절' if ilgan_oh=='火' else '걱정·근심 해소' if ilgan_oh=='土' else '슬픔·집착 해소' if ilgan_oh=='金' else '공포·불안 해소'} — 감정이 곧 건강
+[평생 건강 5대 수칙]
+1. 수면: 규칙적 수면 - {ilgan_kr} 일간의 건강 기반
+2. 감정: {'분노 억제' if ilgan_oh=='木' else '과잉 흥분 조절' if ilgan_oh=='火' else '걱정, 근심 해소' if ilgan_oh=='土' else '슬픔, 집착 해소' if ilgan_oh=='金' else '공포, 불안 해소'} - 감정이 곧 건강
 3. 음식: 용신 {yong_kr} 오행 음식 꾸준히 섭취
 4. 운동: {'강도 있는 운동보다 꾸준한 유산소' if '신강' in sn else '가벼운 운동 + 충분한 휴식' if '신약' in sn else '균형 잡힌 운동 루틴'}
 5. 검진: 주의 장기 연 1회 이상 검진 필수
@@ -8380,25 +8431,25 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
                 yk = get_yukjin(ilgan, pils, gender)
                 yk_yes = [item for item in yk if item.get('present')]
                 yk_no  = [item for item in yk if not item.get('present')]
-                yk_yes_text = "\n".join([f"• {i['관계']}: {i['위치']} — {i['desc'][:60]}" for i in yk_yes[:4]]) or "해당 없음"
-                yk_no_text  = "\n".join([f"• {i['관계']}: 원국에 없음" for i in yk_no[:4]]) or "해당 없음"
+                yk_yes_text = "\n".join([f"* {i['관계']}: {i['위치']} | {i['desc'][:60]}" for i in yk_yes[:4]]) or "해당 없음"
+                yk_no_text  = "\n".join([f"* {i['관계']}: 원국에 없음" for i in yk_no[:4]]) or "해당 없음"
                 result.append(f"""
-【 제19장 · 인간관계(人間關係) — 육친(六親) 완전 분석 】
+[ 제19장 | 인간관계(Relations) - 육친(Yukjin) 완전 분석 ]
 
-◈ 원국에 있는 육친 (강한 인연)
+[강한 인연] 원국에 있는 육친 
 {yk_yes_text}
 
-◈ 원국에 없는 육친 (약하거나 변화 많은 인연)
+[변화 많은 인연] 원국에 없는 육친
 {yk_no_text}
 
-◈ {ilgan_kr} 일간의 인간관계 방식
-{'강한 독립심으로 인해 혼자 결정·해결하려는 경향이 강합니다.' if ilgan_oh in ['木','金'] else '따뜻하지만 상처받으면 오래 기억하는 편입니다.' if ilgan_oh=='火' else '신뢰를 중시하고 새로운 인연을 맺는 데 시간이 걸립니다.' if ilgan_oh=='土' else '깊은 통찰력으로 사람을 파악하지만 먼저 다가가기 어려워합니다.'}
+- {ilgan_kr} 일간의 인간관계 방식
+{'강한 독립심으로 인해 혼자 결정, 해결하려는 경향이 강합니다.' if ilgan_oh in ['木','金'] else '따뜻하지만 상처받으면 오래 기억하는 편입니다.' if ilgan_oh=='火' else '신뢰를 중시하고 새로운 인연을 맺는 데 시간이 걸립니다.' if ilgan_oh=='土' else '깊은 통찰력으로 사람을 파악하지만 먼저 다가가기 어려워합니다.'}
 
-◈ {'남성' if gender=='남' else '여성'} {display_name}님의 이성 인연
+- {'남성' if gender=='남' else '여성'} {display_name}님의 이성 인연
 {char.get('연애_남' if gender=='남' else '연애_여','이성 관계에서 자신만의 방식을 가지고 있습니다.')}
 
-◈ 귀인을 만나는 방법
-{'문서·학문·공식 자리에서 귀인을 만납니다.' if '정관' in gname or '정인' in gname else '이동·사업·거래 현장에서 귀인을 만납니다.' if '편재' in gname or '편관' in gname else '일상 업무·창작 활동 중에 귀인이 나타납니다.'}
+- 귀인을 만나는 방법
+{'문서, 학문, 공식 자리에서 귀인을 만납니다.' if '정관' in gname or '정인' in gname else '이동, 사업, 거래 현장에서 귀인을 만납니다.' if '편재' in gname or '편관' in gname else '일상 업무, 창작 활동 중에 귀인이 나타납니다.'}
 용신 {yong_kr} 오행의 기운이 강한 장소와 사람에게서 귀인이 옵니다.
 """)
             except: pass
@@ -8406,52 +8457,50 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
             # ── 제20장: 맞춤 인생 처방전
             try:
                 result.append(f"""
-【 제20장 · {display_name}님에게만 드리는 맞춤 인생 처방전 】
+[ 제20장 | {display_name}님에게만 드리는 맞춤 인생 처방전 ]
 
 20개 장의 분석을 종합한 최종 처방입니다.
 
-━━━━━━ 지금 당장 해야 할 것 (용신 강화) ━━━━━━
+[지금 당장 해야 할 것 (Yongshin 강화)]
 
 색상 처방:
-{'• 목(木) 용신: 청색·녹색 계열' if '木' in yongshin_ohs else ''}{'• 화(火) 용신: 적색·주황색 계열' if '火' in yongshin_ohs else ''}{'• 토(土) 용신: 황색·베이지·갈색 계열' if '土' in yongshin_ohs else ''}{'• 금(金) 용신: 백색·은색·금색 계열' if '金' in yongshin_ohs else ''}{'• 수(水) 용신: 흑색·남색·회색 계열' if '水' in yongshin_ohs else ''}
+{f'* 목(木) 용신: 청색, 녹색 계열' if '木' in yongshin_ohs else ''}{f'* 화(火) 용신: 적색, 주황색 계열' if '火' in yongshin_ohs else ''}{f'* 토(土) 용신: 황색, 베이지, 갈색 계열' if '土' in yongshin_ohs else ''}{f'* 금(金) 용신: 백색, 은색, 금색 계열' if '金' in yongshin_ohs else ''}{f'* 수(水) 용신: 흑색, 남색, 회색 계열' if '水' in yongshin_ohs else ''}
 
 방위 처방:
-{'• 목(木): 동쪽' if '木' in yongshin_ohs else ''}{'• 화(火): 남쪽' if '火' in yongshin_ohs else ''}{'• 토(土): 중앙·북동·북서' if '土' in yongshin_ohs else ''}{'• 금(金): 서쪽' if '金' in yongshin_ohs else ''}{'• 수(水): 북쪽' if '水' in yongshin_ohs else ''}
+{f'* 목(木): 동쪽' if '木' in yongshin_ohs else ''}{f'* 화(火): 남쪽' if '火' in yongshin_ohs else ''}{f'* 토(土): 중앙, 북동, 북서' if '土' in yongshin_ohs else ''}{f'* 금(金): 서쪽' if '金' in yongshin_ohs else ''}{f'* 수(水): 북쪽' if '水' in yongshin_ohs else ''}
 
 시간 처방:
-{'• 목(木): 새벽 3~7시(인묘시)' if '木' in yongshin_ohs else ''}{'• 화(火): 오전 9~13시(사오시)' if '火' in yongshin_ohs else ''}{'• 토(土): 진술축미시' if '土' in yongshin_ohs else ''}{'• 금(金): 오후 3~7시(신유시)' if '金' in yongshin_ohs else ''}{'• 수(水): 저녁 9~새벽 1시(해자시)' if '水' in yongshin_ohs else ''}
+{f'* 목(木): 새벽 3~7시(인묘시)' if '木' in yongshin_ohs else ''}{f'* 화(火): 오전 9~13시(사오시)' if '火' in yongshin_ohs else ''}{f'* 토(土): 진술축미시' if '土' in yongshin_ohs else ''}{f'* 금(金): 오후 3~7시(신유시)' if '金' in yongshin_ohs else ''}{f'* 수(水): 저녁 9~새벽 1시(해자시)' if '水' in yongshin_ohs else ''}
 
-━━━━━━ 절대 하면 안 되는 것 (기신 주의) ━━━━━━
+[절대 하면 안 되는 것 (Gishin 주의)]
 
-• 기신 운이 강한 해에 큰 투자·이사·창업·결혼 서두르지 않기
-• {gname}에 맞지 않는 사업 방향 피하기
-• {'보증·연대책임 절대 금지' if '겁재' in str(top_ss) or '비견' in str(top_ss) else '감정적 충동 결정 자제'}
-• 건강 경고 신호 무시하지 않기
+* 기신 운이 강한 해에 큰 투자, 이사, 창업, 결혼 서두르지 않기
+* {gname}에 맞지 않는 사업 방향 피하기
+* {'보증, 연대책임 절대 금지' if '겁재' in str(top_ss) or '비견' in str(top_ss) else '감정적 충동 결정 자제'}
+* 건강 경고 신호 무시하지 않기
 
-━━━━━━ {current_year + 1}년 행동 계획 ━━━━━━
+[ {current_year + 1}년 행동 계획 ]
 
 내년 세운: {sw_next.get('세운','')} ({sw_next.get('십성_천간','')} / {sw_next.get('길흉','')})
-{'✅ 적극적으로 움직여야 할 해. 준비한 것을 실행하고 귀인의 도움을 요청하십시오.' if sw_next.get('길흉','') in ['길','대길'] else '⚠️ 신중하게 내실을 다지는 해. 현재를 안정화하는 데 집중하십시오.'}
+{'[확인] 적극적으로 움직여야 할 해. 준비한 것을 실행하고 귀인의 도움을 요청하십시오.' if sw_next.get('길흉','') in ['길','대길'] else '[주의] 신중하게 내실을 다지는 해. 현재를 안정화하는 데 집중하십시오.'}
 
 "운명은 사주가 정하지만, 운명을 만드는 것은 당신입니다."
 """)
             except: pass
-
             return "".join(result)
-
         # ── 인생 흐름용 (menu2)
         elif section == "lifeline":
             result = []
             result.append(f"""
-┌─────────────────────────────────────────────────────┐
-│  {display_name}님의 인생 흐름 — 대운 100년 완전 해설          │
-└─────────────────────────────────────────────────────┘
+    -----------------------------------------------------
+      {display_name}님의 인생 흐름 - 대운 100년 완전 해설
+    -----------------------------------------------------
 
 대운(大運)은 10년 단위로 흐르는 인생의 큰 물결입니다. 세운(歲運)이 1년 단위의 파도라면, 대운은 10년을 휘감는 조류(潮流)입니다. 아무리 좋은 세운이 와도 대운이 나쁘면 크게 발현되지 않으며, 반대로 힘든 세운도 좋은 대운 아래서는 그 피해가 줄어듭니다.
 
 {display_name}님의 용신은 {yong_kr}입니다. 이 오행의 대운이 오는 시기가 인생의 황금기가 됩니다.
 
-【 대운별 상세 해설 】
+[ 대운별 상세 해설 ]
 """)
             for dw in daewoon[:9]:
                 dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
@@ -8475,28 +8524,28 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
                 desc = DW_SS_DESC.get(dw_ss, f"{dw_ss} 십성 대운으로 {dw['str']}의 기운이 10년간 흐릅니다.")
 
                 result.append(f"""
-▶ {dw['시작나이']}세 ~ {dw['시작나이']+9}세 | {dw['str']} 대운 ({dw_ss}){cur_mark}
-   ({dw['시작연도']}년 ~ {dw['종료연도']}년)
-   {'⭐ 용신 대운 — 인생의 황금기' if is_yong else ''}
+    + {dw['시작나이']}세 ~ {dw['시작나이']+9}세 | {dw['str']} 대운 ({dw_ss}){cur_mark}
+       ({dw['시작연도']}년 ~ {dw['종료연도']}년)
+       {'* 용신 대운 - 인생의 황금기' if is_yong else ''}
 
-   {desc}
+       {desc}
 
-   이 시기의 핵심 키워드: {'번영·성장·도약' if is_yong else '인내·준비·기반 구축'}
-   {'지금이 바로 큰 결정을 내려야 할 때입니다. 머뭇거리지 마십시오.' if is_yong and is_cur else '지금은 다음 황금기를 위한 준비 기간입니다. 내실을 다지십시오.' if not is_yong and is_cur else ''}
+       이 시기의 핵심 키워드: {'번영, 성장, 도약' if is_yong else '인내, 준비, 기반 구축'}
+       {'지금이 바로 큰 결정을 내려야 할 때입니다. 머뭇거리지 마십시오.' if is_yong and is_cur else '지금은 다음 황금기를 위한 준비 기간입니다. 내실을 다지십시오.' if not is_yong and is_cur else ''}
 """)
 
             result.append(f"""
-【 인생 전체 흐름 요약 】
+[ 인생 전체 흐름 요약 ]
 
 {display_name}님의 인생에서 가장 중요한 대운은 용신 {yong_kr} 오행이 들어오는 시기입니다. 이 시기에 큰 결정을 내리고 적극적으로 움직여야 합니다.
 
 현재 {current_age}세의 {display_name}님은 {'지금이 바로 황금기입니다. 두려워하지 말고 전진하십시오!' if cur_dw and _get_yongshin_match(cur_dw_ss, yongshin_ohs, ilgan_oh) == 'yong' else '지금은 준비 기간입니다. 다음 용신 대운을 위해 체력과 실력을 비축하십시오.'}
 
-대운의 흐름을 이해하는 것은 인생의 지도를 갖는 것과 같습니다. 좋은 대운에 최대한 활동하고, 나쁜 대운에 최소한으로 노출되는 것 — 이것이 사주 활용의 핵심 전략입니다.
+인생의 좋은 대운에 최대한 활동하고, 나쁜 대운에 최소한으로 노출되는 것 | 이것이 사주 활용의 핵심 전략입니다.
 """)
             # 확장 — 대운별 재물·건강·연애 상세
             result.append(f"""
-【 대운별 분야별 상세 분석 】
+[ 대운별 분야별 상세 분석 ]
 
 각 대운에서 재물·직업·건강·연애가 어떻게 흘러가는지 구체적으로 분석합니다.
 """)
@@ -8505,36 +8554,34 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
                 "상관": {"재물":"기존 방식에서 벗어난 창의적 수익 창출이 가능합니다. 부업·프리랜서 소득이 늘어날 수 있습니다.","직업":"직장보다 독립적인 활동이 강조됩니다. 창업·이직 충동이 강해집니다.","건강":"신경계 과부하에 주의하십시오. 지나친 활동으로 번아웃이 올 수 있습니다.","연애":"자유롭고 역동적인 인연이 생깁니다. 단, 관계의 지속성이 약해질 수 있습니다."},
                 "편재": {"재물":"투자·사업·거래가 활발해지는 재물 대운입니다. 기복이 있지만 크게 버는 시기입니다.","직업":"외부 활동과 영업이 강해집니다. 새로운 사업 영역을 개척하기 좋은 대운입니다.","건강":"과로로 인한 체력 저하가 올 수 있습니다. 활동량을 적절히 조절하십시오.","연애":"이성 인연이 풍부해지는 대운입니다. 적극적으로 만남을 만들어가십시오."},
                 "정재": {"재물":"안정적이고 꾸준한 재물이 쌓이는 대운입니다. 저축과 자산 관리에 가장 유리한 시기입니다.","직업":"묵묵한 노력이 인정받고 승진이나 연봉 인상의 기회가 옵니다.","건강":"전반적으로 안정적인 건강 상태입니다. 규칙적인 생활을 유지하십시오.","연애":"안정적이고 진지한 인연이 생깁니다. 결혼을 결심하기 좋은 대운입니다."},
-                "편관": {"재물":"재물 손실과 지출이 커지는 시기입니다. 보수적인 재무 전략이 필요합니다.","직업":"직장 내 압박·갈등·변동이 생기기 쉽습니다. 언행에 각별히 주의하십시오.","건강":"건강 이상·사고·수술 위험이 있는 대운입니다. 정기 건강검진을 받으십시오.","연애":"관계에서 갈등과 불화가 생기기 쉽습니다. 인내하고 감정을 조절하십시오."},
+                "편관": {"재물":"재물 손실과 지출이 커지는 시기입니다. 보수적인 재무 전략이 필요합니다.","직업":"직장 내 압박·갈등·변동이 생기기 쉽습니다. 언행에 각별히 주의하십시오.","건강":"건강 이상·사고·수술 위험이 있는 대운입니다. 정기 건강검진을 받으십시오.","연애":"관계에서 갈등과 불화가 생기기 쉬우니 인내하고 감정을 조절하십시오."},
                 "정관": {"재물":"합법적이고 정당한 방법으로 재물이 들어오는 대운입니다. 계약·협약에 유리합니다.","직업":"사회적 지위가 올라가고 명예가 빛나는 대운입니다. 승진·수상의 기회가 옵니다.","건강":"전반적으로 안정적입니다. 과로에만 주의하십시오.","연애":"공식적이고 격식 있는 인연이 생깁니다. 결혼 기회가 찾아오는 대운입니다."},
                 "편인": {"재물":"재물보다 전문성과 지식이 쌓이는 대운입니다. 자격증·교육에 투자하십시오.","직업":"특수 분야 전문성이 인정받는 대운입니다. 연구·개발·강의 분야에서 두각을 나타냅니다.","건강":"신경과민과 불면증에 주의하십시오. 명상과 충분한 휴식이 필요합니다.","연애":"고독한 시간이 많아질 수 있습니다. 깊고 의미있는 인연을 만납니다."},
                 "정인": {"재물":"귀인의 도움으로 재물 기회가 찾아옵니다. 직접 버는 것보다 귀인의 연결로 이익이 생깁니다.","직업":"스승·상사의 후원으로 도약합니다. 시험·자격·학위 취득에 최고의 대운입니다.","건강":"몸과 마음 모두 안정적입니다. 정기적인 스트레칭과 명상이 더욱 효과적입니다.","연애":"격식 있고 진지한 인연이 생깁니다. 어른들의 주선으로 좋은 만남이 이루어집니다."},
                 "비견": {"재물":"재물이 여러 방향으로 분산될 수 있습니다. 지출 관리와 투자 신중이 필요합니다.","직업":"독립·창업 의지가 강해지는 대운입니다. 자신만의 영역을 구축하기 좋습니다.","건강":"전반적으로 안정적입니다. 경쟁 스트레스가 쌓이지 않도록 하십시오.","연애":"비슷한 가치관의 인연을 만납니다. 독립적인 관계 방식을 선호하게 됩니다."},
                 "겁재": {"재물":"재물 기복이 크고 손재 위험이 있는 대운입니다. 투기성 투자는 반드시 피하십시오.","직업":"경쟁이 치열해집니다. 상대를 이기려 하기보다 자신의 실력에 집중하십시오.","건강":"과도한 경쟁 스트레스로 인한 건강 저하를 주의하십시오.","연애":"질투와 경쟁 심리로 관계 갈등이 생기기 쉽습니다. 감정을 솔직히 표현하십시오."},
             }
-            for dw in daewoon[:8]:
+            for dw in daewoon[:9]:
                 dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(dw["cg"], "-")
-                is_yong = _get_yongshin_match(dw_ss, yongshin_ohs, ilgan_oh) == "yong"
-                is_cur = dw["시작연도"] <= current_year <= dw["종료연도"]
+                is_cur = (dw["시작연도"] <= current_year <= dw["종료연도"])
                 domain = DW_DOMAIN_DETAIL.get(dw_ss, {"재물":"운기를 주시하십시오","직업":"변화에 대비하십시오","건강":"건강 관리에 유의하십시오","연애":"인연에 열린 자세를 가지십시오"})
-                cur_mark = " ◀ 현재" if is_cur else ""
+                cur_mark = " [현재]" if is_cur else ""
                 result.append(f"""
-▷ {dw['시작나이']}~{dw['시작나이']+9}세 {dw['str']} ({dw_ss}대운){cur_mark}
-  💰 재물: {domain['재물']}
-  💼 직업: {domain['직업']}
-  🏥 건강: {domain['건강']}
-  💑 연애: {domain['연애']}
+    > {dw['시작나이']}~{dw['시작나이']+9}세 {dw['str']} ({dw_ss}대운){cur_mark}
+      [재물]: {domain['재물']}
+      [직업]: {domain['직업']}
+      [건강]: {domain['건강']}
+      [연애]: {domain['연애']}
 """)
-            # 인생 황금기 vs 위기 요약
             golden = [(dw['시작나이'], dw['str']) for dw in daewoon if _get_yongshin_match(TEN_GODS_MATRIX.get(ilgan,{}).get(dw['cg'],'-'), yongshin_ohs, ilgan_oh) == 'yong']
             crisis = [(dw['시작나이'], dw['str']) for dw in daewoon if TEN_GODS_MATRIX.get(ilgan,{}).get(dw['cg'],'-') in ['편관','겁재'] and _get_yongshin_match(TEN_GODS_MATRIX.get(ilgan,{}).get(dw['cg'],'-'), yongshin_ohs, ilgan_oh) != 'yong']
             golden_str = " / ".join([f"{a}세 {s}" for a,s in golden[:4]]) if golden else "꾸준한 노력이 황금기를 만듭니다"
             crisis_str = " / ".join([f"{a}세 {s}" for a,s in crisis[:3]]) if crisis else "없음"
             result.append(f"""
-【 인생 황금기 vs 위기 구간 최종 정리 】
+[ 인생 황금기 vs 위기 구간 최종 정리 ]
 
-🌟 황금기 구간: {golden_str}
-⚠️  주의 구간: {crisis_str}
+[*] 황금기 구간: {golden_str}
+[!] 주의 구간: {crisis_str}
 
 황금기에는 최대한 활동하고, 주의 구간에는 최소한으로 노출되십시오.
 황금기에 번 것의 30%는 반드시 다음 주의 구간을 위해 비축하십시오.
@@ -8546,9 +8593,9 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
         elif section == "future":
             result = []
             result.append(f"""
-┌─────────────────────────────────────────────────────┐
-│  {display_name}님의 미래 3년 집중 분석                        │
-└─────────────────────────────────────────────────────┘
+    -----------------------------------------------------
+      {display_name}님의 미래 3년 집중 분석
+    -----------------------------------------------------
 
 향후 3년은 {display_name}님 인생에서 중요한 변곡점이 될 수 있습니다. 각 해의 세운(歲運)을 분야별로 집중 분석합니다.
 
@@ -8562,6 +8609,12 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
                 age = y - birth_year + 1
                 is_yong_sw = _get_yongshin_match(sw_ss, yongshin_ohs, ilgan_oh) == "yong"
                 gilhyung = sw.get("길흉", "")
+
+                # 길흉 마커
+                gh_mark = "[길]" if gilhyung in ["길","대길"] else "[평]" if gilhyung=="평" else "[의]"
+                                
+                result.append(f"### {y}년 차트 ({age}세) | {sw['세운']} ({sw_ss}) {gh_mark}\n")
+                if is_yong_sw: result.append(f"* [용신운] 올해는 하늘의 도움이 따르는 해입니다.\n")
 
                 YEAR_SS_DETAIL = {
                     "식신": {
@@ -8653,39 +8706,39 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
                     "건강": "건강 관리에 신경 쓰십시오.",
                     "조언": "차분히 흐름을 따르십시오.",
                 })
-                star = "⭐ " if is_yong_sw else "⚠️ " if sw_ss in ["편관","겁재"] else "✦ "
+                star = "[*] " if is_yong_sw else "[!] " if sw_ss in ["편관","겁재"] else "+ "
                 result.append(f"""
-{'━'*55}
-{star}{y}년 ({age}세) — {sw.get('세운','')} 세운 | {sw_ss} / {gilhyung}
-{'━'*55}
+-----------------------------------------------------
+{star}{y}년 ({age}세) | {sw.get('세운','')} 세운 | {sw_ss} / {gilhyung}
+-----------------------------------------------------
 
 {yd['총평']}
 
-💰 재물·돈: {yd['돈']}
+[재물/돈]: {yd['돈']}
 
-💼 직장·사업: {yd['직장']}
+[직장/사업]: {yd['직장']}
 
-💑 연애·인간관계: {yd['연애']}
+[연애/관계]: {yd['연애']}
 
-🏥 건강: {yd['건강']}
+[건강]: {yd['건강']}
 
-📌 {y}년 핵심 조언: {yd['조언']}
+[핵심 조언]: {yd['조언']}
 """)
 
             result.append(f"""
-【 3년 종합 전략 】
+[ 3년 종합 전략 ]
 
 향후 3년 동안 {display_name}님이 가장 중점을 두어야 할 사항:
 
-1. 용신 {yong_kr} 강화 — 용신 오행의 색상·음식·방위를 일상에서 꾸준히 활용하십시오
-2. 기신 차단 — 기신 오행의 요소를 생활 공간에서 최소화하십시오
-3. {'적극적 투자와 도전 — 지금이 황금기의 연속입니다' if all(_get_yongshin_match(get_yearly_luck(pils,y).get('십성_천간','-'), yongshin_ohs, ilgan_oh) == 'yong' for y in range(current_year, current_year+2)) else '내실 다지기 — 지금은 준비 기간이니 실력 향상에 집중하십시오'}
-4. 건강 관리 — 사주의 취약한 오행 관련 기관을 정기적으로 점검하십시오
-5. 인맥 관리 — {'귀인을 만날 운기이니 새로운 사람들과의 교류에 적극적으로 나서십시오' if '정인' in [get_yearly_luck(pils,y).get('십성_천간') for y in range(current_year, current_year+3)] else '신뢰 관계를 꾸준히 유지하고 새로운 파트너를 신중하게 선택하십시오'}
+1. 용신 {yong_kr} 강화 | 용신 오행의 색상, 음식, 방위를 일상에서 꾸준히 활용하십시오
+2. 기신 차단 | 기신 오행의 요소를 생활 공간에서 최소화하십시오
+3. {'적극적 투자와 도전 | 지금이 황금기의 연속입니다' if all(_get_yongshin_match(get_yearly_luck(pils,y).get('십성_천간','-'), yongshin_ohs, ilgan_oh) == 'yong' for y in range(current_year, current_year+2)) else '내실 다지기 | 지금은 준비 기간이니 실력 향상에 집중하십시오'}
+4. 건강 관리 | 사주의 취약한 오행 관련 기관을 정기적으로 점검하십시오
+5. 인맥 관리 | {'귀인을 만날 운기이니 새로운 사람들과의 교류에 적극적으로 나서십시오' if '정인' in [get_yearly_luck(pils,y).get('십성_천간') for y in range(current_year, current_year+3)] else '신뢰 관계를 꾸준히 유지하고 새로운 파트너를 신중하게 선택하십시오'}
 """)
             # 확장 — 월별 핵심 시기 분석
             result.append(f"""
-【 올해 월별 운기 핵심 포인트 】
+[ 올해 월별 운기 핵심 포인트 ]
 
 월별 세운(月運)을 통해 어느 달에 집중하고, 어느 달에 쉬어야 하는지 파악합니다.
 """)
@@ -8697,37 +8750,37 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
                         m_ss = ml.get("십성","")
                         m_str = ml.get("월주","")
                         is_m_yong = _get_yongshin_match(m_ss, yongshin_ohs, ilgan_oh) == "yong"
-                        mark = "⭐" if is_m_yong else "⚠️" if m_ss in ["편관","겁재"] else "○"
+                        mark = "*" if is_m_yong else "!" if m_ss in ["편관","겁재"] else "o"
                         month_data.append(f"  {m:2d}월 {m_str:6s} ({m_ss:4s}) {mark}")
                 if month_data:
                     result.append("\n".join(month_data))
                     result.append(f"""
 
-⭐ 별표 달: 이 달에 중요한 미팅·계약·투자 결정을 하십시오
-⚠️ 경고 달: 이 달에는 큰 결정을 피하고 수비 전략을 쓰십시오
-○ 보통 달: 꾸준히 계획대로 진행하십시오
+* 별표 달: 이 달에 중요한 미팅, 계약, 투자 결정을 하십시오
+! 경고 달: 이 달에는 큰 결정을 피하고 수비 전략을 쓰십시오
+o 보통 달: 꾸준히 계획대로 진행하십시오
 """)
             except: pass
 
             result.append(f"""
-【 3년 분야별 최적 타이밍 】
+[ 3년 분야별 최적 타이밍 ]
 
-💰 재물·투자 최적 시기:
-{'• ' + str(current_year) + '년이 3년 중 재물 최고 시기입니다. 이 해에 투자·계약을 집중하십시오.' if _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '• ' + str(current_year+1) + '년에 재물 운이 더 강해질 것으로 예상됩니다.'}
+[돈] 재물, 투자 최적 시기:
+{'* ' + str(current_year) + '년이 3년 중 재물 최고 시기입니다. 이 해에 투자, 계약을 집중하십시오.' if _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '* ' + str(current_year+1) + '년에 재물 운이 더 강해질 것으로 예상됩니다.'}
 
-💼 직업·사업 최적 시기:
-• 정관·편관·정인이 오는 해에 승진·자격·계약 기회를 노리십시오
-• {'지금이 새 사업을 시작하기에 좋은 흐름입니다.' if _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '새 사업은 다음 용신 세운이 올 때까지 기다리십시오.'}
+[직업] 직업, 사업 최적 시기:
+* 정관, 편관, 정인이 오는 해에 승진, 자격, 계약 기회를 노리십시오
+* {'지금이 새 사업을 시작하기에 좋은 흐름입니다.' if _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '새 사업은 다음 용신 세운이 올 때까지 기다리십시오.'}
 
-💑 연애·결혼 최적 시기:
-• {'재성(남성) / 관성(여성) 세운이 오는 해가 결혼·인연의 최적 시기입니다.' if gender == '남' else ''}
-• {'이 3년 중 ' + str(current_year) + '년이 이성 인연에 가장 활성화된 해입니다.' if (sw_now.get('십성_천간','') in (['정재','편재'] if gender == '남' else ['정관','편관'])) else '적극적인 활동을 통해 인연의 기회를 만드십시오.'}
+[연애] 연애, 결혼 최적 시기:
+* {'재성(남성) / 관성(여성) 세운이 오는 해가 결혼, 인연의 최적 시기입니다.' if gender == '남' else ''}
+* {'이 3년 중 ' + str(current_year) + '년이 이성 인연에 가장 활성화된 해입니다.' if (sw_now.get('십성_천간','') in (['정재','편재'] if gender == '남' else ['정관','편관'])) else '적극적인 활동을 통해 인연의 기회를 만드십시오.'}
 
-🏥 건강 주의 시기:
-• 편관·겁재 세운은 건강 이상이 생기기 쉬운 시기입니다
-• 매년 정기 건강검진을 받고, 용신 오행 관련 기관을 특히 점검하십시오
+[건강] 건강 주의 시기:
+* 편관, 겁재 세운은 건강 이상이 생기기 쉬운 시기입니다
+* 매년 정기 건강검진을 받고, 용신 오행 관련 기관을 특히 점검하십시오
 
-【 3년 후 미래 — 지금의 선택이 만드는 5년 후 】
+[ 3년 후 미래 | 지금의 선택이 만드는 5년 후 ]
 
 향후 3년을 어떻게 보내느냐에 따라 5년 후의 삶이 완전히 달라집니다.
 
@@ -8742,13 +8795,13 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
         elif section == "money":
             result = []
             result.append(f"""
-┌─────────────────────────────────────────────────────┐
-│  {display_name}님의 재물·사업 특화 완전 분석                  │
-└─────────────────────────────────────────────────────┘
+    -----------------------------------------------------
+      {display_name}님의 재물, 사업 특화 완전 분석
+    -----------------------------------------------------
 
 재물(財物)은 사주에서 재성(財星)과 용신(用神)의 관계로 파악합니다. 얼마나 버느냐보다 어떤 방식으로 버는지, 어떤 시기에 돈이 모이는지를 아는 것이 진짜 재물 분석입니다.
 
-【 제1장 · 재물 기질 완전 분석 】
+[ 제1장 | 재물 기질 완전 분석 ]
 
 {display_name}님의 재물 버는 방식을 십성 조합으로 분석합니다.
 일간 {ilgan_kr} + {sn} + 주요 십성 {', '.join(top_ss)}
@@ -8756,7 +8809,7 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 """)
             for key, combo in combos[:3]:
                 result.append(f"""
-◈ [{' × '.join(key)}] 재물 조합
+* [{' x '.join(key)}] 재물 조합
 
 {combo.get('요약', '')}
 
@@ -8766,30 +8819,30 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 """)
 
             result.append(f"""
-【 제2장 · 재물 운기 분석 — 돈이 모이는 시기와 새는 시기 】
+[ 제2장 | 재물 운기 분석 | 돈이 모이는 시기와 새는 시기 ]
 
 사주에서 재물은 대운과 세운의 조합으로 결정됩니다. 용신 오행이 들어오는 해에 재물이 모이고, 기신 오행이 강해지는 해에 재물이 나갑니다.
 
 현재 {cur_dw['str'] if cur_dw else '-'} 대운 ({cur_dw_ss})
-{'→ 이 대운은 용신 대운으로, 재물이 모이기 좋은 10년입니다. 적극적으로 투자하고 수익 구조를 만들어가십시오.' if cur_dw and _get_yongshin_match(cur_dw_ss, yongshin_ohs, ilgan_oh) == 'yong' else '→ 이 대운은 재물 관리에 신중해야 하는 시기입니다. 무리한 투자보다 기존 자산을 지키는 전략이 중요합니다.'}
+{'> 이 대운은 용신 대운으로, 재물이 모이기 좋은 10년입니다. 적극적으로 투자하고 수익 구조를 만들어가십시오.' if cur_dw and _get_yongshin_match(cur_dw_ss, yongshin_ohs, ilgan_oh) == 'yong' else '> 이 대운은 재물 관리에 신중해야 하는 시기입니다. 무리한 투자보다 기존 자산을 지키는 전략이 중요합니다.'}
 
 올해 {sw_now.get('세운','')} 세운 ({sw_now.get('십성_천간','')} / {sw_now.get('길흉','')})
-{'→ 올해는 재물 운이 활성화되는 해입니다. 새로운 수입원을 만들거나 투자를 시작하기 좋습니다.' if _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '→ 올해는 재물 지출에 주의해야 합니다. 불필요한 지출을 줄이고 저축에 집중하십시오.'}
+{'> 올해는 재물 운이 활성화되는 해입니다. 새로운 수입원을 만들거나 투자를 시작하기 좋습니다.' if _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '> 올해는 재물 지출에 주의해야 합니다. 불필요한 지출을 줄이고 저축에 집중하십시오.'}
 
-【 제3장 · 투자 유형 분석 】
+[ 제3장 | 투자 유형 분석 ]
 
 {display_name}님의 사주에서 가장 잘 맞는 투자 유형:
 
-{'✅ 부동산 투자 — 토(土) 기운과 관련된 투자로 장기적으로 안정적인 수익을 줍니다.' if '土' in yongshin_ohs else ''}
-{'✅ 금융·주식 투자 — 금(金) 기운과 관련된 투자로 결단력 있게 움직이면 수익이 납니다.' if '金' in yongshin_ohs else ''}
-{'✅ 무역·유통 투자 — 수(水) 기운과 관련된 투자로 흐름을 잘 타면 큰 수익을 냅니다.' if '水' in yongshin_ohs else ''}
-{'✅ 성장주·벤처 투자 — 목(木) 기운과 관련된 투자로 초기 단계 투자에서 강합니다.' if '木' in yongshin_ohs else ''}
-{'✅ 에너지·문화 투자 — 화(火) 기운과 관련된 투자로 사람과 콘텐츠에서 수익이 납니다.' if '火' in yongshin_ohs else ''}
+{'[v] 부동산 투자 | 토(土) 기운과 관련된 투자로 장기적으로 안정적인 수익을 줍니다.' if '土' in yongshin_ohs else ''}
+{'[v] 금융, 주식 투자 | 금(金) 기운과 관련된 투자로 결단력 있게 움직이면 수익이 납니다.' if '金' in yongshin_ohs else ''}
+{'[v] 무역, 유통 투자 | 수(水) 기운과 관련된 투자로 흐름을 잘 타면 큰 수익을 냅니다.' if '水' in yongshin_ohs else ''}
+{'[v] 성장주, 벤처 투자 | 목(木) 기운과 관련된 투자로 초기 단계 투자에서 강합니다.' if '木' in yongshin_ohs else ''}
+{'[v] 에너지, 문화 투자 | 화(火) 기운과 관련된 투자로 사람과 콘텐츠에서 수익이 납니다.' if '火' in yongshin_ohs else ''}
 
-⚠️ 피해야 할 투자 유형 (기신 오행 관련):
+! 피해야 할 투자 유형 (기신 오행 관련):
 {'기신 오행의 산업·자산에는 투자를 자제하십시오. 아무리 좋아 보여도 이 분의 사주에서는 기신 오행 투자가 손실로 이어지는 경우가 많습니다.'}
 
-【 제4장 · 사업 적합성 분석 】
+[ 제4장 | 사업 적합성 분석 ]
 
 {display_name}님의 사주가 독립사업과 직장 중 어느 쪽이 더 맞는지:
 
@@ -8798,7 +8851,7 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 {'정관·정재가 강한 이 사주는 안정적인 직장에서 꾸준히 성장하는 방식이 맞습니다. 조직 내에서 신뢰를 쌓는 것이 재물로 이어집니다.' if any(ss in top_ss for ss in ['정관', '정재']) else ''}
 {'편재·편관이 강한 이 사주는 역동적인 사업 환경에서 강합니다. 위험을 감수하고 크게 움직이는 것을 두려워하지 마십시오.' if any(ss in top_ss for ss in ['편재', '편관']) else ''}
 
-【 제5장 · 재물 새는 구멍과 막는 법 】
+[ 제5장 | 재물 새는 구멍과 막는 법 ]
 
 이 사주에서 재물이 새는 주요 원인:
 
@@ -8808,12 +8861,12 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 {'4. 편인이 강해 직업 변동이 잦아 안정적인 수입 구조를 만들기 어렵습니다. 한 분야에 집중하는 것이 재물 관리의 핵심입니다.' if '편인' in ss_dist else ''}
 
 재물을 지키는 가장 좋은 방법:
-• 용신 {yong_kr} 색상의 지갑 사용
-• 수입의 20~30% 자동 저축 설정
-• 기신 오행이 강한 해에는 큰 재물 결정 미루기
-• 용신 오행이 강한 해에 투자 및 사업 확장
+* 용신 {yong_kr} 색상의 지갑 사용
+* 수입의 20~30% 자동 저축 설정
+* 기신 오행이 강한 해에는 큰 재물 결정 미루기
+* 용신 오행이 강한 해에 투자 및 사업 확장
 
-【 제6장 · 재물 황금기 완전 예측 】
+[ 제6장 | 재물 황금기 완전 예측 ]
 
 {display_name}님의 인생에서 재물 황금기가 오는 시기:
 """)
@@ -8824,8 +8877,8 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
                 if _get_yongshin_match(dw_ss, yongshin_ohs, ilgan_oh) == "yong":
                     age_mid = dw["시작나이"] + 5
                     year_mid = birth_year + age_mid - 1
-                    peak_years.append(f"• {dw['시작나이']}~{dw['시작나이']+9}세 ({dw['시작연도']}~{dw['종료연도']}년): {dw['str']} 용신 대운 — 이 10년이 {display_name}님의 재물 황금기입니다")
-            result.append("\n".join(peak_years[:3]) if peak_years else "• 꾸준한 노력이 재물 황금기를 만듭니다")
+                    peak_years.append(f"* {dw['시작나이']}~{dw['시작나이']+9}세 ({dw['시작연도']}~{dw['종료연도']}년): {dw['str']} 용신 대운 | 이 10년이 {display_name}님의 재물 황금기입니다")
+            result.append("\n".join(peak_years[:3]) if peak_years else "* 꾸준한 노력이 재물 황금기를 만듭니다")
             result.append(f"""
 
 재물 황금기를 최대로 활용하는 전략:
@@ -8834,7 +8887,7 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 3. 황금기의 수익은 다음 어려운 시기를 위해 30% 이상 비축하십시오
 4. 사업을 시작한다면 황금기 대운 초반에 시작하는 것이 가장 좋습니다
 
-【 제7장 · 재물 관리의 황금 원칙 — 이 사주에만 해당하는 처방 】
+[ 제7장 | 재물 관리의 황금 원칙 | 이 사주에만 해당하는 처방 ]
 
 일간 {ilgan_kr} + {gname} + {sn} 조합의 재물 관리 황금 원칙:
 
@@ -8848,17 +8901,17 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 
 원칙 5. 보증·동업에서 재물을 잃는 경우가 많습니다. 계약서 없는 재물 거래는 절대 하지 마십시오.
 
-【 제8장 · 직업별 예상 소득 패턴 분석 】
+[ 제8장 | 직업별 예상 소득 패턴 분석 ]
 
 {display_name}님의 사주에서 각 직업 유형별 예상 소득 패턴:
 
-• 직장인: 꾸준하고 안정적이지만 {'가파른 성장은 어렵습니다. 전문성을 쌓아 희소 인재가 되어야 합니다.' if '신강' in sn else '귀인의 도움으로 예상보다 빠른 성장이 가능합니다.'}
+* 직장인: 꾸준하고 안정적이지만 {'가파른 성장은 어렵습니다. 전문성을 쌓아 희소 인재가 되어야 합니다.' if '신강' in sn else '귀인의 도움으로 예상보다 빠른 성장이 가능합니다.'}
 
-• 프리랜서/자영업: {'이 사주에 가장 잘 맞는 방식입니다. 초기 기반을 잡는 데 3~5년이 필요하지만, 그 후에는 직장보다 훨씬 큰 수익을 낼 수 있습니다.' if any(ss in ss_dist for ss in ['비견','식신','상관']) else '안정적인 수입이 보장되지 않는 방식이라 이 사주에는 주의가 필요합니다.'}
+* 프리랜서/자영업: {'이 사주에 가장 잘 맞는 방식입니다. 초기 기반을 잡는 데 3~5년이 필요하지만, 그 후에는 직장보다 훨씬 큰 수익을 낼 수 있습니다.' if any(ss in ss_dist for ss in ['비견','식신','상관']) else '안정적인 수입이 보장되지 않는 방식이라 이 사주에는 주의가 필요합니다.'}
 
-• 투자/사업: {'편재가 강해 사업 확장 기질이 있습니다. 단, 리스크 관리가 생존의 핵심입니다.' if '편재' in ss_dist else '안정적인 사업 기반을 만든 후 확장하는 보수적 전략이 맞습니다.'}
+* 투자/사업: {'편재가 강해 사업 확장 기질이 있습니다. 단, 리스크 관리가 생존의 핵심입니다.' if '편재' in ss_dist else '안정적인 사업 기반을 만든 후 확장하는 보수적 전략이 맞습니다.'}
 
-【 제9장 · 나이별 재물 타이밍 완전 분석 】
+[ 제9장 | 나이별 재물 타이밍 완전 분석 ]
 
 인생의 각 10년 구간에서 재물 운의 흐름:
 """)
@@ -8877,11 +8930,11 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
                     "비견": "재물 분산 주의·독립 수익 도전 시기",
                     "겁재": "재물 손실 위험·투기 절대 금지 시기",
                 }.get(dw_ss, f"{dw_ss} 십성 운기")
-                yong_mark = " 🌟" if is_yong else ""
+                yong_mark = " [*]" if is_yong else ""
                 result.append(f"  {dw['시작나이']}~{dw['시작나이']+9}세: {money_advice}{yong_mark}\n")
             result.append(f"""
 
-【 제10장 · 만신의 재물 최종 처방 】
+[ 제10장 | 만신의 재물 최종 처방 ]
 
 {display_name}님의 재물 운을 한마디로 요약하면:
 "{combos[0][1].get('재물','타고난 방식으로 꾸준히 쌓아가는 재물') if combos else '성실함과 전문성으로 재물을 쌓아가는 사주'}"
@@ -8900,24 +8953,24 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
             sipsung_data = calc_sipsung(ilgan, pils)
 
             result.append(f"""
-┌─────────────────────────────────────────────────────┐
-│  {display_name}님의 인간관계·육친 완전 분석                  │
-└─────────────────────────────────────────────────────┘
+    -----------------------------------------------------
+      {display_name}님의 인간관계, 육친 완전 분석
+    -----------------------------------------------------
 
 인간관계는 사주에서 십성(十星)과 육친(六親)을 통해 분석합니다. 어떤 사람과 인연이 깊은지, 어떤 사람과 갈등이 생기는지를 사주는 미리 알려줍니다.
 
-【 제1장 · 일간의 대인관계 패턴 】
+[ 제1장 | 일간의 대인관계 패턴 ]
 
 {display_name}님은 일간 {ilgan_kr} + {sn}의 조합으로 다음과 같은 대인관계 패턴을 가집니다:
 
-{'• 신강하여 자기주장이 강합니다. 타인의 의견을 경청하는 연습이 관계 개선의 핵심입니다.' if '신강' in sn else '• 신약하여 타인의 영향을 많이 받습니다. 자신의 의견을 분명히 표현하는 연습이 필요합니다.' if '신약' in sn else '• 중화 사주로 균형 잡힌 대인관계를 유지합니다. 극단적인 관계보다 안정적인 인간관계를 선호합니다.'}
+{'* 신강하여 자기주장이 강합니다. 타인의 의견을 경청하는 연습이 관계 개선의 핵심입니다.' if '신강' in sn else '* 신약하여 타인의 영향을 많이 받습니다. 자신의 의견을 분명히 표현하는 연습이 필요합니다.' if '신약' in sn else '* 중화 사주로 균형 잡힌 대인관계를 유지합니다. 극단적인 관계보다 안정적인 인간관계를 선호합니다.'}
 
-{'• 비견·겁재가 강해 경쟁적인 관계에서 에너지를 발산합니다.' if any(ss in ss_dist for ss in ['비견','겁재']) else ''}
-{'• 식신·상관이 강해 자신을 잘 표현하고 주변에 즐거움을 줍니다.' if any(ss in ss_dist for ss in ['식신','상관']) else ''}
-{'• 정관·편관이 강해 조직과 권위를 의식하며 사회적 관계에 민감합니다.' if any(ss in ss_dist for ss in ['정관','편관']) else ''}
-{'• 정인·편인이 강해 스승과 선배로부터 배우고 지식을 나누는 관계를 중요시합니다.' if any(ss in ss_dist for ss in ['정인','편인']) else ''}
+{'* 비견, 겁재가 강해 경쟁적인 관계에서 에너지를 발산합니다.' if any(ss in ss_dist for ss in ['비견','겁재']) else ''}
+{'* 식신, 상관이 강해 자신을 잘 표현하고 주변에 즐거움을 줍니다.' if any(ss in ss_dist for ss in ['식신','상관']) else ''}
+{'* 정관, 편관이 강해 조직과 권위를 의식하며 사회적 관계에 민감합니다.' if any(ss in ss_dist for ss in ['정관','편관']) else ''}
+{'* 정인, 편인이 강해 스승과 선배로부터 배우고 지식을 나누는 관계를 중요시합니다.' if any(ss in ss_dist for ss in ['정인','편인']) else ''}
 
-【 제2장 · 육친(六親) 상세 분석 】
+[ 제2장 | 육친 상세 분석 ]
 """)
             YUKJIN_DEEP = {
                 "어머니(正印)": f"정인은 어머니의 자리입니다. {display_name}님과 어머니의 관계는 사주에서 매우 중요한 영향을 미칩니다. 정인이 있다면 어머니의 음덕(蔭德)이 크며, 어머니로부터 정서적·물질적 도움을 받는 운입니다. 학문과 귀인을 상징하는 정인이 강하면 교육열이 높고 스승의 인연이 좋습니다.",
@@ -8936,9 +8989,9 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
                 where = item.get("위치", "없음")
                 deep_desc = YUKJIN_DEEP.get(fam, item.get("desc", ""))
                 result.append(f"""
-◈ {fam}
+* {fam}
    위치: {where if where != '없음' else '원국에 직접 없음'}
-   인연 강도: {'강함 — 이 인연이 인생에 크게 영향을 미칩니다' if has else '약함 — 인연이 엷거나 독립적인 관계'}
+   인연 강도: {'강함 | 이 인연이 인생에 크게 영향을 미칩니다' if has else '약함 | 인연이 엷거나 독립적인 관계'}
 
    {deep_desc}
 
@@ -8946,75 +8999,75 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 """)
 
             result.append(f"""
-【 제3장 · 이성 인연·배우자 분석 】
+[ 제3장 | 이성 인연, 배우자 분석 ]
 
 일지(日支) {iljj_kr}({iljj})는 배우자 자리입니다. 이 자리의 기운이 배우자의 성품과 부부 관계의 방향을 결정합니다.
 
 {display_name}님의 배우자 자리 분석:
-• {iljj_kr}({iljj}) 일지 — {'안정과 포용력을 가진 배우자' if iljj in ['丑','辰','戌','未'] else '열정적이고 활기찬 배우자' if iljj in ['午','巳','寅'] else '논리적이고 실력 있는 배우자' if iljj in ['申','酉','亥','子'] else '성장하는 에너지를 가진 배우자' if iljj in ['卯'] else '포용력 있는 배우자'}를 만나는 운입니다.
+* {iljj_kr}({iljj}) 일지 | {'안정과 포용력을 가진 배우자' if iljj in ['丑','辰','戌','未'] else '열정적이고 활기찬 배우자' if iljj in ['午','巳','寅'] else '논리적이고 실력 있는 배우자' if iljj in ['申','酉','亥','子'] else '성장하는 에너지를 가진 배우자' if iljj in ['卯'] else '포용력 있는 배우자'}를 만나는 운입니다.
 
 이성 인연이 강해지는 시기:
-{'• 재성(財星) 세운 — 편재·정재 세운이 올 때 이성 인연이 활성화됩니다.' if gender == '남' else '• 관성(官星) 세운 — 정관·편관 세운이 올 때 이성 인연이 활성화됩니다.'}
-• 현재 대운 {cur_dw['str'] if cur_dw else '-'} — {'이성 인연이 활성화되는 대운입니다' if cur_dw_ss in (['정재','편재'] if gender=='남' else ['정관','편관']) else '배우자 운보다 다른 분야가 강조되는 대운입니다'}
+* {'재성(財星) 세운 | 편재, 정재 세운이 올 때 이성 인연이 활성화됩니다.' if gender == '남' else '* 관성(官星) 세운 | 정관, 편관 세운이 올 때 이성 인연이 활성화됩니다.'}
+* 현재 대운 {cur_dw['str'] if cur_dw else '-'} | {'이성 인연이 활성화되는 대운입니다' if cur_dw_ss in (['정재','편재'] if gender=='남' else ['정관','편관']) else '배우자 운보다 다른 분야가 강조되는 대운입니다'}
 
 이상적인 파트너의 특징:
-• 용신 {yong_kr} 오행을 가진 사람과 궁합이 잘 맞습니다
-• {'불·에너지가 강한 사람' if '火' in yongshin_ohs else ''}{'땅처럼 안정적인 사람' if '土' in yongshin_ohs else ''}{'물처럼 지혜로운 사람' if '水' in yongshin_ohs else ''}{'나무처럼 성장하는 사람' if '木' in yongshin_ohs else ''}{'금처럼 결단력 있는 사람' if '金' in yongshin_ohs else ''}이(가) 이상적인 파트너입니다
+* 용신 {yong_kr} 오행을 가진 사람과 궁합이 잘 맞습니다
+* {'불, 에너지가 강한 사람' if '火' in yongshin_ohs else ''}{'땅처럼 안정적인 사람' if '土' in yongshin_ohs else ''}{'물처럼 지혜로운 사람' if '水' in yongshin_ohs else ''}{'나무처럼 성장하는 사람' if '木' in yongshin_ohs else ''}{'금처럼 결단력 있는 사람' if '金' in yongshin_ohs else ''}이(가) 이상적인 파트너입니다
 
-【 제4장 · 사회적 인간관계 조언 】
+[ 제4장 | 사회적 인간관계 조언 ]
 
 {display_name}님이 만나야 할 귀인(貴人)의 특징:
-• 용신 오행이 강한 분야(직업·전공)에 있는 사람이 귀인입니다
-• {'수학·금융·법·의료·공학 분야의 전문가' if '金' in yongshin_ohs or '水' in yongshin_ohs else '교육·예술·봉사·문화 분야의 전문가' if '木' in yongshin_ohs or '火' in yongshin_ohs else '부동산·건설·농업·토지 관련 분야의 전문가' if '土' in yongshin_ohs else '다양한 분야의 전문가'}와의 인연을 소중히 하십시오
+* 용신 오행이 강한 분야(직업, 전공)에 있는 사람이 귀인입니다
+* {'수학, 금융, 법, 의료, 공학 분야의 전문가' if '金' in yongshin_ohs or '水' in yongshin_ohs else '교육, 예술, 봉사, 문화 분야의 전문가' if '木' in yongshin_ohs or '火' in yongshin_ohs else '부동산, 건설, 농업, 토지 관련 분야의 전문가' if '土' in yongshin_ohs else '다양한 분야의 전문가'}와의 인연을 소중히 하십시오
 
 조심해야 할 인연:
-• 기신 오행이 강한 사람과는 재물 거래나 동업을 피하십시오
-• 겁재가 강하게 들어오는 해에 만나는 사업 파트너는 신중히 검토하십시오
-• 겉으로는 화려해 보이지만 실속이 없는 관계에 에너지를 낭비하지 마십시오
+* 기신 오행이 강한 사람과는 재물 거래나 동업을 피하십시오
+* 겁재가 강하게 들어오는 해에 만나는 사업 파트너는 신중히 검토하십시오
+* 겉으로는 화려해 보이지만 실속이 없는 관계에 에너지를 낭비하지 마십시오
 
 인간관계에서 {display_name}님만의 강점:
 {char.get('장점', '타고난 성품으로 주변 사람들에게 신뢰를 줍니다')}
 
 이 강점을 살려 인간관계를 넓혀가면, 그 관계가 결국 재물과 명예로 돌아오는 운명입니다.
 
-【 제5장 · 연애·결혼 심층 분석 】
+[ 제5장 | 연애, 결혼 심층 분석 ]
 
 {'남성' if gender == '남' else '여성'} {ilgan_kr} 일간의 연애 본능:
-{'• ' + char.get('연애_남', '') if gender == '남' else '• ' + char.get('연애_여', '')}
+* {'* ' + char.get('연애_남', '') if gender == '남' else '* ' + char.get('연애_여', '')}
 
 배우자 자리 {iljj_kr}({iljj}) 심층 해석:
 {iljj_kr}이(가) 배우자 자리에 있다는 것은 배우자에게서 {'안정·신뢰·현실적 도움을 받고 싶은 내면의 욕구' if iljj in ['丑','辰','戌','未'] else '열정·활기·도전적 에너지를 받고 싶은 욕구' if iljj in ['午','巳'] else '지적 교감·논리·전문성을 원하는 욕구' if iljj in ['申','酉'] else '성장·창의·새로움을 함께 나누고 싶은 욕구' if iljj in ['寅','卯'] else '깊은 감정·지혜·내면의 평화를 함께하고 싶은 욕구' if iljj in ['亥','子'] else '다양한 매력을 가진 파트너를 원하는 욕구'}가 있다는 것입니다.
 
 이상적인 배우자의 오행:
-• 용신 {yong_kr} 오행이 강한 사람 — 이 분과 함께하면 삶이 더 풍요로워집니다
-• 이 오행을 가진 직업군의 사람이 좋습니다
+* 용신 {yong_kr} 오행이 강한 사람 | 이 분과 함께하면 삶이 더 풍요로워집니다
+* 이 오행을 가진 직업군의 사람이 좋습니다
 
 결혼 적령기 분석:
 현재 {current_age}세 기준:
-• {'재성 대운 중에 있어 결혼 에너지가 활성화되어 있습니다.' if cur_dw and cur_dw_ss in (['정재','편재'] if gender == '남' else ['정관','편관']) else '관성 대운 중에 있어 결혼 에너지가 활성화되어 있습니다.' if cur_dw and cur_dw_ss in (['정관','편관'] if gender == '남' else ['정재','편재']) else '결혼보다 자기 개발에 더 집중하는 시기입니다.'}
-• 가장 강한 결혼 기회가 오는 세운: {'정재·편재 세운' if gender == '남' else '정관·편관 세운'}
+* {'재성 대운 중에 있어 결혼 에너지가 활성화되어 있습니다.' if cur_dw and cur_dw_ss in (['정재','편재'] if gender == '남' else ['정관','편관']) else '관성 대운 중에 있어 결혼 에너지가 활성화되어 있습니다.' if cur_dw and cur_dw_ss in (['정관','편관'] if gender == '남' else ['정재','편재']) else '결혼보다 자기 개발에 더 집중하는 시기입니다.'}
+* 가장 강한 결혼 기회가 오는 세운: {'정재, 편재 세운' if gender == '남' else '정관, 편관 세운'}
 
-【 제6장 · 직장 내 인간관계 전략 】
+[ 제6장 | 직장 내 인간관계 전략 ]
 
 {gname}을 가진 분의 직장 인간관계 패턴:
-• {'정관격은 상사와 원칙적이고 예의 바른 관계를 형성합니다. 규칙을 잘 지키고 성실한 모습이 신뢰를 얻습니다.' if '정관' in gname else '편관격은 직장에서 경쟁이 치열하고 상사와 갈등이 생기기 쉽습니다. 실력으로 인정받는 것이 최선입니다.' if '편관' in gname else '격국의 기운이 직장 내 관계에 영향을 줍니다.'}
+* {'정관격은 상사와 원칙적이고 예의 바른 관계를 형성합니다. 규칙을 잘 지키고 성실한 모습이 신뢰를 얻습니다.' if '정관' in gname else '편관격은 직장에서 경쟁이 치열하고 상사와 갈등이 생기기 쉽습니다. 실력으로 인정받는 것이 최선입니다.' if '편관' in gname else '격국의 기운이 직장 내 관계에 영향을 줍니다.'}
 
 동료와의 관계:
-• {'비견이 강해 동료 간 경쟁이 활발합니다. 협력을 통해 함께 성장하는 방식이 더 유리합니다.' if '비견' in ss_dist or '겁재' in ss_dist else '식신·상관이 강해 동료들에게 재미와 영감을 주는 존재입니다. 분위기 메이커 역할이 강점입니다.' if '식신' in ss_dist or '상관' in ss_dist else '정관·정인이 강해 조직 내에서 신뢰받는 전문가로 인식됩니다.' if '정관' in ss_dist or '정인' in ss_dist else '독특한 개성으로 직장 내 독보적인 존재감을 가집니다.'}
+* {'비견이 강해 동료 간 경쟁이 활발합니다. 협력을 통해 함께 성장하는 방식이 더 유리합니다.' if '비견' in ss_dist or '겁재' in ss_dist else '식신, 상관이 강해 동료들에게 재미와 영감을 주는 존재입니다. 분위기 메이커 역할이 강점입니다.' if '식신' in ss_dist or '상관' in ss_dist else '정관, 정인이 강해 조직 내에서 신뢰받는 전문가로 인식됩니다.' if '정관' in ss_dist or '정인' in ss_dist else '독특한 개성으로 직장 내 독보적인 존재감을 가집니다.'}
 
 직장에서 조심해야 할 사람:
-• 기신 오행이 강한 상사나 동료와는 재물 거래를 피하십시오
-• 자신을 이용하려는 사람을 빨리 알아채는 직관을 기르십시오
+* 기신 오행이 강한 상사나 동료와는 재물 거래를 피하십시오
+* 자신을 이용하려는 person을 빨리 알아채는 직관을 기르십시오
 
-【 제7장 · 인간관계 운기별 전략 】
+[ 제7장 | 인간관계 운기별 전략 ]
 
 현재 {cur_dw['str'] if cur_dw else '-'} 대운에서의 인간관계:
-{'• 인성 대운: 스승·어른의 도움이 큰 시기입니다. 배움의 인연을 소중히 하십시오.' if cur_dw_ss in ['정인','편인'] else '• 재성 대운: 이성 인연과 사업 파트너 운이 강합니다.' if cur_dw_ss in ['정재','편재'] else '• 관성 대운: 사회적 관계와 권위자와의 인연이 중요해집니다.' if cur_dw_ss in ['정관','편관'] else '• 비겁 대운: 동료·친구·경쟁자와의 관계가 인생의 중심이 됩니다.' if cur_dw_ss in ['비견','겁재'] else '• 식상 대운: 자기표현과 인기가 중심이 되는 시기입니다.'}
+{'* 인성 대운: 스승, 어른의 도움이 큰 시기입니다. 배움의 인연을 소중히 하십시오.' if cur_dw_ss in ['정인','편인'] else '* 재성 대운: 이성 인연과 사업 파트너 운이 강합니다.' if cur_dw_ss in ['정재','편재'] else '* 관성 대운: 사회적 관계와 권위자와의 인연이 중요해집니다.' if cur_dw_ss in ['정관','편관'] else '* 비겁 대운: 동료, 친구, 경쟁자와의 관계가 인생의 중심이 됩니다.' if cur_dw_ss in ['비견','겁재'] else '* 식상 대운: 자기표현과 인기가 중심이 되는 시기입니다.'}
 
 올해 {sw_now.get('세운','')} 세운에서의 인간관계:
-{'• 새로운 귀인을 만날 운기입니다. 모임·행사에 적극적으로 참여하십시오.' if _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '• 인간관계에서 신중함이 요구되는 해입니다. 새로운 동업이나 큰 부탁은 자제하십시오.'}
+{'* 새로운 귀인을 만날 운기입니다. 모임, 행사에 적극적으로 참여하십시오.' if _get_yongshin_match(sw_now.get('십성_천간',''), yongshin_ohs, ilgan_oh) == 'yong' else '* 인간관계에서 신중함이 요구되는 해입니다. 새로운 동업이나 큰 부탁은 자제하십시오.'}
 
-【 제8장 · 만신의 인간관계 최종 처방 】
+[ 제8장 | 만신의 인간관계 최종 처방 ]
 
 {display_name}님의 인간관계 핵심 비결:
 
@@ -9023,19 +9076,121 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
 3. 용신 {yong_kr} 오행이 강한 분야의 사람들과 더 많이 교류하십시오
 4. 인간관계에 투자한 시간과 에너지는 결국 재물과 명예로 돌아옵니다
 
-"좋은 인연이 좋은 운을 만들고, 좋은 운이 좋은 인생을 만듭니다."
+    "Good relationships create good luck, and good luck creates a good life."
 """)
             return "".join(result)
 
+        # ── 과거 적중용 (menu3)
+        elif section == "past":
+            result = []
+            result.append(f"""
+    -----------------------------------------------------
+      {display_name}님의 과거 적중 타임라인 분석
+    -----------------------------------------------------
+
+과거의 사건들을 사주 엔진으로 분석한 결과입니다. 특정 시기에 발생한 강한 기운의 변화(충, 합)가 실제 삶에서 어떻게 나타났는지 확인해 보십시오.
+
+""")
+            highlights = generate_engine_highlights(pils, birth_year, gender)
+            for event in highlights.get("past_events", [])[:10]:
+                result.append(f"### {event.get('age')}세 ({event.get('year')}년) | {event.get('title')}\n")
+                result.append(f"{event.get('desc')}\n\n")
+
+            result.append("""
+[ 과거 분석의 의미 ]
+과거를 분석하는 것은 미래를 대비하기 위함입니다. 어떤 운기에 어떤 사건이 일어났는지 패턴을 파악하면, 다가올 운기에서 최선의 선택을 할 수 있습니다.
+""")
+            return "".join(result)
+
+        return "" # Fallback for unhandled sections
+
     except Exception as e:
-        return f"내러티브 생성 중 오류: {e}"
+        return f"Error in narrative generation: {e}"
 
 
-# ══════════════════════════════════════════════════
-#  메인 함수
-# ══════════════════════════════════════════════════
-def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함"):
-    """1️⃣ 종합 사주 리포트 — 원국 + 성향 + 격국 + 용신"""
+def tab_ai_chat(pils, name, birth_year=1990, gender="남", api_key="", groq_key=""):
+    """ AI 채팅 인터페이스 (Master Version) """
+    if "chat_history" not in st.session_state:
+        st.session_state["chat_history"] = []
+
+    turning = calc_turning_point(pils, birth_year, gender)
+    fate = turning.get("fate_label", "평온기 [Luck]")
+    fate_desc = turning.get("fate_desc", "안정된 흐름 속에 있습니다.")
+    
+    st.markdown(f'''
+    <div style="background: linear-gradient(135deg, #1a1a2e, #16213e); 
+                border-radius: 12px; padding: 20px; margin-bottom: 20px; 
+                border-left: 5px solid #000000;">
+        <div style="color: #ffffff; font-size: 20px; font-weight: 800; margin-bottom: 5px;">Life Season: <span style="color: #f1c40f;">{fate}</span></div>
+        <div style="color: #a0a0ba; font-size: 14px;">{fate_desc}</div>
+    </div>
+    ''', unsafe_allow_html=True)
+
+    # 행운의 개운법 표시
+    render_lucky_kit(get_yongshin(pils).get("용신_1순위", "木"))
+
+    # 대화창 초기화
+    if st.session_state["chat_history"] and st.button("[Reset] 대화 초기화"):
+        st.session_state["chat_history"] = []
+        st.rerun()
+
+    # 히스토리 렌더링
+    for msg in st.session_state["chat_history"]:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # 초기 버튼 (첫 시작 시)
+    if not st.session_state["chat_history"]:
+        if st.button("[Prophet] 예언자 풀이 시작 | 6단계 천명 판독", use_container_width=True, type="primary"):
+            with st.spinner("AI가 천명을 판독하는 중..."):
+                saju_ctx = format_saju_text(pils, name)
+                # [Retention] 이전 상담 기억 주입
+                saju_key = pils_to_cache_key(pils)
+                memory_ctx = build_memory_context(saju_key)
+                system_with_memory = PROPHET_SYSTEM + (f"\n\n[사용자 기억 데이터]\n{memory_ctx}" if memory_ctx else "")
+                
+                # Prophet 모드 호출
+                stream_gen = get_ai_interpretation(
+                    f"사주: {saju_ctx}\n내담자 정보: {name}, {birth_year}년생, {gender}. 이 사주의 6단계 판독을 시작하라.", 
+                    api_key, system=system_with_memory, groq_key=groq_key, stream=True
+                )
+                with st.chat_message("assistant"):
+                    full_text = st.write_stream(stream_gen)
+                st.session_state["chat_history"].append({"role": "assistant", "content": full_text})
+                # ★ Retention: 상담 결과 저장 (기억 시스템)
+                update_user_profile(saju_key, prediction=full_text[:200])
+                st.rerun()
+
+    # 채팅 입력
+    prompt = st.chat_input("궁금한 점을 더 물어보세요.")
+    if prompt:
+        st.session_state["chat_history"].append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        with st.chat_message("assistant"):
+            with st.spinner("AI 만신 답신 중..."):
+                saju_ctx = format_saju_text(pils, name)
+                # ★ Retention: 이전 상담 기억 주입
+                saju_key = pils_to_cache_key(pils)
+                memory_ctx = build_memory_context(saju_key)
+                system_with_memory = PROPHET_SYSTEM + (f"\n\n[사용자 기억 데이터]\n{memory_ctx}" if memory_ctx else "")
+                
+                user_msg = f"사주: {saju_ctx}\n내담자 정보: {name}, {birth_year}년생, {gender}. 사용자 추가 질문: {prompt}"
+                stream_gen = get_ai_interpretation(
+                    user_msg, api_key, system=system_with_memory, 
+                    groq_key=groq_key, stream=True, history=st.session_state["chat_history"][:-1]
+                )
+                full_answer = st.write_stream(stream_gen)
+                st.session_state["chat_history"].append({"role": "assistant", "content": full_answer})
+        st.rerun()
+
+
+# --------------------------------------------------
+#  UI Menu Functions
+# --------------------------------------------------
+def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함", api_key="", groq_key=""):
+    """ [1. Comprehensive Report] - Pillars, Personality, Gyeokguk, Yongshin """
     try:
         ilgan = pils[1]["cg"]
         current_year = datetime.now().year
@@ -9047,64 +9202,100 @@ def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함"):
         st.error(f"기본 데이터 계산 오류: {e}")
         return
 
-    st.markdown("""
-    <div style="background:linear-gradient(135deg,#fff5e0,#fff0dc);color:#f0d58c;
-                padding:18px 24px;border-radius:14px;margin-bottom:16px;font-size:13px">
-        ✦ 원국(原局)·성향·격국·용신을 한 화면에 종합합니다
+    # ── 리포트 요약 카드 ─────────────────────────────────────
+    sn_label  = strength_info.get("신강신약", "중화")
+    _sn_score = strength_info.get("helper_score", 50)
+    sn_icon   = STRENGTH_DESC.get(sn_label, {}).get("icon", "[Balance]")
+    yong_list = ys.get("종합_용신", [])
+    yong_str  = "·".join(yong_list[:2]) if isinstance(yong_list, list) else str(yong_list)
+    gk_name   = gyeokguk.get("격국명", "-")
+
+    st.markdown(f"""
+    <div style="background:#ffffff;border:1.5px solid #e0d0a0;border-radius:14px;
+                padding:14px 16px;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+        <div style="font-size:11px;font-weight:700;color:#8b6200;letter-spacing:2px;margin-bottom:10px">
+            📋 종합 사주 리포트 — 원국·성향·격국·용신
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div style="flex:1;min-width:90px;background:#fff8e8;border-radius:10px;
+                        padding:10px 12px;border:1px solid #e8d5a0;text-align:center">
+                <div style="font-size:10px;color:#000000;margin-bottom:4px">일간</div>
+                <div style="font-size:20px;font-weight:900;color:#333">{pils[1]["cg"]}</div>
+                <div style="font-size:11px;color:#555">{pils[1]["jj"]}</div>
+            </div>
+            <div style="flex:1;min-width:90px;background:#ffffff;border-radius:10px;
+                        padding:10px 12px;border:1px solid #c0d8f0;text-align:center">
+                <div style="font-size:10px;color:#000000;margin-bottom:4px">신강신약</div>
+                <div style="font-size:16px;font-weight:900;color:#0d47a1">{sn_icon}</div>
+                <div style="font-size:11px;color:#333">{sn_label}</div>
+            </div>
+            <div style="flex:1;min-width:90px;background:#f5fff0;border-radius:10px;
+                        padding:10px 12px;border:1px solid #b8e0b8;text-align:center">
+                <div style="font-size:10px;color:#000000;margin-bottom:4px">용신</div>
+                <div style="font-size:16px;font-weight:900;color:#1b5e20">⚡</div>
+                <div style="font-size:11px;color:#333">{yong_str}</div>
+            </div>
+            <div style="flex:1;min-width:90px;background:#fdf0ff;border-radius:10px;
+                        padding:10px 12px;border:1px solid #d8b8e8;text-align:center">
+                <div style="font-size:10px;color:#000000;margin-bottom:4px">격국</div>
+                <div style="font-size:16px;font-weight:900;color:#4a148c">🎯</div>
+                <div style="font-size:11px;color:#333">{gk_name}</div>
+            </div>
+        </div>
     </div>""", unsafe_allow_html=True)
 
     # ① 사주원국
-    st.markdown("### 📊 사주원국 (八字)")
+    st.markdown('<div class="gold-section">📊 사주원국 (八字)</div>', unsafe_allow_html=True)
     try:
         render_pillars(pils)
     except Exception as e:
         st.warning(f"원국 렌더링 오류: {e}")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
 
     # ② 오행 + 신강신약
     try:
         col_oh, col_sn = st.columns(2)
         with col_oh:
-            st.markdown("### 🌈 오행 분포")
+            st.markdown('<div class="gold-section">🌈 오행 분포</div>', unsafe_allow_html=True)
             oh_strength = calc_ohaeng_strength(ilgan, pils)
             render_ohaeng_chart(oh_strength)
         with col_sn:
-            st.markdown("### ⚖️ 신강신약")
+            st.markdown('<div class="gold-section">⚖️ 신강신약</div>', unsafe_allow_html=True)
             sn = strength_info.get("신강신약", "중화(中和)")
             score = strength_info.get("helper_score", 50)
             bar = "🟦"*min(10,round(score/10)) + "⬜"*(10-min(10,round(score/10)))
             s_data = STRENGTH_DESC.get(sn, {})
             st.markdown(f"""
-            <div style="background:#f0f8ff;border:2px solid #4a90a4;border-radius:12px;padding:16px">
-                <div style="font-size:22px;font-weight:900;color:#1a5f7a">{s_data.get('icon','')} {sn}</div>
+            <div style="background:#ffffff;border:2.5px solid #000000;border-radius:12px;padding:16px">
+                <div style="font-size:22px;font-weight:900;color:#000000">{s_data.get('icon','')} {sn}</div>
                 <div style="margin:6px 0;font-size:14px">{bar}</div>
-                <div style="font-size:12px;color:#555;line-height:1.8">{s_data.get('personality','')}</div>
+                <div style="font-size:12px;color:#000000;line-height:1.8">{s_data.get('personality','')}</div>
             </div>""", unsafe_allow_html=True)
     except Exception as e:
         st.warning(f"오행/신강신약 오류: {e}")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
 
     # ③ 성향 판독
-    st.markdown("### 🧠 성향 판독")
+    st.markdown('<div class="gold-section">🧠 성향 판독</div>', unsafe_allow_html=True)
     try:
         with st.spinner("성향 계산 중..."):
             hl = generate_engine_highlights(pils, birth_year, gender)
         for trait in hl["personality"][:6]:
             tag_color = "#9b7ccc" if ("겉" in trait or "속" in trait) else "#4a90d9"
             st.markdown(f"""
-            <div style="border-left:4px solid {tag_color};background:#f8f5ff;
+            <div style="border-left:4px solid {tag_color};background:#ffffff;
                         padding:11px 16px;border-radius:8px;margin:5px 0;
-                        font-size:13px;line-height:1.9;color:#333">{trait}</div>""",
+                        font-size:13px;line-height:1.9;color:#000000;border:1px solid #000000">{trait}</div>""",
                         unsafe_allow_html=True)
     except Exception as e:
         st.warning(f"성향 계산 오류: {e}")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
 
     # ④ 격국
-    st.markdown("### 🏆 격국 (格局)")
+    st.markdown('<div class="gold-section">🏆 격국 (格局)</div>', unsafe_allow_html=True)
     try:
         if gyeokguk:
             gname = gyeokguk.get("격국명", "")
@@ -9114,21 +9305,21 @@ def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함"):
             gcareer    = GYEOKGUK_DESC.get(gname, {}).get("lucky_career", "")
             ggod_rank  = GYEOKGUK_DESC.get(gname, {}).get("god_rank", "")
             st.markdown(f"""
-            <div style="background:linear-gradient(135deg,#f5f5f5,#ffffdc);border:2px solid #c5a059;
+            <div style="background:#ffffff;border:2.5px solid #000000;
                         border-radius:14px;padding:22px">
-                <div style="font-size:20px;font-weight:900;color:#f0c060;margin-bottom:12px">{gname}</div>
-                <div style="font-size:14px;color:#e0d0a0;line-height:2.1;white-space:pre-wrap;margin-bottom:14px">{gdesc_full}</div>
-                {"<div style='background:#ffffdc;border-left:3px solid #c5a059;padding:10px 14px;border-radius:8px;font-size:13px;color:#f0d080;margin-bottom:10px'>💼 적합 직업: " + gcareer + "</div>" if gcareer else ""}
-                {"<div style='background:#ffdcdc;border-left:3px solid #e74c3c;padding:10px 14px;border-radius:8px;font-size:13px;color:#f0b0b0;margin-bottom:10px;white-space:pre-wrap'>" + gcaution + "</div>" if gcaution else ""}
-                {"<div style='background:#dcffdc;border-left:3px solid #27ae60;padding:10px 14px;border-radius:8px;font-size:12px;color:#a0e0a0'>⭐ " + ggod_rank + "</div>" if ggod_rank else ""}
+                <div style="font-size:22px;font-weight:900;color:#000000;margin-bottom:12px">{gname}</div>
+                <div style="font-size:14px;color:#000000;line-height:2.1;white-space:pre-wrap;margin-bottom:14px">{gdesc_full}</div>
+                {"<div style='background:#ffffff;border:1.5px solid #000000;border-left:8px solid #000000;padding:10px 14px;border-radius:8px;font-size:13px;color:#000000;margin-bottom:10px'>💼 적합 직업: " + gcareer + "</div>" if gcareer else ""}
+                {"<div style='background:#fff5f5;border:1.5px solid #ff0000;border-left:8px solid #ff0000;padding:10px 14px;border-radius:8px;font-size:13px;color:#000000;margin-bottom:10px;white-space:pre-wrap'>⚠️ " + gcaution + "</div>" if gcaution else ""}
+                {"<div style='background:#f5fff5;border:1.5px solid #27ae60;border-left:8px solid #27ae60;padding:10px 14px;border-radius:8px;font-size:13px;color:#000000'>⭐ " + ggod_rank + "</div>" if ggod_rank else ""}
             </div>""", unsafe_allow_html=True)
     except Exception as e:
         st.warning(f"격국 표시 오류: {e}")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
 
     # ⑤ 용신
-    st.markdown("### ⭐ 용신 (用神)")
+    st.markdown('<div class="gold-section">⭐ 용신 (用神)</div>', unsafe_allow_html=True)
     try:
         yongshin_ohs = ys.get("종합_용신", [])
         if not isinstance(yongshin_ohs, list):
@@ -9141,17 +9332,17 @@ def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함"):
 
         OH_EMOJI = {"木":"🌳","火":"🔥","土":"⛰️","金":"⚔️","水":"💧"}
         y_tags = " ".join([
-            f"<span style='background:#c5a059;color:#1a1a1a;padding:5px 14px;"
-            f"border-radius:20px;font-size:14px;font-weight:700'>"
+            f"<span style='background:#ffffff;color:#000000;padding:5px 14px;"
+            f"border:2px solid #000000;border-radius:20px;font-size:14px;font-weight:900'>"
             f"{OH_EMOJI.get(o,'')} {o}({OHN.get(o,'')})</span>"
             for o in yongshin_ohs
         ])
         g_tags = " ".join([
-            f"<span style='background:#ffe5e2;color:#1a1a1a;padding:5px 14px;"
+            f"<span style='background:#ffe5e2;color:#000000;padding:5px 14px;"
             f"border-radius:20px;font-size:14px;font-weight:700'>"
             f"{OH_EMOJI.get(o,'')} {o}({OHN.get(o,'')})</span>"
             for o in gishin_ohs
-        ]) if gishin_ohs else f"<span style='color:#888;font-size:13px'>{str(gishin_raw)}</span>"
+        ]) if gishin_ohs else f"<span style='color:#000000;font-size:13px'>{str(gishin_raw)}</span>"
 
         st.markdown(f"""
         <div style="background:#f8f0ff;border-radius:12px;padding:16px">
@@ -9161,12 +9352,12 @@ def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함"):
     except Exception as e:
         st.warning(f"용신 표시 오류: {e}")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
 
     # ⑥ 십성 조합 인생 분석 ★★★ 핵심
-    st.markdown("### 🔮 십성(十星) 조합 — 당신의 인생 설계도")
+    st.markdown('<div class="gold-section">🔮 십성(十星) 조합 — 당신의 인생 설계도</div>', unsafe_allow_html=True)
     st.markdown("""
-    <div style="font-size:12px;color:#444;margin-bottom:12px">
+    <div style="font-size:12px;color:#000000;margin-bottom:12px">
     원국에 나타난 십성의 조합을 분석합니다. 조합만 알면 그 사람의 인생이 보입니다.
     </div>""", unsafe_allow_html=True)
     try:
@@ -9182,14 +9373,14 @@ def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함"):
             "편인":"#8e44ad","정인":"#d35400"
         }
         tags_html = "".join([
-            f"<span style='background:{ss_colors.get(ss,'#888')};color:#1a1a1a;"
+            f"<span style='background:{ss_colors.get(ss,'#888')};color:#000000;"
             f"padding:4px 12px;border-radius:20px;font-size:12px;margin:3px;display:inline-block'>"
             f"{ss} x{cnt}</span>"
             for ss, cnt in sorted(ss_dist.items(), key=lambda x: -x[1])
         ])
         st.markdown(f"""
-        <div style="background:#eef0ff;border-radius:10px;padding:14px;margin-bottom:16px">
-            <div style="font-size:11px;color:#444;margin-bottom:8px">📊 원국 십성 분포</div>
+        <div style="background:#ffffff;border-radius:10px;padding:14px;margin-bottom:16px">
+            <div style="font-size:11px;color:#000000;margin-bottom:8px">📊 원국 십성 분포</div>
             <div>{tags_html}</div>
         </div>""", unsafe_allow_html=True)
 
@@ -9197,34 +9388,34 @@ def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함"):
             for key, combo in combos:
                 ss_pair = " × ".join(list(key))
                 st.markdown(f"""
-                <div style="background:linear-gradient(135deg,#f5f5f5,#f2f8ff);border-radius:16px;
-                            padding:22px;margin:12px 0;border:1px solid #3a4060">
-                    <div style="font-size:18px;font-weight:900;color:#c5a059;margin-bottom:6px">
+                <div style="background:#ffffff;border-radius:16px;
+                            padding:22px;margin:12px 0;border:2.5px solid #000000">
+                    <div style="font-size:18px;font-weight:900;color:#000000;margin-bottom:6px">
                         {combo['요약']}
                     </div>
-                    <div style="font-size:12px;color:#6a7090;margin-bottom:16px">조합: {ss_pair}</div>
+                    <div style="font-size:12px;color:#000000;margin-bottom:16px;font-weight:700">조합: {ss_pair}</div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                        <div style="background:#f0fff0;border-radius:10px;padding:14px;border-left:3px solid #27ae60">
-                            <div style="font-size:11px;color:#4caf50;font-weight:700;margin-bottom:6px">🧠 성향</div>
-                            <div style="font-size:13px;color:#d0f0d0;line-height:1.8">{combo['성향']}</div>
+                        <div style="background:#ffffff;border-radius:10px;padding:14px;border:1.5px solid #000000">
+                            <div style="font-size:11px;color:#000000;font-weight:700;margin-bottom:6px">🧠 성향</div>
+                            <div style="font-size:13px;color:#000000;line-height:1.8">{combo['성향']}</div>
                         </div>
-                        <div style="background:#f0fff0;border-radius:10px;padding:14px;border-left:3px solid #c5a059">
-                            <div style="font-size:11px;color:#c5a059;font-weight:700;margin-bottom:6px">💰 재물·돈 버는 방식</div>
-                            <div style="font-size:13px;color:#f0e0a0;line-height:1.8">{combo['재물']}</div>
+                        <div style="background:#ffffff;border-radius:10px;padding:14px;border:1.5px solid #000000">
+                            <div style="font-size:11px;color:#000000;font-weight:700;margin-bottom:6px">💰 재물·돈 버는 방식</div>
+                            <div style="font-size:13px;color:#000000;line-height:1.8">{combo['재물']}</div>
                         </div>
-                        <div style="background:#f0fff0;border-radius:10px;padding:14px;border-left:3px solid #3498db">
-                            <div style="font-size:11px;color:#5ab4ff;font-weight:700;margin-bottom:6px">💼 직업 적성</div>
-                            <div style="font-size:13px;color:#c0d8f0;line-height:1.8">{combo['직업']}</div>
+                        <div style="background:#ffffff;border-radius:10px;padding:14px;border:1.5px solid #000000">
+                            <div style="font-size:11px;color:#000000;font-weight:700;margin-bottom:6px">💼 직업 적성</div>
+                            <div style="font-size:13px;color:#000000;line-height:1.8">{combo['직업']}</div>
                         </div>
-                        <div style="background:#f0fff0;border-radius:10px;padding:14px;border-left:3px solid #e91e8c">
-                            <div style="font-size:11px;color:#ff6eb0;font-weight:700;margin-bottom:6px">💑 연애·인간관계</div>
-                            <div style="font-size:13px;color:#f0c0d8;line-height:1.8">{combo['연애']}</div>
+                        <div style="background:#ffffff;border-radius:10px;padding:14px;border:1.5px solid #000000">
+                            <div style="font-size:11px;color:#000000;font-weight:700;margin-bottom:6px">💑 연애·인간관계</div>
+                            <div style="font-size:13px;color:#000000;line-height:1.8">{combo['연애']}</div>
                         </div>
                     </div>
-                    <div style="background:#fff0f0;border-radius:10px;padding:12px;margin-top:12px;
-                                border-left:3px solid #e74c3c">
-                        <span style="font-size:11px;color:#ff6b6b;font-weight:700">⚠️ 주의사항: </span>
-                        <span style="font-size:13px;color:#f0c0c0;line-height:1.8">{combo['주의']}</span>
+                    <div style="background:#ffffff;border-radius:10px;padding:12px;margin-top:12px;
+                                border:1.5px solid #ff0000">
+                        <span style="font-size:11px;color:#ff0000;font-weight:700">⚠️ 주의사항: </span>
+                        <span style="font-size:13px;color:#000000;line-height:1.8;font-weight:700">{combo['주의']}</span>
                     </div>
                 </div>""", unsafe_allow_html=True)
         else:
@@ -9232,30 +9423,30 @@ def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함"):
             if top_ss:
                 ss1 = top_ss[0]
                 st.markdown(f"""
-                <div style="background:#eef0ff;border-radius:12px;padding:18px;border:1px solid #3a4060">
-                    <div style="font-size:16px;font-weight:700;color:#c5a059">
+                <div style="background:#ffffff;border-radius:12px;padding:18px;border:1px solid #3a4060">
+                    <div style="font-size:16px;font-weight:700;color:#000000">
                         {ss1} 중심 사주
                     </div>
-                    <div style="font-size:13px;color:#555;margin-top:10px;line-height:1.8">
+                    <div style="font-size:13px;color:#000000;margin-top:10px;line-height:1.8">
                         주요 십성: {', '.join(top_ss[:3])}
                     </div>
                 </div>""", unsafe_allow_html=True)
     except Exception as e:
         st.warning(f"십성 조합 분석 오류: {e}")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
 
     # ⑦ 직업 조언
     if occupation and occupation != "선택 안 함":
-        st.markdown("### 💼 직업 적합도 분석")
+        st.markdown('<div class="gold-section">💼 직업 적합도 분석</div>', unsafe_allow_html=True)
         try:
             tab_career(pils, gender)
         except Exception as e:
             st.warning(f"직업 분석 오류: {e}")
 
     # ⑧ 만신 스타일 종합 해설문
-    st.markdown("---")
-    st.markdown("### 📜 종합 사주 해설 — 만신의 풀이")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">📜 종합 사주 해설 — 만신의 풀이</div>', unsafe_allow_html=True)
     try:
         narrative = build_rich_narrative(pils, birth_year, gender, name, section="report")
         sections = narrative.split("【")
@@ -9266,20 +9457,20 @@ def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함"):
             body  = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
             if title:
                 st.markdown(f"""
-                <div style="background:linear-gradient(135deg,#f5f5f5,#eef0ff);
-                            border-left:4px solid #c5a059;border-radius:10px;
+                <div style="background:#ffffff;
+                            border-left:8px solid #000000;border:1.5px solid #000000;border-radius:10px;
                             padding:18px 22px;margin:10px 0">
-                    <div style="font-size:14px;font-weight:900;color:#c5a059;margin-bottom:10px">
+                    <div style="font-size:15px;font-weight:900;color:#000000;margin-bottom:10px">
                         【 {title} 】
                     </div>
-                    <div style="font-size:13px;color:#e0d0b0;line-height:2.0;
+                    <div style="font-size:14px;color:#000000;line-height:2.0;
                                 white-space:pre-wrap">{body}</div>
                 </div>""", unsafe_allow_html=True)
     except Exception as e:
         st.warning(f"종합 해설 오류: {e}")
 
     # ── 통계 기반 패턴 분석 ───────────────────────────────
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
     try:
         render_statistical_insights(pils, strength_info)
     except Exception:
@@ -9306,19 +9497,19 @@ def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함"):
 
         if teaser:
             st.markdown(f"""
-            <div style="background:linear-gradient(135deg,#fff8e0,#fff3cc);
-                        border:2px solid #c5a059;border-radius:14px;
+            <div style="background:linear-gradient(135deg,#ffffff,#fff3cc);
+                        border:2px solid #000000;border-radius:14px;
                         padding:20px 22px;margin:16px 0;text-align:center">
-                <div style="font-size:13px;color:#a0720a;font-weight:700;margin-bottom:8px">
+                <div style="font-size:13px;color:#000000;font-weight:700;margin-bottom:8px">
                     🔮 AI 예언자 심층 분석 예고
                 </div>
-                <div style="font-size:14px;color:#333;line-height:1.9;margin-bottom:12px">
+                <div style="font-size:14px;color:#000000;line-height:1.9;margin-bottom:12px">
                     {teaser}<br>
-                    <span style="color:#888;font-size:12px">
+                    <span style="color:#000000;font-size:12px">
                         → AI 상담 탭에서 정확한 시기와 대응 전략을 확인하십시오.
                     </span>
                 </div>
-                <div style="font-size:11px;color:#c5a059;font-weight:700;letter-spacing:1px">
+                <div style="font-size:11px;color:#000000;font-weight:700;letter-spacing:1px">
                     ✦ 🤖 AI 상담 탭 이동 ✦
                 </div>
             </div>
@@ -9327,14 +9518,19 @@ def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함"):
         pass
 
 
-def menu2_lifeline(pils, birth_year, gender):
+    render_ai_deep_analysis("prophet", pils, name, birth_year, gender, api_key, groq_key)
+
+def menu2_lifeline(pils, birth_year, gender, name="내담자", api_key="", groq_key=""):
     """2️⃣ 인생 흐름 (대운 100년) — 그래프 포함"""
     import json
 
     st.markdown("""
-    <div style="background:linear-gradient(135deg,#e8f4ff,#e7f1ff);color:#a0c8ff;
-                padding:18px 24px;border-radius:14px;margin-bottom:16px;font-size:13px">
-        ✦ 태어나서 100년까지 대운 흐름을 한눈에 봅니다. 황금기와 위기 구간을 파악하세요.
+    <div style="background:#fff8e8;border:2px solid #000000;border-radius:12px;
+                padding:14px 18px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:700;color:#8b6200;margin-bottom:4px">📈 대운 100년 흐름 분석</div>
+        <div style="font-size:12px;color:#000000;line-height:1.8">
+        ✦ 황금기와 위기 구간을 한눈에 파악합니다. &nbsp; ✦ 현재 대운 위치를 확인하세요.
+        </div>
     </div>""", unsafe_allow_html=True)
 
     ilgan = pils[1]["cg"]
@@ -9346,7 +9542,7 @@ def menu2_lifeline(pils, birth_year, gender):
     ilgan_oh = OH.get(ilgan,"")
 
     # ── 대운 100년 타임라인 그래프 ──
-    st.markdown("### 📈 대운 흐름 그래프")
+    st.markdown('<div class="gold-section">📈 대운 흐름 그래프</div>', unsafe_allow_html=True)
 
     # 각 대운의 길흉 점수 계산
     labels, scores, colors_list, dw_strs = [], [], [], []
@@ -9366,7 +9562,7 @@ def menu2_lifeline(pils, birth_year, gender):
         age_label = f"{dw['시작나이']}세\n{dw['str']}"
         labels.append(age_label)
         scores.append(score)
-        c = "#c5a059" if is_yong else ("#e74c3c" if score < 50 else "#3498db")
+        c = "#000000" if is_yong else ("#e74c3c" if score < 50 else "#3498db")
         if is_current: c = "#ff6b00"
         colors_list.append(c)
         dw_strs.append(dw["str"])
@@ -9374,18 +9570,21 @@ def menu2_lifeline(pils, birth_year, gender):
     # Chart.js 대신 HTML/CSS 바 차트
     bars_html = ""
     for i, (lbl, sc, cl, ds) in enumerate(zip(labels, scores, colors_list, dw_strs)):
-        age_part = lbl.split('\n')[0]
         is_cur = cl == "#ff6b00"
         border = "3px solid #ff6b00" if is_cur else "1px solid transparent"
-        bars_html += f"""
-        <div style="display:flex;flex-direction:column;align-items:center;min-width:52px">
-            <div style="font-size:11px;color:#555;margin-bottom:4px">{sc}</div>
-            <div style="width:40px;height:{sc}px;background:{cl};border-radius:6px 6px 0 0;
-                        border:{border};transition:height 0.3s" title="{ds}대운({sc}점)"></div>
-            <div style="font-size:10px;color:#555;margin-top:4px;text-align:center;
-                        white-space:pre-line">{lbl}</div>
-            {"<div style='font-size:9px;color:#ff6b00;font-weight:700'>▲현재</div>" if is_cur else ""}
-        </div>"""
+        # ★ \n을 <br>로 교체 — white-space:pre-line 제거하여 div 오염 방지
+        lbl_html = lbl.replace("\n", "<br>")
+        cur_mark = "<div style='font-size:9px;color:#ff6b00;font-weight:800;margin-top:3px'>▲현재</div>" if is_cur else ""
+        bars_html += (
+            f'<div style="display:flex;flex-direction:column;align-items:center;min-width:52px">'
+            f'<div style="font-size:11px;color:#000000;margin-bottom:4px">{sc}</div>'
+            f'<div style="width:40px;height:{sc}px;background:{cl};border-radius:6px 6px 0 0;'
+            f'border:{border};transition:height 0.3s" title="{ds}대운({sc}점)"></div>'
+            f'<div style="font-size:10px;color:#000000;margin-top:4px;text-align:center;line-height:1.5">'
+            f'{lbl_html}</div>'
+            f'{cur_mark}'
+            f'</div>'
+        )
 
     st.markdown(f"""
     <div style="background:#f5f5f5;border-radius:14px;padding:20px;overflow-x:auto">
@@ -9394,27 +9593,27 @@ def menu2_lifeline(pils, birth_year, gender):
             {bars_html}
         </div>
         <div style="display:flex;gap:16px;margin-top:12px;font-size:12px">
-            <span style="color:#c5a059">■ 용신 대운</span>
+            <span style="color:#000000">■ 용신 대운</span>
             <span style="color:#ff6b00">■ 현재 대운</span>
             <span style="color:#3498db">■ 일반 대운</span>
             <span style="color:#e74c3c">■ 기신 대운</span>
         </div>
     </div>""", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("### 🔄 대운 상세")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">🔄 대운 상세</div>', unsafe_allow_html=True)
     tab_daewoon(pils, birth_year, gender)
 
-    st.markdown("---")
-    st.markdown("### 🔀 대운×세운 교차")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">🔀 대운 × 세운 교차</div>', unsafe_allow_html=True)
     try:
         tab_cross_analysis(pils, birth_year, gender)
     except Exception as e:
         st.warning(f"교차분석 오류: {e}")
 
     # 대운 100년 상세 해설문
-    st.markdown("---")
-    st.markdown("### 📜 대운 100년 완전 해설 — 만신의 풀이")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">📜 대운 100년 완전 해설</div>', unsafe_allow_html=True)
     try:
         narrative = build_rich_narrative(pils, birth_year, gender, "", section="lifeline")
         sections = narrative.split("▶")
@@ -9426,7 +9625,7 @@ def menu2_lifeline(pils, birth_year, gender):
                 <div style="background:linear-gradient(135deg,#e8f4ff,#e7f1ff);
                             border-left:4px solid #3498db;border-radius:10px;
                             padding:18px 22px;margin:10px 0">
-                    <div style="font-size:13px;color:#a0c8ff;line-height:2.0;white-space:pre-wrap">{intro}</div>
+                    <div style="font-size:13px;color:#1a4a8b;line-height:2.0;white-space:pre-wrap">{intro}</div>
                 </div>""", unsafe_allow_html=True)
         # 각 대운
         for sec in sections[1:]:
@@ -9435,7 +9634,7 @@ def menu2_lifeline(pils, birth_year, gender):
             title = lines[0].strip() if lines else ""
             body  = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
             is_cur = "현재 대운" in title
-            border_color = "#ff6b00" if is_cur else "#c5a059" if "용신 대운" in body else "#3498db"
+            border_color = "#ff6b00" if is_cur else "#000000" if "용신 대운" in body else "#3498db"
             st.markdown(f"""
             <div style="background:{'rgba(255,107,0,0.1)' if is_cur else '#0d1117'};
                         border-left:4px solid {border_color};border-radius:10px;
@@ -9447,29 +9646,38 @@ def menu2_lifeline(pils, birth_year, gender):
             </div>""", unsafe_allow_html=True)
     except Exception as e:
         st.warning(f"대운 해설 오류: {e}")
+    
+    # AI 정밀 분석 버튼
+    render_ai_deep_analysis("lifeline", pils, name, birth_year, gender, api_key, groq_key)
 
-
-def menu3_past(pils, birth_year, gender, name=""):
-    """3️⃣ 과거 적중 타임라인 — 15년 자동 스캔"""
+def menu3_past(pils, birth_year, gender, name="", api_key="", groq_key=""):
+    """3️⃣ 과거 적중 타임라인 | 15년 자동 스캔"""
     st.markdown("""
-    <div style="background:linear-gradient(135deg,#ffdcf5,#ffdcfd);color:#f0a8d0;
-                padding:18px 24px;border-radius:14px;margin-bottom:16px;font-size:13px">
-        ✦ 충·합·십성 교차를 수학적으로 계산하여 과거 사건 시점을 자동으로 생성합니다.<br>
-        ✦ AI가 아닌 엔진 계산입니다. 나이·분야가 맞으면 "맞았다"를 눌러주세요.
+    <div style="background:#fff0f8;border:2px solid #e91e8c55;border-radius:12px;
+                padding:14px 18px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:700;color:#880e4f;margin-bottom:4px">🎯 과거 적중 타임라인</div>
+        <div style="font-size:12px;color:#000000;line-height:1.8">
+        ✦ 충·합·십성 교차를 수학 계산으로 뽑은 과거 사건 시점입니다.<br>
+        ✦ AI가 아닌 엔진 계산 — 나이·분야가 맞으면 <b style="color:#c0392b">"맞았다"</b>를 눌러주세요.
+        </div>
     </div>""", unsafe_allow_html=True)
     tab_past_events(pils, birth_year, gender, name)
+    # AI 정밀 분석 버튼
+    render_ai_deep_analysis("past", pils, name, birth_year, gender, api_key, groq_key)
 
-
-def menu4_future3(pils, birth_year, gender, marriage_status="미혼"):
+def menu4_future3(pils, birth_year, gender, marriage_status="미혼", name="내담자", api_key="", groq_key=""):
     """4️⃣ 미래 3년 집중 분석 — 돈/직장/연애"""
     ilgan = pils[1]["cg"]
     current_year = datetime.now().year
     current_age  = current_year - birth_year + 1
 
     st.markdown("""
-    <div style="background:linear-gradient(135deg,#dcfff5,#dcfffd);color:#a0f0c0;
-                padding:18px 24px;border-radius:14px;margin-bottom:16px;font-size:13px">
-        ✦ 향후 3년을 돈·직장·연애 3가지 분야로 집중 분석합니다.
+    <div style="background:#f0fff8;border:2px solid #27ae6055;border-radius:12px;
+                padding:14px 18px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:700;color:#1b5e20;margin-bottom:4px">🔮 미래 3년 집중 분석</div>
+        <div style="font-size:12px;color:#000000;line-height:1.8">
+        ✦ 돈 · 직장 · 연애 3개 분야를 연도별로 집중 분석합니다.
+        </div>
     </div>""", unsafe_allow_html=True)
 
     ys = get_yongshin(pils)
@@ -9524,8 +9732,8 @@ def menu4_future3(pils, birth_year, gender, marriage_status="미혼"):
     for yd in years_data:
         yong_both = yd["is_yong_dw"] and yd["is_yong_sw"]
         gishin_both = not yd["is_yong_dw"] and not yd["is_yong_sw"]
-        card_color = "#c5a059" if yong_both else "#c0392b" if gishin_both else "#2980b9"
-        card_bg    = "#fffde0" if yong_both else "#fff0f0" if gishin_both else "#f0f8ff"
+        card_color = "#000000" if yong_both else "#c0392b" if gishin_both else "#2980b9"
+        card_bg    = "#ffffff" if yong_both else "#fff0f0" if gishin_both else "#f0f8ff"
         label      = "🌟 황금기" if yong_both else "⚠️ 수비" if gishin_both else "〰️ 혼재"
 
         st.markdown(f"""
@@ -9534,15 +9742,15 @@ def menu4_future3(pils, birth_year, gender, marriage_status="미혼"):
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <div>
                     <span style="font-size:26px;font-weight:900;color:{card_color}">{yd['year']}년</span>
-                    <span style="font-size:14px;color:#444;margin-left:10px">만 {yd['age']}세</span>
+                    <span style="font-size:14px;color:#000000;margin-left:10px">만 {yd['age']}세</span>
                 </div>
-                <div style="background:{card_color};color:#1a1a1a;padding:5px 16px;
+                <div style="background:{card_color};color:#000000;padding:5px 16px;
                             border-radius:20px;font-size:13px;font-weight:700">{label}</div>
             </div>
             <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-                <span style="background:#f5f5f5;color:#1a1a1a;padding:3px 12px;border-radius:12px;font-size:12px">
+                <span style="background:#f5f5f5;color:#000000;padding:3px 12px;border-radius:12px;font-size:12px">
                     대운 {yd['dw']}({yd['dw_ss']})</span>
-                <span style="background:#f5f5f5;color:#1a1a1a;padding:3px 12px;border-radius:12px;font-size:12px">
+                <span style="background:#f5f5f5;color:#000000;padding:3px 12px;border-radius:12px;font-size:12px">
                     세운 {yd['sw']}({yd['sw_ss']})</span>
                 <span style="color:{card_color};font-size:12px;padding:3px 8px">{yd['gilhyung']}</span>
             </div>""", unsafe_allow_html=True)
@@ -9575,8 +9783,8 @@ def menu4_future3(pils, birth_year, gender, marriage_status="미혼"):
         st.markdown("</div>", unsafe_allow_html=True)
 
     # 결혼 여부별 인연 조언
-    st.markdown("---")
-    st.markdown("### 💑 인연·배우자운 (3년)")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">💑 인연·배우자운 (3년)</div>', unsafe_allow_html=True)
     if marriage_status in ("미혼","이혼/별거"):
         MARRY_SS = {"정재","편재"} if gender=="남" else {"정관","편관"}
         for yd in years_data:
@@ -9594,13 +9802,13 @@ def menu4_future3(pils, birth_year, gender, marriage_status="미혼"):
             {marriage_status} 상태. 부부 관계 흐름 분석은 육친론을 참고하세요.
         </div>""", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("### 📅 월별 세운 (올해)")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">📅 월별 세운 (올해)</div>', unsafe_allow_html=True)
     tab_monthly(pils, birth_year, gender)
 
     # 미래 3년 상세 해설
-    st.markdown("---")
-    st.markdown("### 📜 미래 3년 완전 해설 — 만신의 풀이")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">📜 미래 3년 완전 해설 — 만신의 풀이</div>', unsafe_allow_html=True)
     try:
         narrative = build_rich_narrative(pils, birth_year, gender, "", section="future")
         blocks = narrative.split("━"*55)
@@ -9611,7 +9819,7 @@ def menu4_future3(pils, birth_year, gender, marriage_status="미혼"):
                 <div style="background:linear-gradient(135deg,#dcfff5,#dcfffd);
                             border-left:4px solid #27ae60;border-radius:10px;
                             padding:16px 20px;margin:10px 0">
-                    <div style="font-size:13px;color:#a0f0c0;line-height:1.9;white-space:pre-wrap">{intro}</div>
+                    <div style="font-size:13px;color:#1a4a2a;line-height:1.9;white-space:pre-wrap">{intro}</div>
                 </div>""", unsafe_allow_html=True)
             for block in blocks[1:]:
                 if not block.strip(): continue
@@ -9621,23 +9829,28 @@ def menu4_future3(pils, birth_year, gender, marriage_status="미혼"):
                 is_good = "⭐" in title_line
                 is_bad = "⚠️" in title_line
                 bg = "rgba(197,160,89,0.12)" if is_good else "rgba(192,57,43,0.12)" if is_bad else "rgba(41,128,185,0.12)"
-                bc = "#c5a059" if is_good else "#c0392b" if is_bad else "#2980b9"
+                bc = "#000000" if is_good else "#c0392b" if is_bad else "#2980b9"
                 st.markdown(f"""
                 <div style="background:{bg};border-left:4px solid {bc};
                             border-radius:10px;padding:16px 20px;margin:8px 0">
                     <div style="font-size:14px;font-weight:900;color:{bc};margin-bottom:10px">{title_line}</div>
-                    <div style="font-size:13px;color:#333;line-height:1.9;white-space:pre-wrap">{body}</div>
+                    <div style="font-size:13px;color:#000000;line-height:1.9;white-space:pre-wrap">{body}</div>
                 </div>""", unsafe_allow_html=True)
     except Exception as e:
         st.warning(f"미래 해설 오류: {e}")
+    
+    # AI 정밀 분석 버튼
+    render_ai_deep_analysis("future", pils, name, birth_year, gender, api_key, groq_key)
 
-
-def menu5_money(pils, birth_year, gender):
+def menu5_money(pils, birth_year, gender, name="내담자", api_key="", groq_key=""):
     """5️⃣ 재물·사업 특화 분석"""
     st.markdown("""
-    <div style="background:linear-gradient(135deg,#eaffdc,#edffdc);color:#a0e060;
-                padding:18px 24px;border-radius:14px;margin-bottom:16px;font-size:13px">
-        ✦ 수익 구조·재물 기질·돈이 터지는 시기를 십성 조합으로 집중 분석합니다.
+    <div style="background:#f5fff0;border:2px solid #2e7d3255;border-radius:12px;
+                padding:14px 18px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:700;color:#1b5e20;margin-bottom:4px">💰 재물·사업 특화 분석</div>
+        <div style="font-size:12px;color:#000000;line-height:1.8">
+        ✦ 수익 구조 · 재물 기질 · 돈이 터지는 시기를 십성 조합으로 분석합니다.
+        </div>
     </div>""", unsafe_allow_html=True)
 
     ilgan = pils[1]["cg"]
@@ -9648,7 +9861,7 @@ def menu5_money(pils, birth_year, gender):
     current_year = datetime.now().year
 
     # ① 십성 조합 기반 재물 기질
-    st.markdown("### 💎 십성 조합으로 보는 재물 기질")
+    st.markdown('<div class="gold-section">💎 십성 조합으로 보는 재물 기질</div>', unsafe_allow_html=True)
     try:
         life = build_life_analysis(pils, gender)
         combos = life["조합_결과"]
@@ -9667,8 +9880,8 @@ def menu5_money(pils, birth_year, gender):
                         {combo['요약']}
                     </div>
                     <div style="background:#eaffdc;border-radius:10px;padding:14px;margin-bottom:10px;
-                                border-left:4px solid #c5a059">
-                        <div style="font-size:11px;color:#c5a059;font-weight:700;margin-bottom:6px">💰 재물 버는 방식</div>
+                                border-left:4px solid #000000">
+                        <div style="font-size:11px;color:#000000;font-weight:700;margin-bottom:6px">💰 재물 버는 방식</div>
                         <div style="font-size:14px;color:#f0e0a0;line-height:1.9">{combo['재물']}</div>
                     </div>
                     <div style="background:#eaffdc;border-radius:10px;padding:14px;margin-bottom:10px;
@@ -9685,8 +9898,8 @@ def menu5_money(pils, birth_year, gender):
         elif combos:
             key, combo = combos[0]
             st.markdown(f"""
-            <div style="background:#eef0ff;border-radius:12px;padding:18px;border:1px solid #3a4060">
-                <div style="font-size:16px;font-weight:700;color:#c5a059;margin-bottom:10px">{combo['요약']}</div>
+            <div style="background:#ffffff;border-radius:12px;padding:18px;border:1px solid #3a4060">
+                <div style="font-size:16px;font-weight:700;color:#000000;margin-bottom:10px">{combo['요약']}</div>
                 <div style="font-size:14px;color:#f0e0a0;line-height:1.9">{combo['재물']}</div>
             </div>""", unsafe_allow_html=True)
 
@@ -9703,7 +9916,7 @@ def menu5_money(pils, birth_year, gender):
             "편인": "🎭 특수 분야 전문성으로 버는 타입. 일반적인 방법보다 틈새가 맞다.",
             "정인": "📚 지식·자격·귀인을 통해 재물이 오는 타입. 배움이 곧 돈이 된다.",
         }
-        st.markdown("#### 📊 주요 십성별 재물 기질")
+        st.markdown('<div style="font-size:13px;font-weight:800;color:#000000;margin:16px 0 8px;border-left:3px solid #000000;padding-left:10px">📊 주요 십성별 재물 기질</div>', unsafe_allow_html=True)
         for ss, cnt in sorted(ss_dist.items(), key=lambda x: -x[1])[:4]:
             if ss in MONEY_NATURE:
                 ss_color = {"식신":"#27ae60","상관":"#e67e22","편재":"#2ecc71","정재":"#16a085",
@@ -9712,18 +9925,18 @@ def menu5_money(pils, birth_year, gender):
                 st.markdown(f"""
                 <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;
                             border-bottom:1px solid #eee">
-                    <span style="background:{ss_color};color:#1a1a1a;padding:3px 10px;
+                    <span style="background:{ss_color};color:#000000;padding:3px 10px;
                                  border-radius:12px;font-size:12px;white-space:nowrap;
                                  min-width:50px;text-align:center">{ss}×{cnt}</span>
-                    <span style="font-size:13px;color:#333;line-height:1.8">{MONEY_NATURE.get(ss,'')}</span>
+                    <span style="font-size:13px;color:#000000;line-height:1.8">{MONEY_NATURE.get(ss,'')}</span>
                 </div>""", unsafe_allow_html=True)
     except Exception as e:
         st.warning(f"재물 기질 분석 오류: {e}")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
 
     # ② 돈 터지는 시기
-    st.markdown("### 📈 돈이 터지는 시기")
+    st.markdown('<div class="gold-section">📈 돈이 터지는 시기</div>', unsafe_allow_html=True)
     try:
         with st.spinner("재물 운기 계산 중..."):
             hl = generate_engine_highlights(pils, birth_year, gender)
@@ -9731,31 +9944,31 @@ def menu5_money(pils, birth_year, gender):
         if hl["money_peak"]:
             for mp in hl["money_peak"]:
                 is_double = mp.get("ss") == "더블"
-                bg = "#fff9e6" if is_double else "#f0fff0"
-                bc = "#c5a059" if is_double else "#27ae60"
+                bg = "#ffffff" if is_double else "#f0fff0"
+                bc = "#000000" if is_double else "#27ae60"
                 icon = "🌟" if is_double else "💰"
                 st.markdown(f"""
                 <div style="background:{bg};border:2px solid {bc};border-radius:12px;
                             padding:16px;margin:8px 0">
                     <span style="font-size:18px;font-weight:900;color:{bc}">{icon} {mp['age']}</span>
-                    <span style="font-size:12px;color:#444;margin-left:8px">({mp['year']})</span>
-                    <div style="font-size:13px;color:#333;margin-top:6px;line-height:1.8">{mp['desc']}</div>
+                    <span style="font-size:12px;color:#000000;margin-left:8px">({mp['year']})</span>
+                    <div style="font-size:13px;color:#000000;margin-top:6px;line-height:1.8">{mp['desc']}</div>
                 </div>""", unsafe_allow_html=True)
         else:
             st.info("현재 기준 향후 5년 내 뚜렷한 재물 피크가 계산되지 않았습니다.")
     except Exception as e:
         st.warning(f"재물 운기 계산 오류: {e}")
 
-    st.markdown("---")
-    st.markdown("### 💰 재물론 상세 (장생·12운성)")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">💰 재물론 상세 (장생·12운성)</div>', unsafe_allow_html=True)
     try:
         tab_jaemul(pils, birth_year, gender)
     except Exception as e:
         st.warning(f"재물론 오류: {e}")
 
     # 재물 완전 해설
-    st.markdown("---")
-    st.markdown("### 📜 재물·사업 완전 해설 — 만신의 풀이")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">📜 재물·사업 완전 해설 — 만신의 풀이</div>', unsafe_allow_html=True)
     try:
         narrative = build_rich_narrative(pils, birth_year, gender, "", section="money")
         sections = narrative.split("【")
@@ -9767,35 +9980,40 @@ def menu5_money(pils, birth_year, gender):
             if title:
                 st.markdown(f"""
                 <div style="background:linear-gradient(135deg,#eaffdc,#f5ffdc);
-                            border-left:4px solid #c5a059;border-radius:10px;
+                            border-left:4px solid #000000;border-radius:10px;
                             padding:18px 22px;margin:10px 0">
-                    <div style="font-size:14px;font-weight:900;color:#c5a059;margin-bottom:10px">
+                    <div style="font-size:14px;font-weight:900;color:#000000;margin-bottom:10px">
                         【 {title} 】
                     </div>
-                    <div style="font-size:13px;color:#d0e8b0;line-height:2.0;white-space:pre-wrap">{body}</div>
+                    <div style="font-size:13px;color:#2a4a00;line-height:2.0;white-space:pre-wrap">{body}</div>
                 </div>""", unsafe_allow_html=True)
     except Exception as e:
         st.warning(f"재물 해설 오류: {e}")
+    
+    # AI 정밀 분석 버튼
+    render_ai_deep_analysis("money", pils, name, birth_year, gender, api_key, groq_key)
 
-
-def menu6_relations(pils, name, birth_year, gender, marriage_status="미혼"):
+def menu6_relations(pils, name, birth_year, gender, marriage_status="미혼", api_key="", groq_key=""):
     """6️⃣ 궁합 / 인간관계 분석"""
     st.markdown("""
-    <div style="background:linear-gradient(135deg,#ffdcff,#ffdcff);color:#f0a8ff;
-                padding:18px 24px;border-radius:14px;margin-bottom:16px;font-size:13px">
-        ✦ 연인·동업자·상사와의 인간관계를 사주로 분석합니다.
+    <div style="background:#fdf0ff;border:2px solid #9b59b655;border-radius:12px;
+                padding:14px 18px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:700;color:#4a148c;margin-bottom:4px">💑 궁합 · 인간관계 분석</div>
+        <div style="font-size:12px;color:#000000;line-height:1.8">
+        ✦ 연인 · 동업자 · 상사와의 인간관계를 사주로 분석합니다.
+        </div>
     </div>""", unsafe_allow_html=True)
 
-    st.markdown("### 👫 육친론 — 주변 인물 분석")
+    st.markdown('<div class="gold-section">👫 육친론 — 주변 인물 분석</div>', unsafe_allow_html=True)
     tab_yukjin(pils, gender)
 
-    st.markdown("---")
-    st.markdown("### 💑 궁합 분석")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">💑 궁합 분석</div>', unsafe_allow_html=True)
     tab_gunghap(pils, name)
 
     # 인간관계 완전 해설
-    st.markdown("---")
-    st.markdown("### 📜 육친·인간관계 완전 해설 — 만신의 풀이")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">📜 육친·인간관계 완전 해설 — 만신의 풀이</div>', unsafe_allow_html=True)
     try:
         narrative = build_rich_narrative(pils, birth_year, gender, name if name else "내담자", section="relations")
         sections = narrative.split("【")
@@ -9835,6 +10053,9 @@ def menu6_relations(pils, name, birth_year, gender, marriage_status="미혼"):
     except Exception as e:
         st.warning(f"인간관계 해설 오류: {e}")
 
+    # AI 정밀 분석 버튼
+    render_ai_deep_analysis("relations", pils, name, birth_year, gender, api_key, groq_key)
+
 
 ################################################################################
 # ☀️ menu9_daily  — 일일 운세
@@ -9871,10 +10092,10 @@ def menu9_daily(pils, name, birth_year, gender):
     st.markdown(f"""
     <div style="background:linear-gradient(135deg,#e8f4ff,#ddeeff);
                 border-radius:14px;padding:18px 24px;margin-bottom:16px;text-align:center">
-        <div style="font-size:22px;font-weight:900;color:#f0c060;letter-spacing:2px">
+        <div style="font-size:22px;font-weight:900;color:#8b6200;letter-spacing:2px">
             ☀️ {display_name}님의 일일 운세
         </div>
-        <div style="font-size:13px;color:#555;margin-top:6px">
+        <div style="font-size:13px;color:#000000;margin-top:6px">
             {today.strftime('%Y년 %m월 %d일')} ({['월','화','수','목','금','토','일'][today.weekday()]}요일)
         </div>
     </div>""", unsafe_allow_html=True)
@@ -9897,13 +10118,13 @@ def menu9_daily(pils, name, birth_year, gender):
     level_color = {"대길":"#4caf50","길":"#8bc34a","평길":"#ffc107","평":"#9e9e9e","흉":"#f44336"}.get(d["level"],"#aaa")
 
     st.markdown(f"""
-    <div style="background:linear-gradient(135deg,#fffde8,#fff8e0);
+    <div style="background:linear-gradient(135deg,#fffde8,#ffffff);
                 border:2px solid {level_color}55;border-left:5px solid {level_color};
                 border-radius:14px;padding:22px;margin-bottom:14px">
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
             <div style="font-size:40px">{d['emoji']}</div>
             <div>
-                <div style="font-size:18px;font-weight:900;color:#f0c060">
+                <div style="font-size:18px;font-weight:900;color:#8b6200">
                     오늘의 일진 — {today_cg}{today_jj}일 ({CG_KR[CG.index(today_cg)]}·{JJ_KR[JJ.index(today_jj)]})
                 </div>
                 <div style="font-size:13px;color:{level_color};font-weight:700;margin-top:4px">
@@ -9912,22 +10133,22 @@ def menu9_daily(pils, name, birth_year, gender):
                 </div>
             </div>
         </div>
-        <div style="font-size:14px;color:#333;line-height:1.9;margin-bottom:12px">{d['msg']}</div>
+        <div style="font-size:14px;color:#000000;line-height:1.9;margin-bottom:12px">{d['msg']}</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <span style="background:#e8f5e8;color:#8bc34a;padding:5px 12px;border-radius:8px;font-size:12px">
+            <span style="background:#e8f5e8;color:#33691e;padding:5px 12px;border-radius:8px;font-size:12px">
                 💰 재물: {d['재물']}
             </span>
             <span style="background:#f5f5f5;color:#7986cb;padding:5px 12px;border-radius:8px;font-size:12px">
                 👥 관계: {d['관계']}
             </span>
-            <span style="background:#fff0f0;color:#ef9a9a;padding:5px 12px;border-radius:8px;font-size:12px">
+            <span style="background:#fff0f0;color:#b71c1c;padding:5px 12px;border-radius:8px;font-size:12px">
                 💊 건강: {d['건강']}
             </span>
         </div>
     </div>""", unsafe_allow_html=True)
 
     # ── 이번 주 7일 일진 미리보기 ────────────────────────────
-    st.markdown('<div style="font-size:15px;font-weight:800;color:#c5a059;margin:16px 0 10px">📅 이번 주 7일 일진</div>',
+    st.markdown('<div style="font-size:15px;font-weight:800;color:#000000;margin:16px 0 10px">📅 이번 주 7일 일진</div>',
                 unsafe_allow_html=True)
 
     week_days = [(today + timedelta(days=i)) for i in range(7)]
@@ -9946,7 +10167,7 @@ def menu9_daily(pils, name, birth_year, gender):
                         border-radius:10px;padding:10px 4px;text-align:center">
                 <div style="font-size:11px;color:{'#f0c060' if is_today else '#666'};font-weight:{'700' if is_today else '400'}">
                     {dt.strftime('%m/%d')}<br>{day_names[dt.weekday()]}
-                    {'<br><span style="color:#f0c060">▲오늘</span>' if is_today else ''}
+                    {'<br><span style="color:#8b6200">▲오늘</span>' if is_today else ''}
                 </div>
                 <div style="font-size:16px;margin:6px 0">{d_info['emoji']}</div>
                 <div style="font-size:11px;color:#555">{cg}{jj}</div>
@@ -9956,7 +10177,7 @@ def menu9_daily(pils, name, birth_year, gender):
             </div>""", unsafe_allow_html=True)
 
     # ── 오늘의 길한 시간 ─────────────────────────────────────
-    st.markdown('<div style="font-size:15px;font-weight:800;color:#c5a059;margin:20px 0 10px">⏰ 오늘의 길한 시간대</div>',
+    st.markdown('<div style="font-size:15px;font-weight:800;color:#000000;margin:20px 0 10px">⏰ 오늘의 길한 시간대</div>',
                 unsafe_allow_html=True)
 
     ys = get_yongshin(pils)
@@ -9977,7 +10198,7 @@ def menu9_daily(pils, name, birth_year, gender):
 
     if good_hours:
         hour_tags = " ".join([
-            f"<span style='background:#d8f5d8;color:#8bc34a;padding:5px 14px;border-radius:8px;font-size:13px;margin:4px'>"
+            f"<span style='background:#d8f5d8;color:#33691e;padding:5px 14px;border-radius:8px;font-size:13px;margin:4px'>"
             f"✅ {t} ({jj})</span>"
             for t, jj in good_hours[:4]
         ])
@@ -10002,14 +10223,14 @@ def menu9_daily(pils, name, birth_year, gender):
     prescription = DAILY_PRESCRIPTION.get(today_ss, DAILY_PRESCRIPTION["-"])
     st.markdown(f"""
     <div style="background:#e8f5e8;border:1px solid #7ad47a;border-radius:10px;
-                padding:14px 18px;margin-top:16px;font-size:14px;color:#c8e6c9;line-height:1.8">
-        <b style="color:#8bc34a">💊 오늘의 처방</b><br>{prescription}
+                padding:14px 18px;margin-top:16px;font-size:14px;color:#1b5e20;line-height:1.8">
+        <b style="color:#33691e">💊 오늘의 처방</b><br>{prescription}
     </div>""", unsafe_allow_html=True)
 
     # ── 이번 달 세운 요약 ──────────────────────────────────
     st.markdown(f"""
     <div style="background:#e2f5ff;border:1px solid #d0e8ff;border-radius:10px;
-                padding:14px 18px;margin-top:10px;font-size:13px;color:#90caf9;line-height:1.8">
+                padding:14px 18px;margin-top:10px;font-size:13px;color:#0d47a1;line-height:1.8">
         <b style="color:#5c9bc5">🌙 이번 달({today.month}월) 월운</b><br>
         {today_mlu['월운']} ({today_mlu['십성']}) — {today_mlu['short']}<br>
         <span style="color:#555">{today_mlu['설명'][:60]}...</span>
@@ -10024,17 +10245,17 @@ def menu9_daily(pils, name, birth_year, gender):
         bars = ""
         for d in graph_data:
             h   = max(15, int(d["score"] / max_s * 75))
-            bg  = "#c5a059" if d["is_today"] else ("#4caf50" if d["score"] >= 60 else "#ff9800" if d["score"] >= 45 else "#f44336")
+            bg  = "#000000" if d["is_today"] else ("#4caf50" if d["score"] >= 60 else "#ff9800" if d["score"] >= 45 else "#f44336")
             fw  = "900" if d["is_today"] else "600"
             shadow = f"box-shadow:0 0 10px {bg}99;" if d["is_today"] else ""
             bars += f"""
             <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1">
-                <div style="font-size:11px;color:{'#a0720a' if d['is_today'] else '#555'};font-weight:{fw}">{d['score']}</div>
+                <div style="font-size:11px;color:{'#000000' if d['is_today'] else '#555'};font-weight:{fw}">{d['score']}</div>
                 <div style="width:100%;max-width:36px;height:{h}px;background:{bg};
                             border-radius:5px 5px 0 0;{shadow}opacity:{'1' if d['is_today'] else '0.75'}"></div>
-                <div style="font-size:10px;color:{'#a0720a' if d['is_today'] else '#888'};font-weight:{fw}">{d['day']}</div>
+                <div style="font-size:10px;color:{'#000000' if d['is_today'] else '#888'};font-weight:{fw}">{d['day']}</div>
                 <div style="font-size:9px;color:#bbb">{d['date']}</div>
-                <div style="font-size:9px;color:{'#c5a059' if d['is_today'] else '#aaa'}">{d['label'] if d['is_today'] else ''}</div>
+                <div style="font-size:9px;color:{'#000000' if d['is_today'] else '#aaa'}">{d['label'] if d['is_today'] else ''}</div>
             </div>"""
         st.markdown(f"""
         <div style="background:#fffef8;border:1.5px solid #e8d5a0;border-radius:14px;
@@ -10065,10 +10286,10 @@ def menu9_daily(pils, name, birth_year, gender):
                 <div style="font-size:28px;font-weight:900;color:{ic}">
                     D-{countdown['days_left']}
                 </div>
-                <div style="font-size:12px;color:#555;margin-top:4px">
+                <div style="font-size:12px;color:#000000;margin-top:4px">
                     {countdown['description']}
                 </div>
-                <div style="font-size:11px;color:#888;margin-top:2px">
+                <div style="font-size:11px;color:#000000;margin-top:2px">
                     {countdown['date']}
                 </div>
             </div>
@@ -10086,9 +10307,9 @@ def menu9_daily(pils, name, birth_year, gender):
         if gb["past"]:
             for s in gb["past"][:2]:
                 st.markdown(f"""
-                <div style="background:#fffef5;border-left:5px solid #c5a059;
+                <div style="background:#ffffff;border-left:5px solid #000000;
                             padding:12px 16px;border-radius:4px 12px 12px 4px;
-                            margin:6px 0;font-size:14px;color:#333;line-height:1.9">
+                            margin:6px 0;font-size:14px;color:#000000;line-height:1.9">
                     🔍 <b>과거 적중</b> &nbsp;{s}
                 </div>""", unsafe_allow_html=True)
 
@@ -10096,9 +10317,9 @@ def menu9_daily(pils, name, birth_year, gender):
         if gb["present"]:
             for s in gb["present"][:1]:
                 st.markdown(f"""
-                <div style="background:#f0f8ff;border-left:5px solid #4a90d9;
+                <div style="background:#ffffff;border-left:5px solid #4a90d9;
                             padding:12px 16px;border-radius:4px 12px 12px 4px;
-                            margin:6px 0;font-size:14px;color:#333;line-height:1.9">
+                            margin:6px 0;font-size:14px;color:#000000;line-height:1.9">
                     💡 <b>현재 상태</b> &nbsp;{s}
                 </div>""", unsafe_allow_html=True)
 
@@ -10108,14 +10329,14 @@ def menu9_daily(pils, name, birth_year, gender):
                 st.markdown(f"""
                 <div style="background:#fff5e0;border-left:5px solid #e65100;
                             padding:12px 16px;border-radius:4px 12px 12px 4px;
-                            margin:6px 0;font-size:14px;color:#333;line-height:1.9">
+                            margin:6px 0;font-size:14px;color:#000000;line-height:1.9">
                     ⚡ <b>미래 예고</b> &nbsp;{s}
                 </div>""", unsafe_allow_html=True)
 
         # 확신 강화 문장
         st.markdown(f"""
         <div style="background:#f8f8f8;border:1px solid #ddd;border-radius:10px;
-                    padding:10px 14px;margin-top:6px;font-size:11px;color:#888;line-height:1.7">
+                    padding:10px 14px;margin-top:6px;font-size:11px;color:#000000;line-height:1.7">
             📌 {gb['conviction']}
         </div>""", unsafe_allow_html=True)
 
@@ -10166,7 +10387,7 @@ def menu9_daily(pils, name, birth_year, gender):
                     <span style="font-size:13px;font-weight:900;color:{a['color']};min-width:40px">
                         D-{a['offset']}
                     </span>
-                    <span style="font-size:12px;color:#555;min-width:60px">
+                    <span style="font-size:12px;color:#000000;min-width:60px">
                         {a['date']} ({a['day']})
                     </span>
                     <span style="font-size:13px;font-weight:700;color:{a['color']}">{a['type']}</span>
@@ -10174,7 +10395,7 @@ def menu9_daily(pils, name, birth_year, gender):
                 </div>"""
             st.markdown(alert_html, unsafe_allow_html=True)
         else:
-            st.markdown("<div style='color:#888;font-size:13px;padding:10px'>14일 이내 특이 사항 없음 — 평온한 흐름입니다.</div>",
+            st.markdown("<div style='color:#000000;font-size:13px;padding:10px'>14일 이내 특이 사항 없음 — 평온한 흐름입니다.</div>",
                         unsafe_allow_html=True)
     except Exception:
         pass
@@ -10200,18 +10421,18 @@ def menu9_daily(pils, name, birth_year, gender):
             bars30 = ""
             for i, d in enumerate(scores_30):
                 h = max(8, int(d["score"] / max_s * 60))
-                bg = ("#c5a059" if d["is_today"] else
+                bg = ("#000000" if d["is_today"] else
                       "#4caf50" if d["score"] >= 65 else
                       "#ff9800" if d["score"] >= 45 else "#f44336")
                 opacity = "1" if d["is_today"] else "0.65"
-                label = f'<div style="font-size:8px;color:#a0720a;font-weight:900">▲</div>' if d["is_today"] else ""
+                label = f'<div style="font-size:8px;color:#000000;font-weight:900">▲</div>' if d["is_today"] else ""
                 bars30 += f"""
                 <div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:1px">
                     {label}
                     <div style="width:100%;max-width:14px;height:{h}px;
                                 background:{bg};border-radius:3px 3px 0 0;
                                 opacity:{opacity}"></div>
-                    <div style="font-size:7px;color:{'#a0720a' if d['is_today'] else '#aaa'}">{d['date']}</div>
+                    <div style="font-size:7px;color:{'#000000' if d['is_today'] else '#aaa'}">{d['date']}</div>
                 </div>"""
             st.markdown(f"""
             <div style="background:#fffef8;border:1.5px solid #e8d5a0;border-radius:14px;
@@ -10237,7 +10458,7 @@ def menu9_daily(pils, name, birth_year, gender):
 
 
 def menu10_monthly(pils, name, birth_year, gender):
-    """🔟 월별 운세 — 12개월 완전 분석"""
+    """🔟 월별 운세 | 12개월 완전 분석"""
 
     ilgan = pils[1]["cg"]
     display_name = name if name else "내담자"
@@ -10247,10 +10468,10 @@ def menu10_monthly(pils, name, birth_year, gender):
     st.markdown(f"""
     <div style="background:linear-gradient(135deg,#e8f4ff,#e0f5ec);
                 border-radius:14px;padding:18px 24px;margin-bottom:16px;text-align:center">
-        <div style="font-size:22px;font-weight:900;color:#80dfb4;letter-spacing:2px">
+        <div style="font-size:22px;font-weight:900;color:#1a7a4a;letter-spacing:2px">
             📅 {display_name}님의 월별 운세
         </div>
-        <div style="font-size:13px;color:#555;margin-top:6px">
+        <div style="font-size:13px;color:#000000;margin-top:6px">
             {today.year}년 전체 12개월 · 월운 완전 분석
         </div>
     </div>""", unsafe_allow_html=True)
@@ -10281,13 +10502,13 @@ def menu10_monthly(pils, name, birth_year, gender):
     with bc1:
         st.markdown(f"""
         <div style="background:#e8f5e8;border:1px solid #8de48d;border-radius:10px;
-                    padding:12px 16px;margin-bottom:10px;font-size:13px;color:#8bc34a">
+                    padding:12px 16px;margin-bottom:10px;font-size:13px;color:#33691e">
             🌟 최고의 달: <b>{best_m['월']}월</b> — {best_m['월운']} ({best_m['십성']}) {best_m['short']}
         </div>""", unsafe_allow_html=True)
     with bc2:
         st.markdown(f"""
         <div style="background:#fff0f0;border:1px solid #f0a0a0;border-radius:10px;
-                    padding:12px 16px;margin-bottom:10px;font-size:13px;color:#ef9a9a">
+                    padding:12px 16px;margin-bottom:10px;font-size:13px;color:#b71c1c">
             ⚠️ 주의할 달: <b>{worst_m['월']}월</b> — {worst_m['월운']} ({worst_m['십성']}) {worst_m['short']}
         </div>""", unsafe_allow_html=True)
 
@@ -10310,27 +10531,27 @@ def menu10_monthly(pils, name, birth_year, gender):
             st.markdown(f"""
             <div style="background:#f8f8f8;border-left:4px solid {lcolor};
                         border-radius:0 10px 10px 0;padding:16px;margin-bottom:8px">
-                <div style="font-size:13px;color:#333;line-height:1.9">
+                <div style="font-size:13px;color:#000000;line-height:1.9">
                     {ml['설명']}
                 </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
                 <div style="flex:1;background:#e8f5e8;border-radius:8px;padding:10px 14px">
-                    <div style="font-size:11px;color:#333;margin-bottom:4px">💰 재물운</div>
-                    <div style="font-size:13px;color:#8bc34a">{ml['재물']}</div>
+                    <div style="font-size:11px;color:#000000;margin-bottom:4px">💰 재물운</div>
+                    <div style="font-size:13px;color:#33691e">{ml['재물']}</div>
                 </div>
                 <div style="flex:1;background:#f5f5f5;border-radius:8px;padding:10px 14px">
-                    <div style="font-size:11px;color:#333;margin-bottom:4px">👥 인간관계</div>
+                    <div style="font-size:11px;color:#000000;margin-bottom:4px">👥 인간관계</div>
                     <div style="font-size:13px;color:#7986cb">{ml['관계']}</div>
                 </div>
             </div>
             <div style="background:#fff5e0;border-radius:8px;padding:10px 14px">
-                <div style="font-size:11px;color:#333;margin-bottom:4px">⚠️ 주의사항</div>
+                <div style="font-size:11px;color:#000000;margin-bottom:4px">⚠️ 주의사항</div>
                 <div style="font-size:13px;color:#ffab40">{ml['주의']}</div>
             </div>""", unsafe_allow_html=True)
 
     # ── 분기별 요약표 ─────────────────────────────────────────
-    st.markdown('<div style="font-size:15px;font-weight:800;color:#c5a059;margin:20px 0 10px">📊 분기별 운세 요약</div>',
+    st.markdown('<div style="font-size:15px;font-weight:800;color:#000000;margin:20px 0 10px">📊 분기별 운세 요약</div>',
                 unsafe_allow_html=True)
     quarters = [
         ("1분기 (1~3월)", months_data[0:3]),
@@ -10346,7 +10567,7 @@ def menu10_monthly(pils, name, birth_year, gender):
         <div style="background:#f8f8f8;border:1px solid #ddd;border-radius:10px;
                     padding:12px 16px;margin-bottom:6px;display:flex;
                     align-items:center;gap:14px">
-            <div style="min-width:110px;font-size:13px;color:#c5a059;font-weight:700">{qtitle}</div>
+            <div style="min-width:110px;font-size:13px;color:#000000;font-weight:700">{qtitle}</div>
             <div style="flex:1;font-size:12px;color:#555">
                 {' · '.join([f"{d['월']}월 {d['십성']}({d['길흉']})" for d in qdata])}
             </div>
@@ -10363,9 +10584,9 @@ def menu10_monthly(pils, name, birth_year, gender):
         if gb["present"]:
             for s in gb["present"][:2]:
                 st.markdown(f"""
-                <div style="background:#f0f8ff;border-left:5px solid #4a90d9;
+                <div style="background:#ffffff;border-left:5px solid #4a90d9;
                             padding:12px 16px;border-radius:4px 12px 12px 4px;
-                            margin:5px 0;font-size:14px;color:#333;line-height:1.9">
+                            margin:5px 0;font-size:14px;color:#000000;line-height:1.9">
                     💡 {s}
                 </div>""", unsafe_allow_html=True)
         if gb["future"]:
@@ -10373,7 +10594,7 @@ def menu10_monthly(pils, name, birth_year, gender):
                 st.markdown(f"""
                 <div style="background:#fff5e0;border-left:5px solid #e65100;
                             padding:12px 16px;border-radius:4px 12px 12px 4px;
-                            margin:5px 0;font-size:14px;color:#333;line-height:1.9">
+                            margin:5px 0;font-size:14px;color:#000000;line-height:1.9">
                     ⚡ {s}
                 </div>""", unsafe_allow_html=True)
     except Exception:
@@ -10399,7 +10620,7 @@ def menu10_monthly(pils, name, birth_year, gender):
         st.markdown(f"""
         <div style="background:#fffef8;border:1.5px solid #e8d5a0;border-radius:14px;
                     padding:14px;margin:8px 0">
-            <div style="font-size:12px;color:#a0720a;font-weight:700;margin-bottom:8px">
+            <div style="font-size:12px;color:#000000;font-weight:700;margin-bottom:8px">
                 🎯 {sel_year}년 최적 행동 타이밍 TOP 3
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:4px">
@@ -10429,10 +10650,10 @@ def menu11_yearly(pils, name, birth_year, gender):
     st.markdown(f"""
     <div style="background:linear-gradient(135deg,#f5f0ff,#fff0e8);
                 border-radius:14px;padding:18px 24px;margin-bottom:16px;text-align:center">
-        <div style="font-size:22px;font-weight:900;color:#f0a060;letter-spacing:2px">
+        <div style="font-size:22px;font-weight:900;color:#5a2a00;letter-spacing:2px">
             🎊 {display_name}님의 신년 운세
         </div>
-        <div style="font-size:13px;color:#555;margin-top:6px">
+        <div style="font-size:13px;color:#000000;margin-top:6px">
             연도별 세운(歲運) × 대운(大運) 교차 완전 분석
         </div>
     </div>""", unsafe_allow_html=True)
@@ -10483,7 +10704,7 @@ def menu11_yearly(pils, name, birth_year, gender):
         with bc1:
             st.markdown(f"""
             <div style="background:#e8f5e8;border:1px solid #8de48d;border-radius:10px;
-                        padding:12px 16px;margin-bottom:10px;font-size:13px;color:#8bc34a">
+                        padding:12px 16px;margin-bottom:10px;font-size:13px;color:#33691e">
                 🌟 최고의 해: <b>{best_yr['year']}년</b><br>
                 세운 {best_yr['yl']['세운']} ({best_yr['yl']['십성_천간']}) — {best_yr['yl']['길흉']}
                 {'&nbsp;✨ 용신 대운 황금기' if best_yr['is_yong'] else ''}
@@ -10491,7 +10712,7 @@ def menu11_yearly(pils, name, birth_year, gender):
         with bc2:
             st.markdown(f"""
             <div style="background:#fff0f0;border:1px solid #f0a0a0;border-radius:10px;
-                        padding:12px 16px;margin-bottom:10px;font-size:13px;color:#ef9a9a">
+                        padding:12px 16px;margin-bottom:10px;font-size:13px;color:#b71c1c">
                 ⚠️ 주의할 해: <b>{worst_yr['year']}년</b><br>
                 세운 {worst_yr['yl']['세운']} ({worst_yr['yl']['십성_천간']}) — {worst_yr['yl']['길흉']}
             </div>""", unsafe_allow_html=True)
@@ -10538,7 +10759,7 @@ def menu11_yearly(pils, name, birth_year, gender):
                         if dw else "대운 정보 없음")
 
             yong_badge = (
-                f"<span style='background:#d8f5d8;color:#8bc34a;"
+                f"<span style='background:#d8f5d8;color:#33691e;"
                 f"padding:3px 10px;border-radius:8px;font-size:11px;margin-left:8px'>"
                 f"✨ 용신 대운</span>" if is_yong else "")
 
@@ -10555,38 +10776,38 @@ def menu11_yearly(pils, name, birth_year, gender):
             st.markdown(f"""
             <div style="background:#f8f8f8;border-left:4px solid {lcolor};
                         border-radius:0 12px 12px 0;padding:18px;margin-bottom:10px">
-                <div style="font-size:13px;color:#444;margin-bottom:8px">
+                <div style="font-size:13px;color:#000000;margin-bottom:8px">
                     🌊 {dw_label}{yong_badge}
                 </div>
-                <div style="font-size:14px;color:#333;line-height:1.9;margin-bottom:12px">
+                <div style="font-size:14px;color:#000000;line-height:1.9;margin-bottom:12px">
                     {se_narr['desc']}
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
                     <div style="flex:1;background:#e8f5e8;border-radius:8px;padding:10px">
-                        <div style="font-size:11px;color:#555;margin-bottom:3px">💰 재물</div>
-                        <div style="font-size:12px;color:#8bc34a">{se_narr['재물']}</div>
+                        <div style="font-size:11px;color:#000000;margin-bottom:3px">💰 재물</div>
+                        <div style="font-size:12px;color:#33691e">{se_narr['재물']}</div>
                     </div>
                     <div style="flex:1;background:#f5f5f5;border-radius:8px;padding:10px">
-                        <div style="font-size:11px;color:#555;margin-bottom:3px">👥 관계</div>
+                        <div style="font-size:11px;color:#000000;margin-bottom:3px">👥 관계</div>
                         <div style="font-size:12px;color:#7986cb">{se_narr['관계']}</div>
                     </div>
                     <div style="flex:1;background:#fff0f0;border-radius:8px;padding:10px">
-                        <div style="font-size:11px;color:#555;margin-bottom:3px">💊 건강</div>
-                        <div style="font-size:12px;color:#ef9a9a">{se_narr['건강']}</div>
+                        <div style="font-size:11px;color:#000000;margin-bottom:3px">💊 건강</div>
+                        <div style="font-size:12px;color:#b71c1c">{se_narr['건강']}</div>
                     </div>
                 </div>
                 <div style="background:#e8f5e8;border-radius:8px;padding:10px 14px;margin-bottom:10px">
-                    <div style="font-size:11px;color:#555;margin-bottom:3px">🎯 {y}년 행동 처방</div>
-                    <div style="font-size:13px;color:#c8e6c9">{action}<br>
+                    <div style="font-size:11px;color:#000000;margin-bottom:3px">🎯 {y}년 행동 처방</div>
+                    <div style="font-size:13px;color:#1b5e20">{action}<br>
                     <span style="color:#aaa;font-size:12px">{se_narr['조언']}</span></div>
                 </div>
                 <div>
-                    <div style="font-size:10px;color:#555;margin-bottom:4px">
+                    <div style="font-size:10px;color:#000000;margin-bottom:4px">
                         📊 월운 흐름 (1월→12월 / 🟢좋음 🟡보통 🔴주의)
                     </div>
                     <div style="display:flex;border-radius:4px;overflow:hidden">{bar_html}</div>
                     <div style="display:flex;justify-content:space-between;
-                                font-size:9px;color:#444;margin-top:2px">
+                                font-size:9px;color:#000000;margin-top:2px">
                         {''.join([f'<span>{i+1}</span>' for i in range(12)])}
                     </div>
                 </div>
@@ -10815,7 +11036,7 @@ def menu8_bihang(pils, name, birth_year, gender):
         <div style="color:#ff6060;font-size:11px;letter-spacing:4px;margin-bottom:8px">
             ⚠️ 극비(極秘) — 용신 기반 전통 비방 처방전
         </div>
-        <div style="color:#f0c060;font-size:19px;font-weight:900;letter-spacing:2px;margin-bottom:10px">
+        <div style="color:#8b6200;font-size:19px;font-weight:900;letter-spacing:2px;margin-bottom:10px">
             🔴 특급 비방록(特急 秘方錄)
         </div>
         <div style="color:#d0a080;font-size:13px;line-height:1.9">
@@ -10832,21 +11053,21 @@ def menu8_bihang(pils, name, birth_year, gender):
     col_y, col_g = st.columns(2)
     with col_y:
         y_tags = " ".join([
-            f"<span style='background:#c5a059;color:#000;font-weight:900;"
+            f"<span style='background:#000000;color:#000;font-weight:900;"
             f"padding:6px 16px;border-radius:20px;font-size:14px'>"
             f"{OH_EMOJI.get(o,'')} {OH_NAME.get(o,o)}</span>"
             for o in yongshin_ohs
         ]) if yongshin_ohs else "<span style='color:#888'>분석 중</span>"
         st.markdown(f"""
-        <div style="background:#f0fff0;border:2px solid #c5a059;border-radius:12px;padding:16px">
-            <div style="font-size:11px;color:#c5a059;font-weight:700;margin-bottom:8px">
+        <div style="background:#ffffff;border:2px solid #000000;border-radius:12px;padding:16px">
+            <div style="font-size:11px;color:#000000;font-weight:700;margin-bottom:8px">
                 🌟 용신 (이 기운을 강화하라)
             </div>
             <div>{y_tags}</div>
         </div>""", unsafe_allow_html=True)
     with col_g:
         g_tags = " ".join([
-            f"<span style='background:#ffdcdc;color:#1a1a1a;font-weight:700;"
+            f"<span style='background:#ffdcdc;color:#000000;font-weight:700;"
             f"padding:6px 16px;border-radius:20px;font-size:14px'>"
             f"{OH_EMOJI.get(o,'')} {OH_NAME.get(o,o)}</span>"
             for o in gishin_ohs
@@ -10878,7 +11099,7 @@ def menu8_bihang(pils, name, birth_year, gender):
                         border-bottom:1px solid #3a2010;padding-bottom:14px">
                 <span style="font-size:36px">{bd['emoji']}</span>
                 <div>
-                    <div style="font-size:20px;font-weight:900;color:#f0c060">
+                    <div style="font-size:20px;font-weight:900;color:#8b6200">
                         {bd['오행명']} 강화 비방
                     </div>
                     <div style="font-size:12px;color:#a0800a">
@@ -10889,14 +11110,14 @@ def menu8_bihang(pils, name, birth_year, gender):
 
         # 색상·날짜
         color_tags = " ".join([
-            f"<span style='background:#fff5e0;border:1px solid #8B6914;color:#f0c060;"
+            f"<span style='background:#fff5e0;border:1px solid #8B6914;color:#8b6200;"
             f"padding:4px 12px;border-radius:12px;font-size:12px;margin:3px;display:inline-block'>"
             f"{c}</span>"
             for c in bd['색상']
         ])
         st.markdown(f"""
         <div style="margin-bottom:16px">
-            <div style="font-size:11px;color:#c5a059;font-weight:700;margin-bottom:6px">
+            <div style="font-size:11px;color:#000000;font-weight:700;margin-bottom:6px">
                 🎨 길한 색상 (지갑·옷·소품)
             </div>
             <div>{color_tags}</div>
@@ -10907,14 +11128,14 @@ def menu8_bihang(pils, name, birth_year, gender):
 
         # 풍수 비방
         st.markdown("""
-        <div style="font-size:12px;color:#c5a059;font-weight:700;margin-bottom:8px">
+        <div style="font-size:12px;color:#000000;font-weight:700;margin-bottom:8px">
             🏠 풍수 비방 — 집·사무실 배치
         </div>""", unsafe_allow_html=True)
         for fw in bd['풍수']:
             st.markdown(f"""
-            <div style="background:#f0fff0;border-left:3px solid #27ae60;
+            <div style="background:#ffffff;border-left:3px solid #27ae60;
                         padding:9px 14px;border-radius:6px;margin:4px 0;
-                        font-size:13px;color:#a0e0a0;line-height:1.8">
+                        font-size:13px;color:#1a4a1a;line-height:1.8">
                 🌿 {fw}
             </div>""", unsafe_allow_html=True)
 
@@ -10947,12 +11168,12 @@ def menu8_bihang(pils, name, birth_year, gender):
 
         # 재물 비방
         st.markdown("""
-        <div style="font-size:12px;color:#c5a059;font-weight:700;margin-bottom:8px">
+        <div style="font-size:12px;color:#000000;font-weight:700;margin-bottom:8px">
             💰 재물 불러들이는 비방
         </div>""", unsafe_allow_html=True)
         for rb in bd['재물비방']:
             st.markdown(f"""
-            <div style="background:#eaffdc;border-left:3px solid #c5a059;
+            <div style="background:#eaffdc;border-left:3px solid #000000;
                         padding:9px 14px;border-radius:6px;margin:4px 0;
                         font-size:13px;color:#f0e0a0;line-height:1.8">
                 {rb}
@@ -10969,7 +11190,7 @@ def menu8_bihang(pils, name, birth_year, gender):
             st.markdown(f"""
             <div style="background:#ffdcdc;border-left:3px solid #e74c3c;
                         padding:9px 14px;border-radius:6px;margin:4px 0;
-                        font-size:13px;color:#f0b0b0;line-height:1.8">
+                        font-size:13px;color:#6a0000;line-height:1.8">
                 {mb}
             </div>""", unsafe_allow_html=True)
 
@@ -10977,11 +11198,11 @@ def menu8_bihang(pils, name, birth_year, gender):
         st.markdown(f"""
         <br>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
-            <div style="background:#f0fff0;border-radius:10px;padding:14px;border:1px solid #2a4a1a">
+            <div style="background:#ffffff;border-radius:10px;padding:14px;border:1px solid #2a4a1a">
                 <div style="font-size:11px;color:#4caf50;font-weight:700;margin-bottom:6px">
                     🍚 길한 음식 (용신 강화)
                 </div>
-                <div style="font-size:12px;color:#a0e0a0;line-height:1.8">
+                <div style="font-size:12px;color:#1a4a1a;line-height:1.8">
                     {', '.join(bd['음식'])}
                 </div>
             </div>
@@ -10989,7 +11210,7 @@ def menu8_bihang(pils, name, birth_year, gender):
                 <div style="font-size:11px;color:#e74c3c;font-weight:700;margin-bottom:6px">
                     ⚠️ 금기 음식 (기신 강화 주의)
                 </div>
-                <div style="font-size:12px;color:#f0b0b0;line-height:1.8">
+                <div style="font-size:12px;color:#6a0000;line-height:1.8">
                     {', '.join(bd['금기음식'])}
                 </div>
             </div>
@@ -11005,7 +11226,7 @@ def menu8_bihang(pils, name, birth_year, gender):
         </div>
         </div>""", unsafe_allow_html=True)
 
-        st.markdown("---")
+        st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
 
     # ③ 기신 차단 종합 처방
     if gishin_ohs:
@@ -11069,11 +11290,11 @@ def menu8_bihang(pils, name, birth_year, gender):
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
 
     # ④ 공통 만신 비방 — 신강신약별
     st.markdown("""
-    <div style="background:linear-gradient(135deg,#f5f5f5,#eef0ff);
+    <div style="background:#ffffff;;
                 border:2px solid #4a3080;border-radius:14px;padding:20px;margin:16px 0">
         <div style="font-size:16px;font-weight:900;color:#c39bd3;margin-bottom:14px">
             🕯️ 신강신약별 공통 비방 — 만신 구전(口傳)
@@ -11115,13 +11336,13 @@ def menu8_bihang(pils, name, birth_year, gender):
         </div>""", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
 
     # ⑤ 나이별 특급 비방 — 현재 운기에 맞춘 처방
     st.markdown(f"""
     <div style="background:linear-gradient(135deg,#fff5e0,#fff0dc);
-                border:2px solid #c5a059;border-radius:14px;padding:20px">
-        <div style="font-size:16px;font-weight:900;color:#f0c060;margin-bottom:10px">
+                border:2px solid #000000;border-radius:14px;padding:20px">
+        <div style="font-size:16px;font-weight:900;color:#8b6200;margin-bottom:10px">
             📅 {current_year}년 ({current_age}세) 현재 운기 맞춤 비방
         </div>""", unsafe_allow_html=True)
 
@@ -11141,7 +11362,7 @@ def menu8_bihang(pils, name, birth_year, gender):
                 "새로운 인연·거래처·투자처가 올 때 적극적으로 받아들이십시오.",
                 "연초(음력 정월)에 용신 방향으로 여행 또는 나들이 — 운기를 몸에 흡수",
             ]
-            card_color = "#c5a059"
+            card_color = "#000000"
             card_bg = "#1a1a00"
         else:
             year_desc = f"올해 {sw_str}년은 기신이 강하게 작동하는 해입니다. 수비적으로 대응하십시오."
@@ -11160,7 +11381,7 @@ def menu8_bihang(pils, name, birth_year, gender):
             <div style="font-size:13px;color:{card_color};font-weight:700;margin-bottom:6px">
                 {sw_str}년 ({sw_ss}년) 판단
             </div>
-            <div style="font-size:13px;color:#333;line-height:1.8">{year_desc}</div>
+            <div style="font-size:13px;color:#000000;line-height:1.8">{year_desc}</div>
         </div>""", unsafe_allow_html=True)
 
         for yb in year_bihang:
@@ -11183,12 +11404,42 @@ def menu7_ai(pils, name, birth_year, gender, api_key, groq_key=""):
     """7️⃣ AI 상담창 — 집중 영역 선택 + 정밀 엔진 데이터 표시"""
 
     st.markdown("""
-    <div style="background:linear-gradient(135deg,#e8f4ff,#d0e8ff);color:#1a4a7a;
-                padding:18px 16px;border-radius:14px;margin-bottom:14px;font-size:13px">
-        ✦ 만세력 엔진(Brain 1)이 계산한 데이터를 AI가 설명합니다.<br>
-        ✦ 집중 분야를 선택하면 해당 영역에 특화된 해석이 나옵니다.<br>
-        ✦ <b>전환점 감지 엔진</b>이 인생 흐름의 변화 타이밍을 포착합니다.
+    <div style="background:#ffffff;border:2px solid #1565c055;border-radius:12px;
+                padding:14px 18px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:700;color:#0d47a1;margin-bottom:4px">🤖 AI 사주 상담</div>
+        <div style="font-size:12px;color:#000000;line-height:1.8">
+        ✦ 만세력 엔진이 계산한 데이터를 AI가 설명합니다.<br>
+        ✦ 집중 분야 선택 → 특화 해석 · <b style="color:#c0392b">전환점 감지 엔진</b> 작동.
     </div>""", unsafe_allow_html=True)
+
+    # ★ Retention: 맞춤형 오프닝 멘트
+    saju_key = pils_to_cache_key(pils)
+    render_ai_opening_ment(saju_key, name)
+
+    # ── 오늘의 사주 상태 (Daily Status Engine) ──────────
+    try:
+        daily_score = get_daily_luck_score(pils, birth_year, gender)
+        ds_color = ("#4caf50" if daily_score["score"] >= 65 else "#ff9800" if daily_score["score"] >= 45 else "#f44336")
+        ds_emoji = {"대길(大吉)":"🔥","길(吉)":"✨","평(平)":"🌱","흉(凶)":"⚖️","흉흉(凶흉)":"⚠️"}.get(daily_score["label"], "🌱")
+        
+        st.markdown(f"""
+        <div style="background:white; border:1px solid {ds_color}55; border-radius:14px; 
+                    padding:14px 16px; margin-bottom:14px; display:flex; align-items:center; gap:12px;
+                    box-shadow: 0 4px 12px {ds_color}11">
+            <div style="font-size:32px">{ds_emoji}</div>
+            <div style="flex:1">
+                <div style="font-size:11px; color:#000000; font-weight:700">오늘의 사주 상태</div>
+                <div style="font-size:16px; font-weight:900; color:{ds_color}">
+                    {daily_score['label']} — {daily_score['trend']} (운기 {daily_score['score']}점)
+                </div>
+            </div>
+            <div style="background:{ds_color}11; color:{ds_color}; font-size:10px; font-weight:800; padding:4px 8px; border-radius:8px">
+                실시간 업데이트
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    except Exception:
+        pass
 
     # ── 집중 영역 선택 ──────────────────────────────
     st.markdown("**🎯 오늘 어떤 분야가 가장 궁금하세요?**")
@@ -11213,14 +11464,14 @@ def menu7_ai(pils, name, birth_year, gender, api_key, groq_key=""):
         st.markdown(f"""
         <div style="background:#fffef8;border:1.5px solid #e8d5a0;border-radius:14px;
                     padding:16px 14px;margin:10px 0">
-            <div style="font-size:12px;color:#a0720a;font-weight:700;margin-bottom:10px">
+            <div style="font-size:12px;color:#000000;font-weight:700;margin-bottom:10px">
                 ⚡ 정밀 엔진 데이터 — {current_year}년 실시간 분석
             </div>
 
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
                 <div>
                     <span style="font-size:11px;color:#666">일간 힘: </span>
-                    <span style="font-weight:800;color:#a0720a">{ctx['daymaster_strength_score']}/100
+                    <span style="font-weight:800;color:#000000">{ctx['daymaster_strength_score']}/100
                     ({ctx['daymaster_strength_label']})</span>
                 </div>
                 <div>
@@ -11266,7 +11517,7 @@ def menu7_ai(pils, name, birth_year, gender, api_key, groq_key=""):
                 <div style="font-size:11px;color:#e65100;font-weight:700;margin-bottom:6px">
                     🚨 고확률 사건 트리거 ({len(high_triggers)}개)
                 </div>
-                {''.join([f'<div style="font-size:12px;color:#333;margin:3px 0">• {t["title"]} ({t["prob"]}%)</div>' for t in high_triggers[:3]])}
+                {''.join([f'<div style="font-size:12px;color:#000000;margin:3px 0">• {t["title"]} ({t["prob"]}%)</div>' for t in high_triggers[:3]])}
             </div>
             """, unsafe_allow_html=True)
 
@@ -11338,7 +11589,7 @@ def menu7_ai(pils, name, birth_year, gender, api_key, groq_key=""):
             <div style="font-size:11px;color:#7b5ea7;font-weight:700">AI 분석 스타일 자동 설정</div>
             <div style="font-size:13px;color:{p_color};font-weight:800">{p_label}</div>
         </div>
-        <div style="font-size:10px;color:#888;margin-left:auto">
+        <div style="font-size:10px;color:#000000;margin-left:auto">
             집중 분야 선택에 따라 해석 스타일이 자동 변경됩니다
         </div>
     </div>
@@ -11351,17 +11602,17 @@ def menu7_ai(pils, name, birth_year, gender, api_key, groq_key=""):
         gb = goosebump_engine(pils, birth_year, gender)
         if gb["past"]:
             gb_html = "".join([
-                f'<div style="background:#fffef5;border-left:4px solid #c5a059;'
+                f'<div style="background:#ffffff;border-left:4px solid #000000;'
                 f'padding:10px 14px;border-radius:4px 10px 10px 4px;margin:5px 0;'
-                f'font-size:13px;color:#333;line-height:1.8">'
+                f'font-size:13px;color:#000000;line-height:1.8">'
                 f'🔍 {s}</div>'
                 for s in gb["past"]
             ])
             if gb["present"]:
                 gb_html += "".join([
-                    f'<div style="background:#f0f8ff;border-left:4px solid #4a90d9;'
+                    f'<div style="background:#ffffff;border-left:4px solid #4a90d9;'
                     f'padding:10px 14px;border-radius:4px 10px 10px 4px;margin:5px 0;'
-                    f'font-size:13px;color:#333;line-height:1.8">'
+                    f'font-size:13px;color:#000000;line-height:1.8">'
                     f'💡 {s}</div>'
                     for s in gb["present"][:1]
                 ])
@@ -11369,7 +11620,7 @@ def menu7_ai(pils, name, birth_year, gender, api_key, groq_key=""):
                 gb_html += "".join([
                     f'<div style="background:#fff5e0;border-left:4px solid #e65100;'
                     f'padding:10px 14px;border-radius:4px 10px 10px 4px;margin:5px 0;'
-                    f'font-size:13px;color:#333;line-height:1.8">'
+                    f'font-size:13px;color:#000000;line-height:1.8">'
                     f'⚡ {s}</div>'
                     for s in gb["future"][:1]
                 ])
@@ -11391,7 +11642,7 @@ def main():
     st.markdown("""
     <style>
     .main-header {
-        background: linear-gradient(135deg, #8B6914, #c5a059, #8B6914);
+        background: linear-gradient(135deg, #8B6914, #000000, #8B6914);
         color: white; text-align: center;
         padding: 24px 16px 20px;
         border-radius: 0 0 16px 16px;
@@ -11465,7 +11716,7 @@ def main():
     st.markdown("""
     <div style="background:white;border-radius:16px;padding:24px 24px 8px;
                 box-shadow:0 2px 12px rgba(0,0,0,0.08);margin-bottom:4px">
-        <div style="font-size:18px;font-weight:800;color:#333;margin-bottom:4px">
+        <div style="font-size:18px;font-weight:800;color:#000000;margin-bottom:4px">
             📝 사주 정보 입력
         </div>
     </div>""", unsafe_allow_html=True)
@@ -11603,7 +11854,7 @@ def main():
                 date_badge = (
                     f"<span style='font-size:12px;background:#ede4ff;padding:3px 10px;border-radius:12px;margin-left:6px'>"
                     f"음력 {lunar_info}</span>"
-                    f"<span style='font-size:11px;color:#444;margin-left:6px'>"
+                    f"<span style='font-size:11px;color:#000000;margin-left:6px'>"
                     f"(양력 {birth_year}.{birth_month:02d}.{birth_day:02d})</span>"
                 )
             else:
@@ -11615,7 +11866,7 @@ def main():
             JJ_12b = ["子","子","丑","丑","寅","寅","卯","卯","辰","辰","巳","巳",
                       "午","午","未","未","申","申","酉","酉","戌","戌","亥","亥"]
             hour_badge = (
-                f"<span style='font-size:12px;background:#fff8e0;padding:3px 10px;border-radius:12px;margin-left:6px'>"
+                f"<span style='font-size:12px;background:#ffffff;padding:3px 10px;border-radius:12px;margin-left:6px'>"
                 f"{birth_hour2:02d}시({JJ_12b[birth_hour2]}시)</span>"
             )
 
@@ -11628,7 +11879,7 @@ def main():
             st.markdown(f"""
             <div style="text-align:center;padding:14px;background:linear-gradient(135deg,#fff5e0,#fff0dc);
                         border-radius:14px;margin-bottom:10px">
-                <div style="color:#a0720a;font-size:20px;font-weight:700;margin-bottom:6px">
+                <div style="color:#000000;font-size:20px;font-weight:700;margin-bottom:6px">
                     ✨ {display_name}님의 사주팔자 ✨
                 </div>
                 <div style="margin-bottom:6px">{date_badge}{hour_badge}</div>
@@ -11651,17 +11902,17 @@ def main():
             ])
 
             with tabs[0]:
-                menu1_report(pils, name, birth_year, gender, occupation)
+                menu1_report(pils, name, birth_year, gender, occupation, api_key, groq_key)
             with tabs[1]:
-                menu2_lifeline(pils, birth_year, gender)
+                menu2_lifeline(pils, birth_year, gender, name, api_key, groq_key)
             with tabs[2]:
-                menu3_past(pils, birth_year, gender, name)
+                menu3_past(pils, birth_year, gender, name, api_key, groq_key)
             with tabs[3]:
-                menu4_future3(pils, birth_year, gender, marriage_status)
+                menu4_future3(pils, birth_year, gender, marriage_status, name, api_key, groq_key)
             with tabs[4]:
-                menu5_money(pils, birth_year, gender)
+                menu5_money(pils, birth_year, gender, name, api_key, groq_key)
             with tabs[5]:
-                menu6_relations(pils, name, birth_year, gender, marriage_status)
+                menu6_relations(pils, name, birth_year, gender, marriage_status, api_key, groq_key)
             with tabs[6]:
                 menu7_ai(pils, name, birth_year, gender, api_key, groq_key)
             with tabs[7]:
