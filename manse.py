@@ -200,44 +200,22 @@ except ImportError:
 
 class SajuMemory:
     """
-    4계층 기억 시스템:
-    ① Identity   - 변하지 않는 정체 (일간 특징, 핵심 성향)
-    ② Interest   - 관심 영역 비율 (반복 조회 주제)
-    ③ Flow       - 현재 인생 흐름 단계 (전환기·준비기 등)
-    ④ Conversation - 최근 상담 맥락 (질문·감정·조언)
+    4계층 기억 시스템 (Identity, Interest, Flow, Conversation)
+    정보 저장 ❌ / 맥락 저장 ⭕
     """
-
-    INTEREST_TOPICS = ["직업", "재물", "연애", "건강", "인간관계", "이사", "사업"]
-    FLOW_STAGES     = ["상승기", "전환기", "준비기", "정체기", "확장기", "안정기"]
-    MAX_CONV_HISTORY = 5  # 상담 기억 최대 보관 수
-
+    
     @staticmethod
     def _get() -> dict:
         """세션에서 기억 불러오기 (없으면 초기화)"""
         if "saju_memory" not in st.session_state:
             st.session_state["saju_memory"] = {
-                # ① 정체 기억
-                "identity": {
-                    "ilgan": "",          # 일간 (甲, 乙 ...)
-                    "gyeokguk": "",       # 격국명
-                    "core_trait": "",     # 핵심 성향 1줄
-                    "yongshin": [],       # 용신 오행
-                },
-                # ② 관심 기억: {주제: 조회 횟수}
-                "interest": {t: 0 for t in SajuMemory.INTEREST_TOPICS},
-                # ③ 흐름 기억
-                "flow": {
-                    "stage": "",          # 예: "전환기"
-                    "period": "",         # 예: "2025~2027"
-                    "daewoon": "",        # 현재 대운
-                    "updated_at": "",     # 마지막 업데이트
-                },
-                # ④ 상담 기억: 최근 N개
-                "conversation": [],      # [{topic, emotion_kw, advice, ts}, ...]
+                "identity": {"ilgan": "", "gyeokguk": "", "core_trait": "", "yongshin": [], "career": "", "health": ""},
+                "interest": {},
+                "flow": {"stage": "", "period": "", "daewoon": ""},
+                "conversation": []
             }
         return st.session_state["saju_memory"]
 
-    # ── ① 정체 기억 업데이트 ──────────────────────────────
     @staticmethod
     def update_identity(ilgan: str, gyeokguk: str, core_trait: str, yongshin: list, career: str = "", health: str = ""):
         mem = SajuMemory._get()
@@ -246,62 +224,81 @@ class SajuMemory:
             "gyeokguk": gyeokguk,
             "core_trait": core_trait,
             "yongshin": yongshin,
-            "career_predisposition": career,
-            "health_focus": health
+            "career": career,
+            "health": health
         })
 
-    # ── ② 관심 기억 업데이트 (트리거: 주제 클릭/조회) ───────
     @staticmethod
     def record_interest(topic: str):
-        """주제를 조회할 때 호출. 3회 이상이면 '주관심사' 강화."""
-        if topic not in SajuMemory.INTEREST_TOPICS:
-            return
+        """주제별 빈도 기록 (관심사 파악)"""
         mem = SajuMemory._get()
-        mem["interest"][topic] = mem["interest"].get(topic, 0) + 1
+        if topic not in mem["interest"]: mem["interest"][topic] = 0
+        mem["interest"][topic] += 1
 
     @staticmethod
-    def get_interest_summary() -> str:
-        """관심 영역 비율 요약 문자열 반환."""
+    def get_interest_summary():
         mem = SajuMemory._get()
-        counts = mem["interest"]
-        total = sum(counts.values()) or 1
-        ranked = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-        top3 = [(t, round(c / total * 100)) for t, c in ranked if c > 0][:3]
-        if not top3:
-            return ""
-        return " / ".join(f"{t} {p}%" for t, p in top3)
+        if not mem.get("interest"): return "전반적 운세"
+        sorted_interests = sorted(mem["interest"].items(), key=lambda x: x[1], reverse=True)
+        return ", ".join([f"{k}" for k, v in sorted_interests[:2]])
 
-    # ── ③ 흐름 기억 업데이트 ────────────────────────────────
     @staticmethod
     def update_flow(stage: str, period: str = "", daewoon: str = ""):
-        from datetime import datetime
         mem = SajuMemory._get()
-        mem["flow"].update({
-            "stage": stage,
-            "period": period,
-            "daewoon": daewoon,
-            "updated_at": datetime.now().strftime("%Y-%m-%d"),
-        })
+        mem["flow"].update({"stage": stage, "period": period, "daewoon": daewoon})
 
-    # ── ④ 상담 기억 업데이트 ────────────────────────────────
     @staticmethod
     def add_conversation(topic: str, advice_summary: str, emotion_kw: str = ""):
-        from datetime import datetime
         mem = SajuMemory._get()
-        entry = {
+        mem["conversation"].append({
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "topic": topic,
-            "emotion_kw": emotion_kw,
-            "advice": advice_summary,
-            "ts": datetime.now().strftime("%Y-%m-%d"),
-        }
-        mem["conversation"].append(entry)
-        # 최대 N개만 보관 (오래된 것 삭제)
-        if len(mem["conversation"]) > SajuMemory.MAX_CONV_HISTORY:
-            mem["conversation"] = mem["conversation"][-SajuMemory.MAX_CONV_HISTORY:]
+            "summary": advice_summary,
+            "emotion": emotion_kw
+        })
+        if len(mem["conversation"]) > 5: mem["conversation"].pop(0)
+
+    @staticmethod
+    def build_context_prompt():
+        mem = SajuMemory._get()
+        ident = mem["identity"]
+        flow = mem["flow"]
+        convs = mem["conversation"]
+        
+        ctx = f"[기억된 내담자 맥락]\n"
+        ctx += f"- 정체성: {ident['ilgan']} 일간, {ident['gyeokguk']}격. 핵심성향: {ident['core_trait']}\n"
+        ctx += f"- 주관심사: {SajuMemory.get_interest_summary()}\n"
+        if flow['stage']:
+            ctx += f"- 현재흐름: {flow['stage']} ({flow['daewoon']} 대운)\n"
+        
+        if convs:
+            ctx += "- 지난 상담의 핵심 내용:\n"
+            for c in convs[-3:]:
+                ctx += f"  * [{c['topic']}] {c['summary']}\n"
+        
+        return ctx
+
+    @staticmethod
+    def get_personalized_intro(name: str):
+        mem = SajuMemory._get()
+        ident = mem["identity"]
+        if not ident["ilgan"]: return f"어서오세요, {name}님. 오늘은 어떤 운의 흐름이 궁금하신가요?"
+        
+        intros = [
+            f"{name}님의 {ident['ilgan']} 기운이 오늘따라 선명하군요. 궁금하신 것을 말씀해 보세요.",
+            f"{ident['gyeokguk']}의 품격을 지닌 {name}님께 꼭 필요한 조언을 준비했습니다.",
+            f"요즘 {SajuMemory.get_interest_summary()}에 대해 생각이 많으시군요. 그 맥락에서 운을 짚어드릴까요?"
+        ]
+        return random.choice(intros)
+        if flow.get("stage"):
+            period_str = f" ({flow['period']})" if flow.get("period") else ""
+            lines.append(f"[현재 인생 흐름] {flow['stage']}{period_str}")
+            if flow.get("daewoon"):
+                lines.append(f"[현재 대운] {flow['daewoon']}")
 
     # ── AI 프롬프트용 맥락 문자열 생성 ───────────────────────
     @staticmethod
-    def build_context_prompt() -> str:
+    def build_rich_ai_context() -> str:
         """AI에게 전달할 기억 맥락 문자열을 생성한다."""
         mem = SajuMemory._get()
         lines = []
@@ -309,21 +306,25 @@ class SajuMemory:
         # ① 정체
         idt = mem["identity"]
         if idt.get("core_trait"):
-            lines.append(f"[사용자 성향] {idt['core_trait']}")
-        if idt.get("career_predisposition"):
-            lines.append(f"[직업 성향] {idt['career_predisposition']}")
-        if idt.get("health_focus"):
-            lines.append(f"[건강 주의] {idt['health_focus']}")
+            lines.append(f"[사용자 핵심 성향] {idt['core_trait']}")
+        if idt.get("career"):
+            lines.append(f"[직업 적성] {idt['career']}")
+        if idt.get("health"):
+            lines.append(f"[건강 유의점] {idt['health']}")
         if idt.get("gyeokguk"):
-            lines.append(f"[격국] {idt['gyeokguk']} / [일간] {idt.get('ilgan','')}")
+            lines.append(f"[사주 격국] {idt['gyeokguk']} / [일간] {idt.get('ilgan','')}")
+        if idt.get("yongshin"):
+            lines.append(f"[용신 오행] {', '.join(idt['yongshin'])}")
 
         # ② 관심
-        interest_str = SajuMemory.get_interest_summary()
-        if interest_str:
-            lines.append(f"[주요 관심사] {interest_str}")
-            top_topic = max(mem["interest"].items(), key=lambda x: x[1], default=("", 0))
-            if top_topic[1] >= 3:
-                lines.append(f"→ 최근 '{top_topic[0]}'에 관심이 집중되어 있습니다.")
+        interest_summary = SajuMemory.get_interest_summary()
+        if interest_summary and interest_summary != "전반적 운세":
+            lines.append(f"[주요 관심사] {interest_summary}")
+            # 가장 많이 조회된 주제가 있다면 추가
+            if mem["interest"]:
+                top_topic = max(mem["interest"].items(), key=lambda x: x[1], default=("", 0))
+                if top_topic[1] > 0: # 최소 1회 이상 조회된 경우
+                    lines.append(f"→ 최근 '{top_topic[0]}'에 대한 질문 빈도가 높습니다.")
 
         # ③ 흐름
         flow = mem["flow"]
@@ -494,6 +495,59 @@ class SajuJudgmentRules:
             rules += f"\n\n{mem_ctx}"
 
         return rules.strip()
+
+
+# ══════════════════════════════════════════════════════════
+#  🏛️ 전문가형 5단 프롬프트 아키텍처 (SajuExpertPrompt)
+#  1. Role Lock (역할 고정)
+#  2. Analysis Layer (내부 분석)
+#  3. Interpretation Rules (해석 규칙)
+#  4. Counsel Structure (상담 구조)
+#  5. Human Tone Engine (인간화 문장)
+# ══════════════════════════════════════════════════════════
+
+class SajuExpertPrompt:
+    """
+    사용자가 제공한 전문가형 5단 프롬프트 구조를 생성하는 클래스.
+    """
+    
+    @staticmethod
+    def build_system_prompt(user_input: str, topic_direction: str = "") -> str:
+        """전문가형 5단 구조 시스템 프롬프트 생성"""
+        rules_ctx = SajuJudgmentRules.build_rules_prompt(user_input)
+        
+        prompt = f"""
+당신은 20년 경력의 대한민국 최고 수준의 전문 명리학 상담가 '만신(萬神)'입니다.
+아래의 [전문가형 5단 사고 체계]를 반드시 엄수하여 상담을 진행하십시오.
+
+### 1단계: 역할 고정 (Role Lock)
+- 당신은 데이터의 나열자가 아닌, 내담자의 인생을 깊이 통찰하는 노련한 상담가입니다.
+- 단정적인 예언보다는 가능성과 흐름을 중심으로, 내담자가 스스로 삶의 방향을 찾도록 돕습니다.
+- 말투는 20년 경력의 품격과 전문성이 느껴지는 따뜻한 상담가 어조를 유지하십시오.
+
+### 2단계: 분석 전용 레이어 (Internal Analysis Layer)
+- 답변 생성 전, 내부적으로 [일간 강약 -> 격국 판별 -> 용신 선택 -> 대운 관계 -> 합충/신살]을 선행 분석하십시오.
+- 분석 결과는 텍스트에 그대로 나열하지 말고, 해석의 '근거'로만 활용하십시오.
+
+### 3단계: 해석 및 판단 규칙 (Interpretation Rules)
+{rules_ctx}
+
+### 4단계: 상담형 출력 구조 (Counsel Structure)
+항상 다음의 흐름으로 상담을 구성하십시오.
+1. [공감적 도입]: 내담자의 상황이나 기운에 대한 따뜻한 첫인사.
+2. [기질과 정체성]: 사주 원국에서 드러나는 내담자의 고유한 삶의 색깔.
+3. [현재의 운 흐름]: 대운과 세운을 통한 타이밍 분석 (씨앗기/확장기/전환기/수확기 라벨 활용).
+4. [핵심 조언]: 기회를 잡는 법 또는 위기를 넘기는 지혜.
+5. [행동 코칭]: 지금 당장 실천할 수 있는 구체적인 한 가지 행동.
+
+### 5단계: 인간화 및 중독성 엔진 (Human Tone & Retention)
+- [소름 포인트]: "스스로 느끼셨을 가능성이 큽니다" 등 내담자가 깊이 공감할 만한 통찰 문장을 중간에 배치하십시오.
+- [오픈 루프 마무리]: 결론을 완전히 닫지 말고, "다음 달 흐름이 바뀔 때 다시 확인해보세요" 등 미래에 대한 힌트를 남기며 마무리하십시오.
+
+[상담 상세 지표]
+{topic_direction}
+"""
+        return prompt.strip()
 
 
 # ══════════════════════════════════════════════════════════
@@ -692,7 +746,7 @@ st.markdown("""
     -webkit-text-size-adjust: 100%;
     font-feature-settings: "palt"; /* 가변 폭 폰트 최적화 */
   }
-  .stApp { background:#F0F8FF; color:#333333; }
+  .stApp { background:#FFFFFF; color:#333333; } /* 배경을 더 밝은 순백색으로 변경 */
   * { box-sizing:border-box; }
   p,div,span { word-break:keep-all; overflow-wrap:break-word; }
   a,button,[role="button"] { touch-action:manipulation; }
@@ -2556,7 +2610,7 @@ def get_ilgan_strength(ilgan, pils):
     # 돕는 세력 = 비겁(같은오행) + 인성
     helper_score = oh_strength.get(ilgan_oh, 0) + oh_strength.get(parent_oh, 0)
 
-    # 약화 세력 = 식상×0.8 + 재성×1.0 + 관성×1.0
+    # 약화 세력 = 식상x0.8 + 재성x1.0 + 관성x1.0
     _BIRTH_F  = {"木":"火","火":"土","土":"金","金":"水","水":"木"}
     _CTRL     = {"木":"土","火":"金","土":"水","金":"木","水":"火"}
     sik_oh  = _BIRTH_F.get(ilgan_oh, "")
@@ -2956,13 +3010,12 @@ _AI_SANDBOX_HEADER = """
 - 금지: 번호 목록, 불릿(•), 헤더(##), 표, 코드블록
 
 위 규칙을 위반하면 시스템이 해당 내용을 자동 차단합니다.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 """
+
 
 def get_ai_interpretation(prompt_text, api_key="", system="당신은 40년 경력의 한국 전통 사주명리 전문가입니다.", max_tokens=2000, groq_key="", stream=False, history=None):
     """
-    AI 해석 요청 — Anthropic 또는 Groq 선택
+    AI 해석 요청 - Anthropic 또는 Groq 선택
     history: [{"role": "user/assistant", "content": "..."}] 형태의 대화 이력
     """
     import requests
@@ -3079,7 +3132,7 @@ def get_ai_interpretation(prompt_text, api_key="", system="당신은 40년 경�
 @st.cache_data(hash_funcs={dict: lambda d: json.dumps(d, sort_keys=True, default=str)})
 def build_past_events(pils, birth_year, gender):
     """
-    태어나서 현재까지 대운×세운 교차 → 사건 자동 생성
+    태어나서 현재까지 대운x세운 교차 → 사건 자동 생성
     충·합 발생 시점 + 십성으로 분야 판단 → 나이 특정 → 단정 서술
     """
     ilgan = pils[1]["cg"]
@@ -3214,7 +3267,7 @@ def build_past_events(pils, birth_year, gender):
                         events.append({
                             "age": f"{age}세",
                             "year": y,
-                            "type": f"{dw_ss}대운 × {sw_ss}세운 + 원국충",
+                            "type": f"{dw_ss}대운 x {sw_ss}세운 + 원국충",
                             "domain": domain,
                             "desc": f"{y}년({age}세) — {ev_desc}. {domain}에서 변동. {extra_desc}",
                             "intensity": "🔴" if intensity == "⬜" else intensity
@@ -3233,7 +3286,7 @@ def build_past_events(pils, birth_year, gender):
                 events.append({
                     "age": f"{age}세",
                     "year": y,
-                    "type": f"{dw_ss}대운 × {sw_ss}세운",
+                    "type": f"{dw_ss}대운 x {sw_ss}세운",
                     "domain": sw_domain,
                     "desc": f"{y}년({age}세) — {extra_desc} {sw_domain} 분야.",
                     "intensity": intensity
@@ -3644,7 +3697,7 @@ def generate_engine_highlights(pils, birth_year, gender):
                     money_peak.append({
                         "age": f"{age}세",
                         "year": str(y),
-                        "desc": f"{y}년 — 대운({dw_ss})×세운({sw['십성_천간']}) 재물 더블. 최고의 돈 기회",
+                        "desc": f"{y}년 — 대운({dw_ss})x세운({sw['십성_천간']}) 재물 더블. 최고의 돈 기회",
                         "ss": "더블"
                     })
 
@@ -5437,8 +5490,8 @@ def tab_saju_total(pils, name, birth_year, gender):
     </div>
 """, unsafe_allow_html=True)
 
-    # ④ 현재 대운 × 세운 교차 진단 (핵심!)
-    st.markdown('<div class="gold-section">🔀 현재 대운 × 세운 교차 진단</div>', unsafe_allow_html=True)
+    # ④ 현재 대운 x 세운 교차 진단 (핵심!)
+    st.markdown('<div class="gold-section">🔀 현재 대운 x 세운 교차 진단</div>', unsafe_allow_html=True)
     if current_dw:
         both_yong = dw_is_yong and sw_is_yong
         none_yong = not dw_is_yong and not sw_is_yong
@@ -5457,7 +5510,7 @@ def tab_saju_total(pils, name, birth_year, gender):
                     <div style="font-size:12px;color:#333">{dw_ss} | {"🌟용신" if dw_is_yong else "기신"}</div>
                     <div style="font-size:11px;color:#555">{current_dw["시작나이"]}~{current_dw["시작나이"]+9}세 ({current_dw["시작연도"]}~{current_dw["종료연도"]})</div>
                 </div>
-                <div style="font-size:24px;color:{cross_color};display:flex;align-items:center">×</div>
+                <div style="font-size:24px;color:{cross_color};display:flex;align-items:center">x</div>
                 <div style="flex:1;min-width:160px;background:white;padding:12px;border-radius:10px;text-align:center">
                     <div style="font-size:11px;color:#444">{current_year}년 세운</div>
                     <div style="font-size:22px;font-weight:900;color:#000000">{yearly["세운"]}</div>
@@ -5533,8 +5586,36 @@ def tab_saju_total(pils, name, birth_year, gender):
     # ⑦ 텍스트 총평 (복사용)
     st.markdown('<div class="gold-section">📋 전문 총평 텍스트 (복사용)</div>', unsafe_allow_html=True)
     summary = generate_saju_summary(pils, name, birth_year, gender)
-    st.text_area("", summary, height=300, label_visibility="collapsed")
+    st.text_area("", summary, height=300, label_visibility="collapsed")def b3_analyze_patterns():
+    # Brain 3: 피드백 패턴 분석 (Mock)
+    return {"total": 12, "hit_rate": 88, "best_sections": ["성향", "과거사건"], "weak_sections": ["구체적 시기"]}
 
+def b3_check_monetization_trigger(api_key):
+    # 수익화 트리거 (Mock)
+    return False, ""
+
+def b3_render_trigger_card(msg):
+    st.info(msg)
+
+def b3_track_behavior(action):
+    # 행동 추적 (Mock)
+    pass
+
+def render_lucky_kit(oh):
+    # 개운법 키트 (Mock)
+    st.caption(f"✨ {oh} 기운을 강화하는 행운 소품을 추천합니다.")
+
+def get_yongshin_multilayer(pils, birth_year, gender, target_year):
+    # 다층 용신 분석
+    ys = get_yongshin(pils)
+    from datetime import datetime
+    return {
+        "용신_1순위": ys.get("종합_용신", ["-"])[0],
+        "용신_2순위": ys.get("종합_용신", ["-"])[1] if len(ys.get("종합_용신", [])) > 1 else "-",
+        "희신": ys.get("희신", "-"),
+        "기신": ys.get("기신", []),
+        "대운_해석": ys.get("대운_해석", "흐름을 타는 시기")
+    }
 
 
 def tab_ai_chat(pils, name, birth_year=1990, gender="남", api_key="", groq_key=""):
@@ -7387,7 +7468,7 @@ def render_ai_opening_ment(saju_key: str, name: str):
 
 # ══════════════════════════════════════════════════════════════
 #  📊 STATISTICAL CORRECTION ENGINE — 통계 보정 시스템
-#  사주 패턴 × 실제 데이터 → 확률 기반 해석
+#  사주 패턴 x 실제 데이터 → 확률 기반 해석
 # ══════════════════════════════════════════════════════════════
 
 # 패턴별 확률 데이터 (실증 기반 추정값)
@@ -8247,8 +8328,8 @@ def render_feedback_btn(key, desc):
 
 
 def tab_yongshin(pils):
-    """용신(Yong-Shin) 탭"""
-    st.markdown('<div class="gold-section">[분석] 용신(Yong-Shin) - 내 사주의 구원 오행</div>', unsafe_allow_html=True)
+    """용신(用神) 탭"""
+    st.markdown('<div class="gold-section">[분석] 用神(용신) - 내 사주의 구원 오행</div>', unsafe_allow_html=True)
 
 
 def tab_past_events(pils, birth_year, gender, name=""):
@@ -8442,7 +8523,7 @@ def tab_past_events(pils, birth_year, gender, name=""):
 
 
 def tab_waryeong(pils):
-    st.markdown('<div class="gold-section">[분석] 월령(Wol-ryeong) - 계절이 사주를 지배한다</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">[분석] 월령(月令) - 계절이 사주를 지배한다</div>', unsafe_allow_html=True)
     wr = get_waryeong(pils)
     wol_jj = wr["월지"]
     oh_emoji = {"木":"[木]","火":"[火]","土":"[土]","金":"[金]","水":"[水]"}
@@ -8473,7 +8554,7 @@ def tab_waryeong(pils):
 
 
 def tab_oigyeok(pils):
-    st.markdown('<div class="gold-section">[분석] 외격(Oi-gyeok) + 양인(Yang-in) 분석</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">[분석] 외격(外格) + 양인(羊刃) 분석</div>', unsafe_allow_html=True)
     results = get_oigyeok(pils)
     if results:
         for r in results:
@@ -8490,7 +8571,7 @@ def tab_oigyeok(pils):
     else:
         st.markdown("<div class='card' style='background:#ffffff;border:2px solid #2980b9;text-align:center;padding:24px'><div style='font-size:18px;font-weight:700;color:#1a5f7a'>[안내] 내격(Nae-gyeok) 사주입니다</div><div style='font-size:13px;color:#000000;margin-top:8px'>종격/화기격 등의 외격 조건이 성립하지 않습니다. 일반 내격 이론으로 해석하십시오.</div></div>", unsafe_allow_html=True)
     # 양인
-    st.markdown('<div class="gold-section" style="margin-top:16px">[분석] 양인(Yang-in) 분석</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section" style="margin-top:16px">[분석] 양인(羊刃) 분석</div>', unsafe_allow_html=True)
     yin = get_yangin(pils)
     if yin["존재"]:
         d = yin["설명"]
@@ -10401,8 +10482,8 @@ def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함", ap
         st.markdown(f"""
 
         <div style="background:#f8f0ff;border-radius:12px;padding:16px">
-            <div style="margin-bottom:10px"><b>🌟 용신 (힘이 되는 오행):</b><br>{y_tags}</div>
-            <div><b>⚠️ 기신 (조심할 오행):</b><br>{g_tags}</div>
+            <div style="margin-bottom:10px"><b>🌟 用神(용신 - 힘이 되는 오행):</b><br>{y_tags}</div>
+            <div><b>⚠️ 忌神(기신 - 조심할 오행):</b><br>{g_tags}</div>
         </div>
 """, unsafe_allow_html=True)
     except Exception as e:
@@ -10444,7 +10525,7 @@ def menu1_report(pils, name, birth_year, gender, occupation="선택 안 함", ap
 
         if combos:
             for key, combo in combos:
-                ss_pair = " × ".join(list(key))
+                ss_pair = " x ".join(list(key))
                 st.markdown(f"""
 
                 <div style="background:#ffffff;border-radius:16px;
@@ -10673,7 +10754,7 @@ def menu2_lifeline(pils, birth_year, gender, name="내담자", api_key="", groq_
     tab_daewoon(pils, birth_year, gender)
 
     st.markdown('<hr style="border:none;border-top:1px solid #e0d8c0;margin:20px 0">', unsafe_allow_html=True)
-    st.markdown('<div class="gold-section">🔀 대운 × 세운 교차</div>', unsafe_allow_html=True)
+    st.markdown('<div class="gold-section">🔀 대운 x 세운 교차</div>', unsafe_allow_html=True)
     try:
         tab_cross_analysis(pils, birth_year, gender)
     except Exception as e:
@@ -11016,7 +11097,7 @@ def menu5_money(pils, birth_year, gender, name="내담자", api_key="", groq_key
                             border-bottom:1px solid #eee">
                     <span style="background:{ss_color};color:#000000;padding:3px 10px;
                                  border-radius:12px;font-size:12px;white-space:nowrap;
-                                 min-width:50px;text-align:center">{ss}×{cnt}</span>
+                                 min-width:50px;text-align:center">{ss}x{cnt}</span>
                     <span style="font-size:13px;color:#000000;line-height:1.8">{MONEY_NATURE.get(ss,'')}</span>
                 </div>
 """, unsafe_allow_html=True)
@@ -11281,16 +11362,11 @@ def menu9_daily(pils, name, birth_year, gender, api_key="", groq_key=""):
             st.markdown(f"""
 <div style="background:{'linear-gradient(135deg,#2a2010,#3a3020)' if is_today else '#f8f8f8'};
             border:{'2px solid #f0c060' if is_today else '1px solid #333'};
-            border-radius:10px;padding:10px 4px;text-align:center">
-    <div style="font-size:11px;color:{'#f0c060' if is_today else '#666'};font-weight:{'700' if is_today else '400'}">
-        {dt.strftime('%m/%d')}<br>{day_names[dt.weekday()]}
-        {'<br><span style="color:#8b6200">▲오늘</span>' if is_today else ''}
-    </div>
+            border-radius:10px;padding:10px 4px;text-align:center;color:{'#fff' if is_today else '#000'}">
+    <div style="font-size:11px;color:{'#f0c060' if is_today else '#666'};font-weight:{'700' if is_today else '400'}">{dt.strftime('%m/%d')}<br>{day_names[dt.weekday()]}{'<br><span style="color:#f0c060">▲오늘</span>' if is_today else ''}</div>
     <div style="font-size:16px;margin:6px 0">{d_info['emoji']}</div>
-    <div style="font-size:11px;color:#555">{cg}{jj}</div>
-    <div style="font-size:10px;color:{lc};font-weight:700;margin-top:4px">
-        {ss}<br>{d_info['level']}
-    </div>
+    <div style="font-size:11px;color:{'#ddd' if is_today else '#555'}">{cg}{jj}</div>
+    <div style="font-size:10px;color:{lc};font-weight:700;margin-top:4px">{ss}<br>{d_info['level']}</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -11606,8 +11682,13 @@ def menu10_monthly(pils, name, birth_year, gender, api_key="", groq_key=""):
         else:
             if st.button(f"🤖 {month}월 운세 및 조심해야 하는 날 AI 분석", key="btn_ai_monthly"):
                 with st.spinner("AI가 이번 달의 운의 흐름을 분석 중입니다..."):
-                    prompt = f"이번 달({year}년 {month}월)의 운세를 분석하되, 한 달 중에 내담자({display_name}, {gender}, {birth_year}년생, 일간 {ilgan})가 특별히 조심해야 하는 날(일진)과 그 이유를 구체적으로 300자 내외로 명리학적 근거를 들어 짚어주세요."
-                    result = get_ai_interpretation(prompt, api_key, system="당신은 40년 경력의 명리학자입니다. 간결하고 단정적으로 조언하세요.", groq_key=groq_key)
+                    prompt = (
+                        f"이번 달({year}년 {month}월)의 전반적인 월운 흐름과 내담자({display_name}, {gender}, {birth_year}년생, 일간 {ilgan})가 "
+                        f"특별히 조심해야 하는 날(일진) 및 그 이유를 명리학적 근거를 들어 **최소 500자 이상**으로 매우 상세하게 분석해 주세요. "
+                        f"특히 건강, 재물, 인간관계 측면에서 구체적인 조심할 점과 대처 방안을 포함하고, "
+                        f"단순한 나열이 아닌 깊이 있는 인생의 지혜가 담긴 조언을 제공해 주세요."
+                    )
+                    result = get_ai_interpretation(prompt, api_key, system="당신은 40년 경력의 명리학 전문 교수입니다. 품격 있고 심도 있게, 그리고 내담자의 마음을 어루만지는 따뜻하지만 엄중한 어조로 조언하세요.", groq_key=groq_key)
                     if result and not result.startswith("["):
                         result = result.replace("~", "～")
                         set_ai_cache(cache_key, "monthly_ai", result)
@@ -12358,13 +12439,12 @@ def menu8_bihang(pils, name, birth_year, gender):
 
         for yb in year_bihang:
             st.markdown(f"""
-
             <div style="background:#fafafa;border-left:3px solid {card_color};
                         padding:9px 14px;border-radius:6px;margin:4px 0;
                         font-size:13px;color:#e0d0c0;line-height:1.8">
                 {'✅' if is_yong_year else '⚠️'} {yb}
             </div>
-""", unsafe_allow_html=True)
+""")
 
     except Exception as e:
         st.warning(f"올해 운기 계산 오류: {e}")
@@ -12372,6 +12452,137 @@ def menu8_bihang(pils, name, birth_year, gender):
     st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
     st.caption("⚠️ 본 비방록은 전통 민속 문화 정보를 제공하는 참고 자료입니다. 실제 굿·부적 처방은 전문 무당·만신에게 문의하십시오.")
+
+class Brain3:
+    """AI 상담 엔진 (Brain 2의 확장을 담당)"""
+    def __init__(self, api_key, groq_key):
+        self.api_key = api_key
+        self.groq_key = groq_key
+
+    def process_query(self, system_prompt, user_prompt, history):
+        return get_ai_interpretation(
+            prompt_text=user_prompt,
+            api_key=self.api_key,
+            system=system_prompt,
+            groq_key=self.groq_key,
+            history=history
+        )
+
+def get_yongshin_multilayer(pils):
+    """다층 용신 및 동압 분석"""
+    ys = get_yongshin(pils)
+    return {
+        "primary": ys.get("종합_용_신", ["-"])[0],
+        "secondary": ys.get("종합_용_신", ["-"])[1] if len(ys.get("종합_용_신", [])) > 1 else "-",
+        "gishin": [o for o in ["木","火","土","金","水"] if o in str(ys.get("기신", ""))]
+    }
+
+def calc_turning_point(pils, birth_year, gender, target_year=None):
+    """현재 위치한 대운/세운 흐름에서 전환점 성격 감지"""
+    if not target_year: target_year = datetime.now().year
+    score = calc_luck_score(pils, birth_year, gender, target_year)
+    
+    if score >= 80:
+        return {"fate_label": "도약기 🚀", "fate_desc": "결실을 맺고 큰 보상을 얻는 황금 시기입니다."}
+    elif score >= 60:
+        return {"fate_label": "성장기 🌱", "fate_desc": "새로운 기운이 싹트고 점진적으로 발전하는 시기입니다."}
+    elif score >= 40:
+        return {"fate_label": "평온기 🍀", "fate_desc": "안정적인 흐름 속에 내실을 다지기 좋은 시기입니다."}
+    else:
+        return {"fate_label": "휴식기 🛡️", "fate_desc": "수비에 집중하며 다음 기회를 준비해야 하는 시기입니다."}
+
+def goosebump_engine(pils, birth_year, gender):
+    """소름 돋는 적중 포인트 (트리거) 추출"""
+    triggers = detect_event_triggers(pils, birth_year, gender)
+    current_year = datetime.now().year
+    past = [t["title"] for t in triggers if t["type"] in ["충", "합"] and t.get("year", 0) < current_year]
+    future = [t["title"] for t in triggers if t.get("year", 0) >= current_year]
+    return {"past": past[:2], "future": future[:2]}
+
+def build_rich_ai_context(pils, birth_year, gender, current_year, focus_key):
+    """AI에게 전달할 풍부한 명리 데이터 컨텍스트 생성"""
+    ilgan = pils[1]["cg"]
+    strength = get_ilgan_strength(ilgan, pils)
+    ys = get_yongshin(pils)
+    gyeok = get_gyeokguk(pils)
+    turning = calc_turning_point(pils, birth_year, gender, current_year)
+    gb = goosebump_engine(pils, birth_year, gender)
+    
+    # 지표 요약
+    ctx = {
+        "daymaster": ilgan,
+        "daymaster_strength": strength["신강신약"],
+        "yongshin": ys.get("종합_용신", ["-"])[0],
+        "gyeokguk": gyeok.get("격국명", "-"),
+        "life_stage": turning["fate_label"],
+        "event_triggers": gb["future"]
+    }
+    return ctx
+
+def tab_ai_chat(pils, name, birth_year, gender, api_key, groq_key=""):
+    """최종 진화형 AI 상담 채팅 인터페이스"""
+    
+    # 1. 대화 기록 초기화
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    
+    # 2. 채팅 인터페이스
+    st.markdown("---")
+    
+    # 채팅 스크롤 영역
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    if prompt := st.chat_input("궁금한 점을 물어보세요"):
+        # 관심사 기록
+        focus_key = st.session_state.get("ai_focus", "종합")
+        SajuMemory.record_interest(focus_key)
+        
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+
+        with st.chat_message("assistant"):
+            with st.spinner("만신(萬神)의 통찰력을 모으는 중..."):
+                try:
+                    current_year = datetime.now().year
+                    engine_ctx = build_rich_ai_context(pils, birth_year, gender, current_year, focus_key)
+                    
+                    # 1. Intent Recognition
+                    intent_res = IntentEngine.analyze(prompt)
+                    intent_p = IntentEngine.build_intent_prompt(prompt)
+                    
+                    # 2. Memory Build
+                    memory_ctx = SajuMemory.build_context_prompt()
+                    
+                    # 3. Brain3 Processing
+                    brain3 = Brain3(api_key, groq_key)
+                    topic_dir = (
+                        f"현재 분석 의도: {intent_res['topic_kr']} (확신도 {intent_res['confidence']}%)\n"
+                        f"상담 방향: {intent_res['direction']}\n"
+                        f"엔진 데이터: {json.dumps(engine_ctx, ensure_ascii=False)}\n"
+                        f"사용자 맥락: {memory_ctx}"
+                    )
+                    system_p = SajuExpertPrompt.build_system_prompt(prompt, topic_dir)
+                    
+                    final_response = brain3.process_query(
+                        system_prompt=system_p,
+                        user_prompt=prompt,
+                        history=st.session_state.chat_history[:-1]
+                    )
+                    
+                    if not final_response:
+                        final_response = "죄송합니다. 현재 기운이 혼탁하여 잠시 후에 다시 말씀해 주시겠습니까?"
+                    
+                    st.markdown(final_response)
+                    st.session_state.chat_history.append({"role": "assistant", "content": final_response})
+                    
+                    # 기억 업데이트
+                    SajuMemory.add_conversation(intent_res['topic_kr'], final_response[:100] + "...")
+                    
+                except Exception as e:
+                    st.error(f"상담 중 오류가 발생했습니다: {e}")
 
 
 def menu7_ai(pils, name, birth_year, gender, api_key, groq_key=""):
@@ -12386,9 +12597,15 @@ def menu7_ai(pils, name, birth_year, gender, api_key, groq_key=""):
         ✦ 집중 분야 선택 → 특화 해석 · <b style="color:#c0392b">전환점 감지 엔진</b> 작동.
     </div>""", unsafe_allow_html=True)
 
-    # ★ Retention: 맞춤형 오프닝 멘트
-    saju_key = pils_to_cache_key(pils)
-    render_ai_opening_ment(saju_key, name)
+    # ★ Retention: 맞춤형 오프닝 멘트 (SajuMemory 기반)
+    intro_msg = SajuMemory.get_personalized_intro(name)
+    st.markdown(f"""
+    <div style="background:rgba(212, 175, 55, 0.05); border-left:4px solid #d4af37; 
+                padding:15px; border-radius:0 10px 10px 0; margin-bottom:20px;
+                font-family: 'Noto Serif KR', serif; font-style: italic; color: #d4af37">
+        " {intro_msg} "
+    </div>
+    """, unsafe_allow_html=True)
 
     # ── 오늘의 사주 상태 (Daily Status Engine) ──────────
     try:
@@ -12966,6 +13183,16 @@ def menu12_manse(pils=None, birth_year=1990, gender="남"):
 """, unsafe_allow_html=True)
 
 
+
+@st.cache_data
+def get_total_lines():
+    """파일의 전체 라인 수를 계산하고 캐싱한다."""
+    try:
+        with open(__file__, "r", encoding="utf-8") as f:
+            return len(f.readlines())
+    except:
+        return 0
+
 def main():
     # ── 페이지 설정 ─────────────────────────────────
     st.markdown("""
@@ -13114,6 +13341,13 @@ def main():
     _ss = st.session_state
     
     # ★ 폼 상태 철통 보존을 위한 세션 초기화
+    # 4계층 기억 구조 초기화 (Expert Layer)
+    if "saju_memory" not in _ss: _ss["saju_memory"] = {}
+    mem = _ss["saju_memory"]
+    if "identity" not in mem: mem["identity"] = {"ilgan": "", "gyeokguk": "", "core_trait": "", "career": "", "health": "", "yongshin": []} # ① 정체
+    if "interest" not in mem: mem["interest"] = {} # ② 관심 (주제별 빈도)
+    if "flow" not in mem: mem["flow"] = {"stage": "", "period": "", "daewoon": ""} # ③ 흐름 (인생 단계)
+    if "conversation" not in mem: mem["conversation"] = [] # ④ 상담 (최근 맥락)
     if "saju_pils" not in _ss: _ss["saju_pils"] = None
     if "in_name" not in _ss: _ss["in_name"] = ""
     if "in_gender" not in _ss: _ss["in_gender"] = "남"
@@ -13128,6 +13362,7 @@ def main():
     if "in_unknown_time" not in _ss: _ss["in_unknown_time"] = False
     if "in_marriage" not in _ss: _ss["in_marriage"] = "미혼"
     if "in_occupation" not in _ss: _ss["in_occupation"] = "선택 안 함"
+    if "in_premium_correction" not in _ss: _ss["in_premium_correction"] = True # 기본 활성화 (정밀도 우선)
     if "form_expanded" not in _ss: _ss["form_expanded"] = True
 
     has_pils = _ss["saju_pils"] is not None
@@ -13158,6 +13393,15 @@ def main():
                 api_key = st.text_input("Anthropic Key", type="password", placeholder="sk-ant-...", label_visibility="collapsed", key="anthropic_key_input")
                 groq_key = ""
                 st.caption("console.anthropic.com")
+        
+        st.markdown("---")
+        st.markdown("**🛡️ 정밀도 설정**")
+        premium_on = st.checkbox("✨ 프리미엄 보정 (KASI 기반 초단위 보정 및 경도 반영)", 
+                                 value=_ss["in_premium_correction"], 
+                                 key="in_premium_correction",
+                                 help="동경 127.0도(서울) 기준 경도 보정 및 한국 천문연구원(KASI) 데이터 기반 절기 초단위 보정을 적용합니다.")
+        if premium_on:
+            st.info("✅ 현재 '프리미엄 정밀 보정' 모드가 활성화되어 있습니다. 보조 홈페이지 결과와 비교해 보세요.")
 
     # ── 입력 창 (세션 바인딩 방식) ────────────────────
     with st.expander("📝 사주 정보 입력 (여기를 눌러 정보 입력/수정)", expanded=_ss["form_expanded"]):
@@ -13223,10 +13467,18 @@ def main():
             b_day = birth_date_solar.day
             
             # ★ 핵심 필라(Pillars) 계산 및 세션 저장 (버그 수정)
-            pils = SajuCoreEngine.get_pillars(
-                b_year, b_month, b_day, 
-                _ss["in_birth_hour"], _ss["in_birth_minute"], _ss["in_gender"]
-            )
+            if _ss.get("in_premium_correction", False):
+                # 프리미엄 정밀 보정 엔진 사용
+                pils = SajuPrecisionEngine.get_pillars(
+                    b_year, b_month, b_day, 
+                    _ss["in_birth_hour"], _ss["in_birth_minute"], _ss["in_gender"]
+                )
+            else:
+                # 일반 표준 엔진 사용
+                pils = SajuCoreEngine.get_pillars(
+                    b_year, b_month, b_day, 
+                    _ss["in_birth_hour"], _ss["in_birth_minute"], _ss["in_gender"]
+                )
             
             # 세션 스테이트에 최종 반영 (Key Binding 영구화)
             st.session_state["saju_pils"] = pils
@@ -13405,6 +13657,14 @@ def main():
                 except: st.info("건강운 분석 준비 중")
             with tabs[12]: menu7_ai(pils, name, birth_year, gender, api_key, groq_key)
             with tabs[13]: menu8_bihang(pils, name, birth_year, gender)
+
+    # ── 하단 정보 표기 (정규 지침) ──
+    total_lines = get_total_lines()
+    st.markdown(f"""
+    <div style="text-align:right; font-size:10px; color:#aaa; margin-top:20px; border-top:1px solid #eee; padding-top:10px">
+        [System Info] Total Engine Lines: {total_lines} | Version: Python 3.13 Stable
+    </div>
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
