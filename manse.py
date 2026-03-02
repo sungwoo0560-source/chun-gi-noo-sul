@@ -4309,22 +4309,38 @@ MONTHLY_LUCK_DESC = {
 
 
 def get_monthly_luck(pils, year, month):
-    """월운 계산 (Bug 6 Fix)"""
+    """월운 계산 - 오호둔월법으로 월간(천간) 계산 후 십성 산출"""
     if not pils: return None
     ilgan = pils[1]["cg"]
-    
-    # 해당 월의 지지(jj) 구하기 (24절기 기준이 아닌 월별 매핑 방식)
-    # 1월: 丑, 2월: 寅, 3월: 卯, 4월: 辰, 5월: 巳, 6월: 午, 7월: 未, 8월: 申, 9월: 酉, 10월: 戌, 11월: 亥, 12월: 子
+
+    # 월지(月支): 1월=丑, 2월=寅, ..., 12월=子
     jj_list = ["丑","寅","卯","辰","巳","午","未","申","酉","戌","亥","子"]
     target_jj = jj_list[(month - 1) % 12]
-    
-    # 십성(Sipsung) 계산 및 데이터 매핑
-    sipsung = TEN_GODS_MATRIX.get(ilgan, {}).get(target_jj, "-")
-    luck_data = MONTHLY_LUCK_DESC.get(sipsung, MONTHLY_LUCK_DESC["-"])
-    
+
+    # [BUG FIX] 월간(月干) 계산 - 오호둔월법
+    # TEN_GODS_MATRIX는 천간 키만 가짐 → 지지(target_jj)를 직접 조회하면 항상 "-" 반환이 버그 원인
+    CG_LIST = ["甲","乙","丙","丁","戊","己","庚","辛","壬","癸"]
+    year_cg = CG_LIST[(year - 4) % 10]
+    # 연간 기준 寅月(2월) 시작 천간 인덱스 (오호둔월법)
+    OHHO_IDX = {"甲":2,"己":2,"乙":4,"庚":4,"丙":6,"辛":6,"丁":8,"壬":8,"戊":0,"癸":0}
+    start_idx = OHHO_IDX.get(year_cg, 0)
+    # month 2(寅)=offset 0, month 3(卯)=offset 1, ..., month 1(丑)=offset 11
+    month_offset = (month - 2) % 12
+    target_cg = CG_LIST[(start_idx + month_offset) % 10]
+
+    # 천간 기준 십성 (정확한 계산)
+    sipsung = TEN_GODS_MATRIX.get(ilgan, {}).get(target_cg, "-")
+    # 지지 정기(본기) 기준 보조 십성
+    jj_junggi = JIJANGGAN.get(target_jj, ["-"])[-1]
+    sipsung_jj = TEN_GODS_MATRIX.get(ilgan, {}).get(jj_junggi, "-")
+
+    luck_data = MONTHLY_LUCK_DESC.get(sipsung) or MONTHLY_LUCK_DESC.get(sipsung_jj) or MONTHLY_LUCK_DESC["-"]
+
     return {
-        "월": month, "지": target_jj, "십성": sipsung,
-        "월운": f"{target_jj}월",
+        "월": month, "간": target_cg, "지": target_jj,
+        "십성": sipsung, "십성_지지": sipsung_jj,
+        "월운": f"{target_cg}{target_jj}월",
+        "월주": target_cg + target_jj,
         "설명": luck_data["desc"],
         "길흉": luck_data["길흉"], "css": luck_data["css"],
         "short": luck_data["short"], "desc": luck_data["desc"],
@@ -14696,33 +14712,6 @@ def main():
         <div style="font-size:13px;color:#bbb;flex:1;min-width:180px">{_br['msg']}</div>
     </div>""", unsafe_allow_html=True)
 
-    # -- 🗂️ 바둑판(Grid) 네모 박스 메뉴 UI --
-    if "current_menu" not in st.session_state:
-        st.session_state["current_menu"] = "종합운세"
-
-    menu_list = [
-        ("📊 종합운세", "종합운세"), ("📅 만세력", "만세력"), ("🔄 대운분석", "대운"),
-        ("🎯 과거적중", "과거"), ("🔮 미래 3년", "미래"), ("🎊 신년운세", "신년 운세"),
-        ("📆 월별운세", "월별 운세"), ("☀️ 일일운세", "일일 운세"), ("💰 재물/사업", "재물"),
-        ("💑 궁합/결혼", "궁합 결혼운"), ("💼 직장/진로", "직장운"), ("💊 건강/체질", "건강운"),
-        ("🏛️ AI 상담소", "만신 상담소"), ("📜 비방록", "비방록"), ("📄 PDF 출력", "PDF 출력")
-    ]
-
-    st.markdown('<div style="font-size:16px;font-weight:900;color:#d4af37;margin:20px 0 10px">🗂️ 원하시는 분석 메뉴를 선택하세요</div>', unsafe_allow_html=True)
-
-    def _set_menu(key_name):
-        st.session_state["current_menu"] = key_name
-
-    m_cols = st.columns(3)
-    for i, (label, key_name) in enumerate(menu_list):
-        with m_cols[i % 3]:
-            btn_type = "primary" if st.session_state["current_menu"] == key_name else "secondary"
-            st.button(label, key=f"menu_btn_{i}", use_container_width=True, type=btn_type,
-                      on_click=_set_menu, args=(key_name,))
-
-    st.markdown('<hr style="border:none;border-top:2px solid rgba(212,175,55,0.5);margin:20px 0">', unsafe_allow_html=True)
-
-
     # -- AI 설정 ----------------
     with st.expander("⚙️ 앱 설정 및 AI 캐스팅 (API 설정)", expanded=False):
         col_e1, col_e2 = st.columns([1, 2])
@@ -14913,6 +14902,32 @@ def main():
             if st.button("⭐ 저장", key="_fav_save_btn", use_container_width=True):
                 save_to_favorites(fav_label or _ss.get("in_name") or "이름 없음")
                 st.toast("즐겨찾기에 저장했습니다!")
+
+    # -- 🗂️ 바둑판(Grid) 네모 박스 메뉴 UI --
+    if "current_menu" not in st.session_state:
+        st.session_state["current_menu"] = "종합운세"
+
+    menu_list = [
+        ("📊 종합운세", "종합운세"), ("📅 만세력", "만세력"), ("🔄 대운분석", "대운"),
+        ("🎯 과거적중", "과거"), ("🔮 미래 3년", "미래"), ("🎊 신년운세", "신년 운세"),
+        ("📆 월별운세", "월별 운세"), ("☀️ 일일운세", "일일 운세"), ("💰 재물/사업", "재물"),
+        ("💑 궁합/결혼", "궁합 결혼운"), ("💼 직장/진로", "직장운"), ("💊 건강/체질", "건강운"),
+        ("🏛️ AI 상담소", "만신 상담소"), ("📜 비방록", "비방록"), ("📄 PDF 출력", "PDF 출력")
+    ]
+
+    st.markdown('<div style="font-size:16px;font-weight:900;color:#d4af37;margin:20px 0 10px">🗂️ 원하시는 분석 메뉴를 선택하세요</div>', unsafe_allow_html=True)
+
+    def _set_menu(key_name):
+        st.session_state["current_menu"] = key_name
+
+    m_cols = st.columns(3)
+    for i, (label, key_name) in enumerate(menu_list):
+        with m_cols[i % 3]:
+            btn_type = "primary" if st.session_state["current_menu"] == key_name else "secondary"
+            st.button(label, key=f"menu_btn_{i}", use_container_width=True, type=btn_type,
+                      on_click=_set_menu, args=(key_name,))
+
+    st.markdown('<hr style="border:none;border-top:2px solid rgba(212,175,55,0.5);margin:20px 0">', unsafe_allow_html=True)
 
     _auto_submit = _ss.pop("_auto_submit", False)
     if submitted or _auto_submit or _ss["saju_pils"] is not None:
