@@ -1336,7 +1336,9 @@ def _local_saju_engine(pils, name, birth_year, gender, query):
             gkn = gk["격국명"] if gk else "미정격"
             sn  = si.get("신강신약", "중화")
             sc  = si.get("일간점수", 50)
-            _CHR = ILGAN_CHAR_DESC.get(ilgan, {})
+            _CG_KR = {'甲':'갑','乙':'을','丙':'병','丁':'정','戊':'무','己':'기','庚':'경','辛':'신','壬':'임','癸':'계'}
+            _ilgan_k = f"{ilgan}({_CG_KR.get(ilgan, '')})"
+            _CHR = ILGAN_CHAR_DESC.get(_ilgan_k, ILGAN_CHAR_DESC.get(ilgan, {}))
             oh_s_c = calc_ohaeng_strength(ilgan, pils)
             out.append(f"**{name}의 성격·기질 완전 분석**\n일간 **{ilgan}** | 격국 **{gkn}** | **{sn}**(점수 {sc}/100)\n")
             out.append(_CHR.get("성격_핵심", f"일간 {ilgan}의 기운이 삶 전반을 이끄느니라.") + "\n")
@@ -6159,18 +6161,25 @@ def get_cached_ai_interpretation(pils_hashable, prompt_type="general", api_key="
 {ctx_data}
 --------------------------------------------------"""
 
+    _tp = calc_turning_point(pils, birth_year, gender, current_year) if 'calc_turning_point' in dir() else {}
+    _yl = get_yearly_luck(pils, current_year)
+    _ys = get_yongshin_multilayer(pils, birth_year, gender, current_year)
+    _tp_label = _tp.get('fate_label', '분석중') if _tp else '분석중'
+    _tp_desc  = _tp.get('fate_desc', '') if _tp else ''
+    _tp_intens= _tp.get('intensity', '보통') if _tp else '보통'
+    _tp_reason= ', '.join(_tp.get('reason', [])) if _tp else ''
     data_block = f"""
 --- 마스터 사주 엔진 실시간 분석 데이터 ---
-상태 라벨: {turning['fate_label']} ({turning['fate_desc']})
+상태 라벨: {_tp_label} ({_tp_desc})
 사주 원국: {saju_str} (시일월년)
-일간: {ilgan} / 격국: {gname} ({gk['격의_등급']}) / 신강신약: {sn} (점수: {score})
+일간: {ilgan} / 격국: {gname} / 신강신약: {sn} (점수: {strength_info.get('일간점수', 50)})
 오행 분포: {' '.join([f"{o}{v}%" for o,v in oh_strength.items()])}
-용신: {ys['용신_1순위']} / 희신: {ys['희신']} / 기신: {', '.join(ys['기신'])}
-현재 대운: {cur_dw['str'] if cur_dw else '-'} ({ys['대운_해석']})
-올해 세운: {yl['세운']} ({yl['십성_천간']} / {yl['길흉']})
-특수 신살: {', '.join([s['name'] for s in extra_stars]) if extra_stars else '없음'}
-전환점 강도: {turning['intensity']} / 주요 이슈: {', '.join(turning['reason'])}
+용신: {_ys.get('용신_1순위', '-')} / 희신: {_ys.get('희신', '-')} / 기신: {', '.join(_ys.get('기신', []))}
+현재 대운: {current_dw['str'] if current_dw else '-'} ({_ys.get('대운_해석', '-')})
+올해 세운: {_yl.get('세운', '')} ({_yl.get('십성_천간', '')} / {_yl.get('길흉', '')})
+전환점 강도: {_tp_intens} / 주요 이슈: {_tp_reason}
 현재: {current_year}년 {current_age}세
+
 현재 대운: {current_dw['str'] if current_dw else '미상'} ({current_dw['시작연도'] if current_dw else ''}-{current_dw['종료연도'] if current_dw else ''})
 현재 세운: {yearly['세운']} [{yearly['십성_천간']}] {yearly['길흉']}
 
@@ -9885,7 +9894,7 @@ def tab_cross_analysis(pils, birth_year, gender):
         st.warning("해당 연도의 대운 정보가 없습니다."); return
 
     ilgan = pils[1]["cg"]; ilgan_oh = OH.get(ilgan, "")
-    ys = get_yongshin(pils); yongshin_ohs = ys["종합_용신"]
+    ys = get_yongshin(pils); yongshin_ohs = ys.get("종합_용신", []) if ys else []
     dw = cross["대운"]; sw = cross["세운"]
     dw_ss = cross["대운_천간십성"]; sw_ss = cross["세운_천간십성"]
     dw_is_yong = _get_yongshin_match(dw_ss, yongshin_ohs, ilgan_oh) == "yong"
@@ -11588,7 +11597,26 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
         birth_minute = st.session_state.get('birth_minute', 0)
         daewoon = SajuCoreEngine.get_daewoon(pils, birth_year, birth_month, birth_day, birth_hour, birth_minute, gender=gender)
         cur_dw = next((d for d in daewoon if d["시작연도"] <= current_year <= d["종료연도"]), None)
-        cur_dw_ss = TEN_GODS_MATRIX.get(ilgan, {}).get(cur_dw["cg"], "-") if cur_dw else "-"
+        # 일간 한자 → '甲(갑)' 형식 변환 (ILGAN_CHAR_DESC 키 형식)
+        _CG_KR_MAP = {
+            "甲":"갑","乙":"을","丙":"병","丁":"정","戊":"무",
+            "己":"기","庚":"경","辛":"신","壬":"임","癸":"계",
+        }
+        ilgan_char_key = f"{ilgan}({_CG_KR_MAP.get(ilgan, '')})" if ilgan in _CG_KR_MAP else ilgan
+        char = ILGAN_CHAR_DESC.get(ilgan_char_key, ILGAN_CHAR_DESC.get(ilgan, {}))
+
+        # 십성 한자 → 한글 변환
+        _SS_KR_MAP = {
+            "食神":"식신","傷官":"상관","偏財":"편재","正財":"정재",
+            "偏官":"편관","正官":"정관","偏印":"편인","正印":"정인",
+            "比肩":"비견","劫財":"겁재",
+        }
+        cur_dw_ss_hanja = TEN_GODS_MATRIX.get(ilgan, {}).get(cur_dw["cg"], "-") if cur_dw else "-"
+        cur_dw_ss = _SS_KR_MAP.get(cur_dw_ss_hanja, cur_dw_ss_hanja)
+
+        sn_narr = STRENGTH_NARRATIVE.get(sn, STRENGTH_NARRATIVE.get(sn.split("(")[0], ""))
+        gnarr = GYEOKGUK_NARRATIVE.get(gname, f"{gname}은 독특한 개성과 능력을 가진 격국입니다.")
+
 
         sw_now = get_yearly_luck(pils, current_year)
         sw_next = get_yearly_luck(pils, current_year + 1)
@@ -11596,11 +11624,8 @@ def build_rich_narrative(pils, birth_year, gender, name, section="report"):
         OH_KR_MAP = {"木":"목(木)","火":"화(火)","土":"토(土)","金":"금(金)","水":"수(水)"}
         yong_kr = " - ".join([OH_KR_MAP.get(o, o) for o in yongshin_ohs])
 
-        char = ILGAN_CHAR_DESC.get(ilgan, {})
-        sn_narr = STRENGTH_NARRATIVE.get(sn, "")
-        gnarr = GYEOKGUK_NARRATIVE.get(gname, f"{gname}은 독특한 개성과 능력을 가진 격국입니다.")
-
         ctx = {
+
             'pils': pils, 'birth_year': birth_year, 'gender': gender, 'name': name,
             'section': section,
             'ilgan': ilgan, 'ilgan_idx': ilgan_idx, 'ilgan_kr': ilgan_kr,
@@ -14182,7 +14207,9 @@ def tab_ai_chat(pils, name, birth_year, gender, api_key, groq_key=""):
                     gkn = gk["격국명"] if gk else "미정격"
                     sn  = si.get("신강신약", "중화")
                     sc  = si.get("일간점수", 50)
-                    _CHR = ILGAN_CHAR_DESC.get(ilgan_loc, {})
+                    _CG_KR2 = {'甲':'갑','乙':'을','丙':'병','丁':'정','戊':'무','己':'기','庚':'경','辛':'신','壬':'임','癸':'계'}
+                    _ilgan_k2 = f"{ilgan_loc}({_CG_KR2.get(ilgan_loc, '')})"
+                    _CHR = ILGAN_CHAR_DESC.get(_ilgan_k2, ILGAN_CHAR_DESC.get(ilgan_loc, {}))
                     oh_s_c2 = calc_ohaeng_strength(ilgan_loc, pils)
                     out.append(f"**{name}의 성격·기질 완전 분석**\n일간 **{ilgan_loc}** | 격국 **{gkn}** | **{sn}**(점수 {sc}/100)\n")
                     out.append(_CHR.get("성격_핵심", f"일간 {ilgan_loc}의 기운이 삶 전반을 이끄느니라.") + "\n")
