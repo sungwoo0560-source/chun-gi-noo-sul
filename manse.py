@@ -2932,18 +2932,42 @@ TEN_GODS_MATRIX = {
     "壬(임)": {"壬(임)":"比肩","癸(계)":"劫財","甲(갑)":"食神","乙(을)":"傷官","丙(병)":"偏財","丁(정)":"正財","戊(무)":"偏官","己(기)":"正官","庚(경)":"偏印","辛(신)":"正印"},
     "癸(계)": {"癸(계)":"比肩","壬(임)":"劫財","乙(을)":"食神","甲(갑)":"傷官","丁(정)":"偏財","丙(병)":"正財","己(기)":"偏官","戊(무)":"正官","辛(신)":"偏印","庚(경)":"正印"}
 }
+# ★ bare 한자 key alias 추가: CG[]='甲' → TEN_GODS_MATRIX='甲(갑)' 불일치 해결
+# get_pillars, get_daewoon 등은 CG[]=bare 한자를 사용하므로 두 포맷 모두 지원
+_CG_FULL = ["甲(갑)","乙(을)","丙(병)","丁(정)","戊(무)","己(기)","庚(경)","辛(신)","壬(임)","癸(계)"]
+_CG_BARE = ["甲","乙","丙","丁","戊","己","庚","辛","壬","癸"]
+for _bare, _full in zip(_CG_BARE, _CG_FULL):
+    if _full in TEN_GODS_MATRIX and _bare not in TEN_GODS_MATRIX:
+        _sub = {}
+        for _k, _v in TEN_GODS_MATRIX[_full].items():
+            _sub[_k] = _v
+            # 서브키도 bare 한자로 alias (예: "甲(갑)"→"甲")
+            _bare_k = _k.split("(")[0] if "(" in _k else _k
+            if _bare_k != _k:
+                _sub[_bare_k] = _v
+        TEN_GODS_MATRIX[_bare] = _sub
+        # 원래 full키 서브딕셔너리에도 bare 서브키 추가
+        for _k2, _v2 in list(TEN_GODS_MATRIX[_full].items()):
+            _bare_k2 = _k2.split("(")[0] if "(" in _k2 else _k2
+            if _bare_k2 not in TEN_GODS_MATRIX[_full]:
+                TEN_GODS_MATRIX[_full][_bare_k2] = _v2
 
 JIJANGGAN = {
     "子(자)":["壬(임)","癸(계)"],"丑(축)":["癸(계)","辛(신)","己(기)"],"寅(인)":["戊(무)","丙(병)","甲(갑)"],"卯(묘)":["甲(갑)","乙(을)"],
     "辰(진)":["乙(을)","癸(계)","戊(무)"],"巳(사)":["戊(무)","庚(경)","丙(병)"],"午(오)":["丙(병)","己(기)","丁(정)"],"未(미)":["丁(정)","乙(을)","己(기)"],
     "申(신)":["戊(무)","壬(임)","庚(경)"],"酉(유)":["庚(경)","辛(신)"],"戌(술)":["辛(신)","丁(정)","戊(무)"],"亥(해)":["戊(무)","甲(갑)","壬(임)"]
 }
+# JIJANGGAN bare 한자 key alias: JJ[]='子'(bare) 형식으로 조회 가능하게
+for _jb, _jf in zip(['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'],
+                    ['子(자)','丑(축)','寅(인)','卯(묘)','辰(진)','巳(사)','午(오)','未(미)','申(신)','酉(유)','戌(술)','亥(해)']):
+    if _jf in JIJANGGAN and _jb not in JIJANGGAN:
+        JIJANGGAN[_jb] = JIJANGGAN[_jf]
 
 UNSUNG_TABLE = {
     "甲(갑)": {"亥(해)":"장생","子(자)":"목욕","丑(축)":"관대","寅(인)":"건록","卯(묘)":"제왕","辰(진)":"쇠","巳(사)":"병","午(오)":"사","未(미)":"묘","申(신)":"절","酉(유)":"태","戌(술)":"양"},
     "乙(을)": {"午(오)":"장생","巳(사)":"목욕","辰(진)":"관대","卯(묘)":"건록","寅(인)":"제왕","丑(축)":"쇠","子(자)":"병","亥(해)":"사","戌(술)":"묘","酉(유)":"절","申(신)":"태","未(미)":"양"},
     "丙(병)": {"寅(인)":"장생","卯(묘)":"목욕","辰(진)":"관대","巳(사)":"건록","午(오)":"제왕","未(미)":"쇠","申(신)":"병","酉(유)":"사","戌(술)":"묘","亥(해)":"절","子(자)":"태","丑(축)":"양"},
-    "丁(정)": {"酉(유)":"장생","申(신)":"목욕","미":"관대","午(오)":"건록","巳(사)":"제왕","辰(진)":"쇠","卯(묘)":"병","寅(인)":"사","丑(축)":"묘","子(자)":"절","亥(해)":"태","戌(술)":"양"},
+    "丁(정)": {"酉(유)":"장생","申(신)":"목욕","未(미)":"관대","午(오)":"건록","巳(사)":"제왕","辰(진)":"쇠","卯(묘)":"병","寅(인)":"사","丑(축)":"묘","子(자)":"절","亥(해)":"태","戌(술)":"양"},
     "戊(무)": {"寅(인)":"장생","卯(묘)":"목욕","辰(진)":"관대","巳(사)":"건록","午(오)":"제왕","未(미)":"쇠","申(신)":"병","酉(유)":"사","戌(술)":"묘","亥(해)":"절","子(자)":"태","丑(축)":"양"},
     "己(기)": {"酉(유)":"장생","申(신)":"목욕","未(미)":"관대","午(오)":"건록","巳(사)":"제왕","辰(진)":"쇠","卯(묘)":"병","寅(인)":"사","丑(축)":"묘","子(자)":"절","亥(해)":"태","戌(술)":"양"},
     "庚(경)": {"巳(사)":"장생","午(오)":"목욕","未(미)":"관대","申(신)":"건록","酉(유)":"제왕","戌(술)":"쇠","亥(해)":"병","子(자)":"사","丑(축)":"묘","寅(인)":"절","卯(묘)":"태","辰(진)":"양"},
@@ -15836,11 +15860,15 @@ def menu_pdf(pils, birth_year, gender, name="내담자", birth_hour_str=""):
             from reportlab.pdfbase import pdfmetrics
             from reportlab.lib import colors
 
-            # -- 폰트 등록: CJK(한자) 지원 우선순위 batang → malgun → gulim --
+            # -- 폰트 등록: 한글/한자 지원 우선순위 --
             _FONT_CANDIDATES = [
-                ("Batang", "C:/Windows/Fonts/batang.ttc", 0),
-                ("Malgun", "C:/Windows/Fonts/malgun.ttf", None),
-                ("Gulim",  "C:/Windows/Fonts/gulim.ttc",  0),
+                ("Malgun",  "C:/Windows/Fonts/malgun.ttf",   None),
+                ("Batang",  "C:/Windows/Fonts/batang.ttc",   0),
+                ("Gulim",   "C:/Windows/Fonts/gulim.ttc",    0),
+                ("Dotum",   "C:/Windows/Fonts/dotum.ttc",    0),
+                ("Malgun2", "C:/Windows/Fonts/malgunbd.ttf", None),
+                ("NanumGothic", os.path.expanduser("~/AppData/Local/Microsoft/Windows/Fonts/NanumGothic.ttf"), None),
+                ("NanumGothic2", "C:/Windows/Fonts/NanumGothic.ttf", None),
             ]
             BASE_FONT = "Helvetica"
             for _fn, _fp, _fi in _FONT_CANDIDATES:
@@ -15853,7 +15881,9 @@ def menu_pdf(pils, birth_year, gender, name="내담자", birth_hour_str=""):
                         BASE_FONT = _fn
                         break
                     except Exception as e:
-                        print(f"[WARN] {e}")
+                        pass  # 다음 폰트 시도
+            if BASE_FONT == "Helvetica":
+                st.warning("⚠️ 한글 폰트를 찾지 못했습니다. PDF에 한글이 정상 출력되지 않을 수 있습니다. malgun.ttf 또는 Batang 폰트를 설치해주세요.")
 
             buf = io.BytesIO()
             c = canvas.Canvas(buf, pagesize=A4)
@@ -15872,22 +15902,39 @@ def menu_pdf(pils, birth_year, gender, name="내담자", birth_hour_str=""):
                 c.showPage()
                 return H - 24 * mm
 
-            # 비BMP 이모지 → 텍스트 대체 매핑
+            # 비BMP 이모지 + 특수기호 → PDF 안전 텍스트 변환
             _EMOJI_MAP = {
                 "🔴": "[●]", "🟡": "[◑]", "🟢": "[○]", "🔵": "[○]",
                 "⭐": "[★]", "🌟": "[★]", "🪐": "",   "🌙": "",
-                "✅": "[V]", "❌": "[X]", "⚠": "[!]", "🗑": "[삭]",
+                "✅": "[V]", "❌": "[X]", "⚠️": "[!]", "⚠": "[!]", "🗑": "",
                 "🔮": "[*]", "📄": "",   "📥": "",   "⬇": "",
+                "🍀": "[*]", "🌈": "",   "💫": "",   "🎯": "[->]",
+                "📖": "",   "🏛": "",   "⚡": "[!]", "🌊": "",
+            }
+            # BMP 범위 특수기호 변환 (PDF 폰트 미지원 문자 대비)
+            _SYMBOL_MAP = {
+                "◆": "[*]", "◇": "[ ]", "■": "[#]", "□": "[ ]",
+                "●": "(*)", "○": "( )", "◎": "(o)", "◉": "(*)",
+                "▲": "(^)", "△": "(^)", "▶": "->",  "►": "->",
+                "★": "*",   "☆": "*",
+                "→": "->",  "←": "<-",  "↑": "^",   "↓": "v",
+                "『": "[",  "』": "]",  "【": "[",  "】": "]",
             }
 
             def _safe_text(text):
-                """비BMP 문자(이모지 등)를 텍스트 대체로 변환"""
+                """비BMP 이모지 + 특수기호를 PDF 안전 텍스트로 변환"""
                 result = []
                 for ch in (text or ""):
-                    if ord(ch) > 0xFFFF:
+                    o = ord(ch)
+                    if o > 0xFFFF:
                         result.append(_EMOJI_MAP.get(ch, ""))
+                    elif ch in _EMOJI_MAP:
+                        result.append(_EMOJI_MAP[ch])
+                    elif ch in _SYMBOL_MAP and BASE_FONT == "Helvetica":
+                        # 폰트가 Helvetica(한글 미지원)일 때만 치환
+                        result.append(_SYMBOL_MAP[ch])
                     else:
-                        result.append(_EMOJI_MAP.get(ch, ch))
+                        result.append(ch)
                 return "".join(result)
 
             def write(c, text, y, font=BASE_FONT, size=12, color=(0.1,0.1,0.1), indent=0, line_h=7.2):
@@ -16709,3 +16756,4 @@ def menu_pdf(pils, birth_year, gender, name="내담자", birth_hour_str=""):
 
 if __name__ == "__main__":
     main()
+
